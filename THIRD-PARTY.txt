@@ -1,0 +1,59 @@
+LiveBackground - third-party software
+=======================================
+
+This package bundles the following third-party programs. They are separate
+programs, not part of LiveBackground, and are distributed under their own
+licenses.
+
+
+1. mpv
+------
+Version : v0.42.0
+Files   : mpv\mpv.exe
+          mpv\mpv.com
+          mpv\vulkan-1.dll
+License : GNU General Public License, version 2 or later (GPLv2+)
+Project : https://mpv.io/
+Source  : https://github.com/mpv-player/mpv
+Build   : https://github.com/mpv-player/mpv/releases
+License text: assets\licenses\mpv-LICENSE.txt
+
+This is the official Windows MSVC build of mpv published on the mpv project's
+GitHub releases page. The complete corresponding source code for mpv is
+available from the project and build URLs above. If you received this package
+and want a copy of the source, contact the person who gave you the package; a
+copy will be provided at no more than the cost of distribution.
+
+
+2. FFmpeg
+---------
+Version : 9.0.2-essentials_build-www.gyan.dev
+Files   : tools\ffmpeg\ffmpeg.exe
+          tools\ffmpeg\ffprobe.exe
+License : GNU General Public License, version 3 (GPLv3)
+          (built with --enable-gpl --enable-version3, including libx264)
+Project : https://ffmpeg.org/
+Source  : https://ffmpeg.org/download.html
+Build   : https://github.com/GyanD/codexffmpeg
+License text: assets\licenses\ffmpeg-LICENSE.txt
+Build info  : assets\licenses\ffmpeg-README.txt
+
+The complete corresponding source code for this FFmpeg build is available
+from the project and build URLs above. If you received this package and want a
+copy of the source, contact the person who gave you the package; a copy will be
+provided at no more than the cost of distribution.
+
+
+3. Sample video
+---------------
+File    : videos\Galaxy-hd_1920_1080_30fps.mp4
+The sample clip was supplied by the user of this package. It is not part of
+the LiveBackground software and is not covered by the GPL. Replace or delete
+it as you like.
+
+
+Notes
+-----
+LiveBackground itself is a small .NET Framework program that starts mpv and
+creates the seamless loop with FFmpeg. It does not link against mpv or FFmpeg
+libraries; it runs the bundled executables as separate processes.
