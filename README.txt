@@ -21,7 +21,8 @@ What you need
 
 Install
 -------
-1. Double-click LiveBackgroundSetup.exe.
+1. Double-click LiveBackgroundSetup.exe. If Windows shows "Windows protected
+   your PC" (SmartScreen), choose More info -> Run anyway.
 2. Choose Install. Windows will ask for permission to install the program in
    Program Files; choose Yes.
 3. Leave "Start LiveBackground when I sign in" ticked if you want the video at
@@ -384,30 +385,36 @@ with a self-signed certificate named "LiveBackground Test". The certificate is
 included next to the app as LiveBackground.cer.
 
 This is NOT a publicly trusted signature. It only tells Windows that the files
-belong together. It does not make the app trusted by Microsoft, and SmartScreen
-may still show "Windows protected your PC" the first time you run the installer
-on another PC.
+belong together. It does not make the app trusted by Microsoft.
 
-If SmartScreen appears:
+On a normal PC, SmartScreen may show "Windows protected your PC" the first
+time you run the installer:
     More info -> Run anyway
+The prompt stops appearing once the file has a clean download history.
 
-If Windows 11 Smart App Control blocks the installer or the app, trust the
-certificate for the current Windows user:
-    certutil -user -addstore -f TrustedPublisher "C:\path\to\LiveBackground.cer"
+Windows 11 Smart App Control (SAC) is stricter, and nothing in this app or
+its installer can change how it behaves:
 
-This is a per-user change and needs no administrator rights. To stop trusting
-the certificate later:
-    certutil -user -delstore TrustedPublisher "LiveBackground Test"
+- SAC judges every executable file separately, by exact content. A newly
+  built exe gets its own judgment; once a particular file is blocked, running
+  it again keeps failing. A rebuild is a new file and gets a new judgment.
+- SAC does not honor self-signed certificates. Adding LiveBackground.cer to
+  your own trusted stores does not unblock a blocked file (tested).
+- SAC shows no "Run anyway" choice; the block is silent. Most PCs have SAC
+  off or in evaluation mode, so on other machines the SmartScreen prompt
+  above is all you normally see.
 
-Smart App Control can also be turned off in Windows Security -> App & browser
-control -> Smart App Control. Turning it off is permanent until Windows is
-reinstalled, so prefer the certificate route.
+If SAC blocks this build, the options are: rebuild the app (new judgment),
+sign with a publicly trusted code-signing certificate, publish through the
+Microsoft Store, or turn SAC off in Windows Security -> App & browser
+control -> Smart App Control. Turning SAC off is permanent until Windows is
+reinstalled, so weigh that carefully.
 
-For wide distribution, sign the files with a publicly trusted OV or EV
-code-signing certificate, or publish the app through the Microsoft Store. That
-removes the "unknown publisher" warning and lets SmartScreen reputation build
-over time. It does not remove Defender's first scan of the bundled, unsigned
-mpv.exe.
+For wide distribution, sign all shipped files (including the bundled,
+unsigned mpv.exe and ffmpeg) with a publicly trusted OV code-signing
+certificate, or publish the app through the Microsoft Store. That removes
+the "unknown publisher" warning and lets SmartScreen reputation build over
+time.
 
 This app is not affiliated with Microsoft.
 

@@ -11,22 +11,6 @@ echo   LiveBackground - install
 echo ==============================================
 echo.
 
-rem ---------------------------------------------------------------
-rem Smart App Control (Windows 11) blocks new unsigned executables.
-rem The setup tool is signed with a self-signed certificate; trusting
-rem that certificate for the current user lets it run. This is a
-rem per-user change and needs no administrator rights.
-rem ---------------------------------------------------------------
-if exist "%SRC%LiveBackground.cer" (
-    echo Preparing the certificate...
-    certutil -user -addstore -f TrustedPublisher "%SRC%LiveBackground.cer" >nul 2>&1
-    if errorlevel 1 (
-        echo Note: the certificate could not be trusted automatically.
-        echo       If Windows blocks the setup tool, see README.txt.
-    )
-)
-echo.
-
 if /I "%SRC%"=="%DEST%" goto run
 
 rem ---------------------------------------------------------------
@@ -59,8 +43,9 @@ if "%RC%"=="0" (
     if errorlevel 1 (
         echo.
         echo NOTE: the wallpaper is not running yet.
-        echo If Windows showed a Smart App Control message, choose Allow,
-        echo then run install.cmd again.
+        echo If Windows showed a SmartScreen prompt, choose More info
+        echo then Run anyway, and run install.cmd again.
+        echo If Smart App Control blocked it, see README.txt.
     ) else (
         echo The wallpaper is running. Right-click its tray icon for settings,
         echo or open "LiveBackground settings" from the Start Menu.
