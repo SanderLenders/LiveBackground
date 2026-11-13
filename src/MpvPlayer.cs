@@ -51,6 +51,21 @@ namespace LiveBackground
             string logDir = Path.GetDirectoryName(LogPath);
             try { Directory.CreateDirectory(logDir); } catch { }
 
+            // mpv writes a verbose log and only truncates it when it starts.
+            // Keep one previous run instead of letting the file grow forever;
+            // mpv's log file is always written at debug level, so rotation is
+            // the only bound we get.
+            try
+            {
+                if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 4 * 1024 * 1024)
+                {
+                    string old = Path.Combine(logDir, "mpv.old.log");
+                    if (File.Exists(old)) File.Delete(old);
+                    File.Move(LogPath, old);
+                }
+            }
+            catch { }
+
             string args = string.Format(
                 "--wid={0} --loop-file=inf --no-config --load-scripts=no --media-controls=no --no-audio " +
                 "--no-osc --no-osd-bar --no-input-default-bindings --no-border --hwdec=auto --panscan=1.0 " +

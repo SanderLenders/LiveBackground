@@ -17,12 +17,17 @@ namespace LiveBackground
 
         private static readonly object Sync = new object();
         private static bool _building;
+        // Signature of the build the background worker is currently
+        // running, so a settings apply can tell "this exact build is
+        // already running" from "the running build is now outdated".
+        private static string _buildingSignature;
         private static bool _dirty;
         private static DateTime _nextCheck = DateTime.MinValue;
         private static BuildResult _pendingBuild;
         private static DateTime _lastWatcherEvent = DateTime.MinValue;
         private static string _lastMissingLog = "";
         private static volatile bool _paused;
+        private static volatile bool _resumeFromPause;
         private static volatile bool _forceBuild;
         private static volatile int _buildGeneration;
         private static volatile bool _prefetching;
@@ -62,13 +67,29 @@ namespace LiveBackground
         public static void SetPaused(bool paused)
         {
             _paused = paused;
-            if (!paused)
+            if (paused)
+            {
+                // A later resume is expected to bring the video back, which is
+                // not the same as recovering a crashed player.
+                _resumeFromPause = true;
+            }
+            else
             {
                 _nextCheck = DateTime.UtcNow;
                 if (IsImagesMode) _nextImageAt = DateTime.UtcNow;
             }
             Log.Info(paused ? "paused by the user" : "resumed by the user");
             Ui.RefreshMenu();
+        }
+
+        private static bool HasTickedEntry(List<PlaylistEntry> playlist)
+        {
+            if (playlist == null) return false;
+            foreach (PlaylistEntry entry in playlist)
+            {
+                if (entry != null && entry.Enabled) return true;
+            }
+            return false;
         }
 
         public static void RequestRebuild()
@@ -165,7 +186,23 @@ namespace LiveBackground
             // Switching back from Images mode has to start the cached loop
             // again; the player was stopped when images mode took over.
             if (screenChanged || wasImages) _restartPlayer = true;
-            _buildGeneration++;
+            // A build for exactly this configuration may already be running
+            // ("Rebuild now" in the settings window followed by "Save and
+            // apply"); cancelling it would throw away its encode, so let it
+            // finish instead of restarting from zero.
+            bool sameBuildRunning = false;
+            try
+            {
+                string signatureNow = MediaPipeline.Signature(
+                    Util.ResolvePath(_appRoot, updated.VideoFolder), updated);
+                lock (Sync)
+                {
+                    sameBuildRunning = _building && signatureNow != null &&
+                        string.Equals(signatureNow, _buildingSignature, StringComparison.Ordinal);
+                }
+            }
+            catch { }
+            if (!sameBuildRunning) _buildGeneration++;
             _nextCheck = DateTime.UtcNow;
             _prefetchDone = false;
             _prefetchAfter = DateTime.UtcNow.AddSeconds(30);
@@ -238,7 +275,8 @@ namespace LiveBackground
 
             // "LiveBackground.exe --settings" opens the dialog. If another
             // instance is running, the flag file tells it to show the dialog.
-            if (HasArg(args, "--settings"))
+            bool settingsRequested = HasArg(args, "--settings");
+            if (settingsRequested)
             {
                 try { File.WriteAllText(Installer.SettingsFlag(_appRoot), "open"); }
                 catch { }
@@ -285,7 +323,10 @@ namespace LiveBackground
             {
                 if (!createdNew)
                 {
-                    Log.Info("another wallpaper instance is already running, exiting");
+                    // "--settings" is the expected way to open the dialog on a
+                    // running wallpaper, so it is not a second instance.
+                    if (settingsRequested) Log.Info("settings requested for the running instance");
+                    else Log.Info("another wallpaper instance is already running, exiting");
                     return 0;
                 }
                 try { return Run(); }
@@ -518,6 +559,7 @@ namespace LiveBackground
                 if (_paused && _player != null && _player.IsRunning)
                 {
                     _player.Stop();
+                    _resumeFromPause = true;
                 }
 
                 // Images mode never starts mpv or touches the video cache. The
@@ -605,6 +647,10 @@ namespace LiveBackground
                             if (!_paused) _player.Start(_progman, _mediaPath);
                             string wallpaper = DesktopHost.WallpaperFor(_appRoot, _config, finished.FramePath);
                             if (!string.IsNullOrEmpty(wallpaper)) DesktopHost.SetDesktopWallpaper(wallpaper);
+                            // The loop's first frame just changed with the
+                            // rebuild, so the lock screen has to be updated
+                            // when it uses that frame.
+                            StartLockScreenWorker();
                             firstPlacementLogged = false;
                             Ui.BuildProgressFinish(true, "Wallpaper updated");
                         }
@@ -677,14 +723,44 @@ namespace LiveBackground
                             string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
                             if (MediaPipeline.ResolveClips(folder, _config).Count == 0)
                             {
+                                // "Nothing to build" has three distinct causes;
+                                // say which one so the log is actionable.
                                 bool hasEntries = _config.Playlist != null && _config.Playlist.Count > 0;
-                                string message = hasEntries
-                                    ? "no clips selected in the playlist"
-                                    : "no videos in " + folder;
+                                bool singleMode = string.Equals(_config.PlaybackMode, "single",
+                                    StringComparison.OrdinalIgnoreCase);
+                                bool hasSelection = singleMode
+                                    ? !string.IsNullOrEmpty(_config.SingleClip)
+                                    : HasTickedEntry(_config.Playlist);
+                                string message;
+                                string cardText;
+                                if (hasSelection)
+                                {
+                                    message = (singleMode ? "the selected clip is missing from "
+                                        : "the selected clips are missing from ") + folder;
+                                    cardText = "Nothing to build - the selected clip is missing from the video folder";
+                                }
+                                else if (hasEntries)
+                                {
+                                    message = "no clips are ticked in the playlist";
+                                    cardText = "Nothing to build - no clips are ticked in the playlist";
+                                }
+                                else
+                                {
+                                    message = "no videos in " + folder;
+                                    cardText = "Nothing to build - no videos in the folder";
+                                }
                                 if (_lastMissingLog != message)
                                 {
                                     Log.Warn(message);
                                     _lastMissingLog = message;
+                                }
+                                // A rebuild the user asked for opened the
+                                // progress card; with nothing to build that
+                                // card would sit on "Preparing..." forever.
+                                // Finish it with the reason instead.
+                                if (force)
+                                {
+                                    Ui.BuildProgressFinish(false, cardText);
                                 }
                                 _nextCheck = DateTime.UtcNow.AddSeconds(30);
                             }
@@ -748,7 +824,17 @@ namespace LiveBackground
                         }
                         else
                         {
-                            Log.Warn("mpv is not running, restarting");
+                            // A player stopped by the pause command is not a
+                            // crash; resuming is the expected path.
+                            if (_resumeFromPause)
+                            {
+                                _resumeFromPause = false;
+                                Log.Info("resuming the wallpaper video");
+                            }
+                            else
+                            {
+                                Log.Warn("mpv is not running, restarting");
+                            }
                             _player.Start(_progman, _mediaPath);
                             firstPlacementLogged = false;
                         }
@@ -777,7 +863,14 @@ namespace LiveBackground
         private static void StartBuildWorker(bool force)
         {
             int generation = _buildGeneration;
-            lock (Sync) { _building = true; }
+            string buildSignature = null;
+            try
+            {
+                buildSignature = MediaPipeline.Signature(
+                    Util.ResolvePath(_appRoot, _config.VideoFolder), _config);
+            }
+            catch { }
+            lock (Sync) { _building = true; _buildingSignature = buildSignature; }
             Log.Info("starting background build");
 
             // A cached loop is swapped in within a fraction of a second. Do not

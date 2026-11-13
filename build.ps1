@@ -11,7 +11,8 @@
         README.txt, THIRD-PARTY.txt
         mpv\                      bundled mpv player
         tools\ffmpeg\             bundled ffmpeg + ffprobe
-        videos\                   sample clip, seeded on first install
+        videos\                   bundled clips, seeded on first install
+        images\wallpapers\        bundled picture, seeded on first install
         assets\licenses\          license texts
         installer\
             LiveBackgroundSetup.exe   official Windows installer (Inno Setup)
@@ -189,23 +190,60 @@ if (Test-Path (Join-Path $FfmpegSource 'ffprobe.exe')) {
     throw 'ffprobe.exe was not found next to ffmpeg.exe.'
 }
 
-Write-Step 'Copying the sample video'
-if (-not $SampleVideo) {
-    $candidates = @(
+Write-Step 'Copying the bundled videos'
+# The installer ships these two clips; a fresh install seeds them into the
+# user's video folder and starts on "Galaxy HD Clip.mp4" in One-clip mode.
+New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'videos') | Out-Null
+$bundledVideos = @(
+    @{ Target = 'Galaxy HD Clip.mp4'; Sources = @(
+        $SampleVideo,
         'C:\Users\sande\OneDrive\Documenten\Background\Galaxy-hd_1920_1080_30fps.mp4',
+        (Join-Path $root 'dist\videos\Galaxy-hd_1920_1080_30fps.mp4'),
         (Join-Path $root 'videos\Galaxy-hd_1920_1080_30fps.mp4'),
-        (Join-Path $OutDir 'videos\Galaxy-hd_1920_1080_30fps.mp4')
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) { $SampleVideo = $candidate; break }
+        (Join-Path $OutDir 'videos\Galaxy HD Clip.mp4')
+    ) },
+    @{ Target = 'Fokuz Recordings Clip.mp4'; Sources = @(
+        (Join-Path $root 'dist\videos\Fokuz Recordings Youtube Template 60fps.mp4'),
+        (Join-Path $OutDir 'videos\Fokuz Recordings Clip.mp4')
+    ) }
+)
+foreach ($video in $bundledVideos) {
+    $source = $null
+    foreach ($candidate in $video.Sources) {
+        if ($candidate -and (Test-Path $candidate)) { $source = $candidate; break }
+    }
+    if ($source) {
+        Copy-Item $source (Join-Path (Join-Path $OutDir 'videos') $video.Target) -Force
+        Write-Host ("  " + $video.Target)
+    } else {
+        Write-Warning ("  missing bundled video: " + $video.Target)
     }
 }
-if ($SampleVideo -and (Test-Path $SampleVideo)) {
-    New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'videos') | Out-Null
-    Copy-Item $SampleVideo (Join-Path $OutDir 'videos') -Force
-    Write-Host ("  " + (Split-Path $SampleVideo -Leaf))
+# The Galaxy clip used to ship under its stock name; drop that older copy so
+# the same video does not ship and seed twice.
+$superseded = Join-Path $OutDir 'videos\Galaxy-hd_1920_1080_30fps.mp4'
+if (Test-Path $superseded) {
+    Remove-Item $superseded -Force
+    Write-Host '  removed superseded Galaxy-hd_1920_1080_30fps.mp4'
+}
+
+Write-Step 'Copying the bundled image'
+# A fresh install seeds this picture into the user's image folder and starts
+# on it in One-image mode.
+New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'images\wallpapers') | Out-Null
+$bundledImageSources = @(
+    (Join-Path $root 'dist\images\wallpapers\Galaxy Image.jpg'),
+    (Join-Path $OutDir 'images\wallpapers\Galaxy Image.jpg')
+)
+$bundledImageSource = $null
+foreach ($candidate in $bundledImageSources) {
+    if (Test-Path $candidate) { $bundledImageSource = $candidate; break }
+}
+if ($bundledImageSource) {
+    Copy-Item $bundledImageSource (Join-Path $OutDir 'images\wallpapers') -Force
+    Write-Host '  Galaxy Image.jpg'
 } else {
-    Write-Warning 'No sample video found; the install will start without a video.'
+    Write-Warning '  missing bundled image: Galaxy Image.jpg'
 }
 
 Write-Step 'Copying documentation and scripts'

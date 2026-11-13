@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -49,7 +50,7 @@ namespace LiveBackground
         private ComboBox _fps;
         private ComboBox _quality;
         private CheckBox _startWithWindows;
-        private RadioButton _lockPrevious;
+        private RadioButton _lockFrame;
         private RadioButton _lockCustom;
         private RadioButton _lockImages;
         private TextBox _lockPath;
@@ -83,9 +84,25 @@ namespace LiveBackground
         private CheckBox _imageCustomIntervalCheck;
         private Label _imageIntervalValue;
         private Label _imageSecondsLabel;
+        private Label[] _imageIntervalMarks;
         private TrackBar _imageCrossfadeBar;
         private Label _imageCrossfadeValue;
+        private Label[] _imageCrossfadeMarks;
+        private CheckBox _imageFineSteps;
         private CheckBox _imageShuffle;
+        private bool _layingOutTicks;
+
+        private const int TbmGetThumbRect = 0x0419;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TrackbarRect
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam,
+            out TrackbarRect lParam);
 
         private static readonly Color DropIdleColor = Color.FromArgb(249, 250, 252);
         private static readonly Color DropHotColor = Color.FromArgb(228, 239, 255);
@@ -159,13 +176,27 @@ namespace LiveBackground
             _wallpaperVideo.BackColor = Color.Transparent;
             _wallpaperVideo.Cursor = Cursors.Hand;
             _wallpaperVideo.TabStop = true;
-            // The pill is a switch: a click toggles the mode no matter which
-            // side is active. AutoCheck stays off so the radio never changes
-            // its own state; SetWallpaperMode owns both radio buttons. The
-            // toggle reads the images radio because the pill itself is the
-            // video radio (checked = video mode).
+            // The whole pill is a switch: a click flips to the other mode.
+            // The labels beside it still pick Video or Images directly.
+            // MouseClick fires only for real pointer clicks, which keeps
+            // the keyboard path below a plain toggle. AutoCheck stays off
+            // so the radios never change their own state; SetWallpaperMode
+            // owns both radio buttons and reads the images radio because
+            // the pill itself is the video radio (checked = video mode).
             _wallpaperVideo.AutoCheck = false;
-            _wallpaperVideo.Click += delegate { SetWallpaperMode(!_wallpaperImages.Checked); };
+            _wallpaperVideo.MouseClick += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Left) return;
+                SetWallpaperMode(!_wallpaperImages.Checked);
+            };
+            _wallpaperVideo.KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Space)
+                {
+                    SetWallpaperMode(!_wallpaperImages.Checked);
+                    e.Handled = true;
+                }
+            };
             _wallpaperVideo.Paint += ModePillPaint;
             _wallpaperVideo.CheckedChanged += delegate { UpdateModeAvailability(); };
             Controls.Add(_wallpaperVideo);
@@ -181,10 +212,13 @@ namespace LiveBackground
 
             // Keep the hidden partner radio so WinForms' mutual exclusion still
             // gives us a single Checked state to read throughout the form.
+            // AutoCheck off as well: arrow keys must not be able to check it
+            // behind the user's back - only SetWallpaperMode moves the mode.
             _wallpaperImages = new RadioButton();
             _wallpaperImages.Text = "";
             _wallpaperImages.SetBounds(-200, -200, 1, 1);
             _wallpaperImages.TabStop = false;
+            _wallpaperImages.AutoCheck = false;
             _wallpaperImages.CheckedChanged += delegate { UpdateModeAvailability(); };
             Controls.Add(_wallpaperImages);
 
@@ -199,7 +233,7 @@ namespace LiveBackground
             _playbackTab = new TabPage("Playback");
             _imagesTab = new TabPage("Images");
             _slideshowTab = new TabPage("Slideshow");
-            _windowsTab = new TabPage("Windows");
+            _windowsTab = new TabPage("Other");
             _tabs.TabPages.Add(_videosTab);
             _tabs.TabPages.Add(_playbackTab);
             _tabs.TabPages.Add(_imagesTab);
@@ -222,7 +256,10 @@ namespace LiveBackground
             Button cancel = new Button();
             cancel.Text = "Cancel";
             cancel.SetBounds(538, 572, 110, 30);
-            cancel.DialogResult = DialogResult.Cancel;
+            // The window is modeless (Show, not ShowDialog), so a DialogResult
+            // alone would never close it. Close explicitly; anything already
+            // applied with "Rebuild now" stays on the desktop by design.
+            cancel.Click += delegate { Close(); };
             Controls.Add(cancel);
             CancelButton = cancel;
 
@@ -289,6 +326,7 @@ namespace LiveBackground
             UpdateVideoToggle();
             RefreshClips();
             RefreshImages();
+            AlignSlideshowMarks();
             _tabs.SelectedTab = _wallpaperImages.Checked ? _imagesTab : _videosTab;
             _tabs.Invalidate();
         }
@@ -386,10 +424,9 @@ namespace LiveBackground
             Button rebuild = new Button();
             rebuild.Text = "Rebuild now";
             rebuild.SetBounds(242, 348, 110, 28);
-            rebuild.Click += delegate
-            {
-                Program.RequestRebuild();
-            };
+            // Applies what the form currently shows to the running
+            // wallpaper without saving or closing the window.
+            rebuild.Click += RebuildNowClicked;
             page.Controls.Add(rebuild);
 
             _videoToggle = new Button();
@@ -613,21 +650,15 @@ namespace LiveBackground
             page.Controls.Add(_fadeBar);
 
             _fineSteps = new CheckBox();
-            _fineSteps.Text = "Allow half-second steps (0.5 s)";
-            _fineSteps.SetBounds(16, 96, 320, 24);
+            _fineSteps.Text = "Allow half-second steps";
+            // Starts below the trackbar's real height at 125% (see Slideshow).
+            _fineSteps.SetBounds(16, 104, 320, 24);
             _fineSteps.CheckedChanged += delegate { ApplyFadeStepMode(); };
             page.Controls.Add(_fineSteps);
 
             _fadeEffective = new Label();
-            _fadeEffective.SetBounds(16, 126, 588, 40);
+            _fadeEffective.SetBounds(16, 134, 588, 40);
             page.Controls.Add(_fadeEffective);
-
-            Label rule = MakeLabel(page,
-                "Fades are capped at one third of the shorter neighbouring clip, so a 10 s " +
-                "setting becomes 3.3 s on a 10 s clip. Longer fades also shorten the loop.",
-                16, 166, 588);
-            rule.Height = 46;
-            rule.ForeColor = SystemColors.GrayText;
 
             Label resLabel = MakeLabel(page, "Resolution", 16, 232, 110);
             _resolution = new ComboBox();
@@ -646,20 +677,6 @@ namespace LiveBackground
             _quality.SetBounds(330, 254, 240, 24);
             _quality.DropDownStyle = ComboBoxStyle.DropDownList;
             page.Controls.Add(_quality);
-
-            Label hint = MakeLabel(page,
-                "Higher quality means a larger loop file and a slower rebuild. " +
-                "Resolution and frame rate are applied on the next rebuild.",
-                16, 292, 588);
-            hint.Height = 46;
-            hint.ForeColor = SystemColors.GrayText;
-
-            Label note = MakeLabel(page,
-                "The loop is rendered once and then played by mpv, so playback stays smooth " +
-                "even while a rebuild runs in the background.",
-                16, 344, 588);
-            note.Height = 46;
-            note.ForeColor = SystemColors.GrayText;
 
             _screensaverActive = new CheckBox();
             _screensaverActive.Text = "Screensaver active (let Windows dim and lock the screen)";
@@ -765,6 +782,15 @@ namespace LiveBackground
             };
             page.Controls.Add(next);
 
+            Button rebuild = new Button();
+            rebuild.Text = "Rebuild now";
+            rebuild.SetBounds(360, 348, 110, 28);
+            // Mirrors the Videos tab: apply the staged settings to the
+            // running wallpaper without saving or closing the window.
+            // Images need no encoding, so this is instant.
+            rebuild.Click += RebuildNowClicked;
+            page.Controls.Add(rebuild);
+
             _imageHint = MakeLabel(page, "", 16, 384, 588);
             _imageHint.Height = 46;
             _imageHint.ForeColor = SystemColors.GrayText;
@@ -807,74 +833,88 @@ namespace LiveBackground
             _imageInterval.TickFrequency = 1;
             _imageInterval.SmallChange = 1;
             _imageInterval.LargeChange = 1;
-            _imageInterval.ValueChanged += delegate { UpdateIntervalControls(); };
+            _imageInterval.ValueChanged += delegate
+            {
+                if (_layingOutTicks) return;
+                UpdateIntervalControls();
+            };
             page.Controls.Add(_imageInterval);
 
             _imageIntervalValue = MakeLabel(page, "10 seconds", 382, 52, 120);
             _imageIntervalValue.ForeColor = SystemColors.GrayText;
 
-            Label marks = MakeLabel(page, "5 s                10               15               20               30           1 min", 22, 90, 520);
-            marks.ForeColor = SystemColors.GrayText;
+            // The trackbar grows taller than the 45 px it is given once Windows
+            // draws it at 125% (about 56 px); the number row must start below
+            // that, otherwise the slider's white area hides the top of the text.
+            // One label per snap point, later centred on the real thumb positions.
+            string[] intervalMarkText = { "5 s", "10", "15", "20", "30", "1 min" };
+            _imageIntervalMarks = new Label[intervalMarkText.Length];
+            for (int i = 0; i < intervalMarkText.Length; i++)
+            {
+                _imageIntervalMarks[i] = MakeTickLabel(page, intervalMarkText[i], 104);
+            }
 
             _imageCustomIntervalCheck = new CheckBox();
             _imageCustomIntervalCheck.Text = "Custom";
-            _imageCustomIntervalCheck.SetBounds(16, 118, 80, 24);
+            // Wide enough for the full word at every display scale; with the
+            // old 80 px the "m" was clipped on 125% displays.
+            _imageCustomIntervalCheck.SetBounds(16, 132, 100, 24);
             _imageCustomIntervalCheck.CheckedChanged += delegate { UpdateIntervalControls(); };
             page.Controls.Add(_imageCustomIntervalCheck);
 
             _imageCustomInterval = new NumericUpDown();
-            _imageCustomInterval.SetBounds(100, 118, 90, 24);
+            _imageCustomInterval.SetBounds(120, 132, 90, 24);
             _imageCustomInterval.Minimum = 1;
             _imageCustomInterval.Maximum = 86400;
             _imageCustomInterval.Value = 10;
             _imageCustomInterval.ValueChanged += delegate { UpdateIntervalControls(); };
             page.Controls.Add(_imageCustomInterval);
 
-            _imageSecondsLabel = MakeLabel(page, "seconds (1-86400)", 196, 122, 150);
+            _imageSecondsLabel = MakeLabel(page, "seconds (1-86400)", 216, 136, 150);
             _imageSecondsLabel.ForeColor = SystemColors.GrayText;
 
-            Label fadeLabel = MakeLabel(page, "Crossfade between pictures", 16, 158, 300);
+            Label fadeLabel = MakeLabel(page, "Crossfade between pictures", 16, 168, 300);
             fadeLabel.Font = new Font(Font, FontStyle.Bold);
 
             _imageCrossfadeBar = new TrackBar();
-            _imageCrossfadeBar.SetBounds(16, 184, 360, 45);
+            _imageCrossfadeBar.SetBounds(16, 194, 360, 45);
             _imageCrossfadeBar.Minimum = 0;
             _imageCrossfadeBar.Maximum = 10;
             _imageCrossfadeBar.TickFrequency = 1;
             _imageCrossfadeBar.SmallChange = 1;
             _imageCrossfadeBar.LargeChange = 2;
-            _imageCrossfadeBar.ValueChanged += delegate { UpdateCrossfadeLabel(); };
+            _imageCrossfadeBar.ValueChanged += delegate
+            {
+                if (_layingOutTicks) return;
+                int snapped = SnapImageCrossfade(_imageCrossfadeBar.Value);
+                if (snapped != _imageCrossfadeBar.Value)
+                {
+                    _imageCrossfadeBar.Value = snapped;
+                    return;
+                }
+                UpdateCrossfadeLabel();
+            };
             page.Controls.Add(_imageCrossfadeBar);
 
-            _imageCrossfadeValue = MakeLabel(page, "2.0 s", 382, 190, 120);
+            _imageCrossfadeValue = MakeLabel(page, "2.0 s", 382, 200, 120);
             _imageCrossfadeValue.ForeColor = SystemColors.GrayText;
 
-            Label fadeMarks = MakeLabel(page, "Off (instant)                                           5 s", 22, 228, 520);
-            fadeMarks.ForeColor = SystemColors.GrayText;
+            _imageCrossfadeMarks = new Label[]
+            {
+                MakeTickLabel(page, "Off (instant)", 252),
+                MakeTickLabel(page, "5 s", 252),
+            };
+
+            _imageFineSteps = new CheckBox();
+            _imageFineSteps.Text = "Allow half-second steps";
+            _imageFineSteps.SetBounds(16, 282, 320, 24);
+            _imageFineSteps.CheckedChanged += delegate { ApplyImageCrossfadeStepMode(); };
+            page.Controls.Add(_imageFineSteps);
 
             _imageShuffle = new CheckBox();
             _imageShuffle.Text = "Shuffle the order";
-            _imageShuffle.SetBounds(16, 258, 300, 24);
+            _imageShuffle.SetBounds(16, 312, 300, 24);
             page.Controls.Add(_imageShuffle);
-
-            Label hint = MakeLabel(page,
-                "Only the images with a tick are used, in the order shown on the Images tab. " +
-                "A picture you add to the folder joins the show immediately; images you remove " +
-                "are skipped. The crossfade is drawn by LiveBackground on top of the desktop " +
-                "and only runs while a picture changes. The last image is also saved as your " +
-                "normal Windows wallpaper, so it stays on screen if the app ever stops.",
-                16, 292, 588);
-            hint.Height = 80;
-            hint.ForeColor = SystemColors.GrayText;
-
-            Label note = MakeLabel(page,
-                "This rotation is handled by LiveBackground itself, so 5-second intervals, " +
-                "custom order and ticks work exactly as shown. Windows' own slideshow is not " +
-                "used. The lock screen is set separately on the Windows tab and is always a " +
-                "still image.",
-                16, 380, 588);
-            note.Height = 64;
-            note.ForeColor = SystemColors.GrayText;
 
             UpdateIntervalControls();
             UpdateCrossfadeLabel();
@@ -887,74 +927,60 @@ namespace LiveBackground
             _startWithWindows.SetBounds(16, 18, 400, 24);
             page.Controls.Add(_startWithWindows);
 
-            Label startupHint = MakeLabel(page,
-                "Uses a scheduled task so the wallpaper starts as early as possible. " +
-                "Windows may ask for permission the first time.",
-                16, 46, 588);
-            startupHint.Height = 40;
-            startupHint.ForeColor = SystemColors.GrayText;
-
             GroupBox group = new GroupBox();
             group.Text = "Lock screen";
-            group.SetBounds(16, 88, 588, 182);
+            group.SetBounds(16, 88, 588, 164);
             page.Controls.Add(group);
 
-            _lockPrevious = new RadioButton();
-            _lockPrevious.Text = "Use my previous desktop wallpaper (recommended)";
-            _lockPrevious.SetBounds(16, 22, 500, 24);
-            _lockPrevious.CheckedChanged += delegate { UpdateLockControls(); };
-            group.Controls.Add(_lockPrevious);
+            _lockFrame = new RadioButton();
+            _lockFrame.Text = "First frame of the video loop";
+            _lockFrame.SetBounds(16, 18, 500, 24);
+            _lockFrame.CheckedChanged += delegate { UpdateLockControls(); };
+            group.Controls.Add(_lockFrame);
 
             _lockCustom = new RadioButton();
             _lockCustom.Text = "Use a custom image";
-            _lockCustom.SetBounds(16, 46, 200, 24);
+            _lockCustom.SetBounds(16, 42, 200, 24);
             _lockCustom.CheckedChanged += delegate { UpdateLockControls(); };
             group.Controls.Add(_lockCustom);
 
             _lockPath = new TextBox();
-            _lockPath.SetBounds(36, 72, 330, 24);
+            _lockPath.SetBounds(36, 68, 330, 24);
             group.Controls.Add(_lockPath);
 
             _lockBrowse = new Button();
             _lockBrowse.Text = "Browse...";
-            _lockBrowse.SetBounds(374, 70, 86, 27);
+            _lockBrowse.SetBounds(374, 66, 86, 27);
             _lockBrowse.Click += delegate { BrowseLockImage(); };
             group.Controls.Add(_lockBrowse);
 
-            _lockDrop = MakeImageDropBox(group, 466, 70, 100, 27, "Drop image",
+            _lockDrop = MakeImageDropBox(group, 466, 66, 100, 27, "Drop image",
                 delegate { BrowseLockImage(); });
 
             _lockImages = new RadioButton();
             _lockImages.Text = "Use an image from my image wallpapers";
-            _lockImages.SetBounds(16, 104, 400, 24);
+            _lockImages.SetBounds(16, 94, 400, 24);
             _lockImages.CheckedChanged += delegate { UpdateLockControls(); };
             group.Controls.Add(_lockImages);
 
             _lockImageCombo = new ComboBox();
-            _lockImageCombo.SetBounds(36, 128, 330, 24);
+            _lockImageCombo.SetBounds(36, 118, 330, 24);
             _lockImageCombo.DropDownStyle = ComboBoxStyle.DropDownList;
             group.Controls.Add(_lockImageCombo);
 
-            Label lockHint = MakeLabel(group,
-                "The lock screen is always a still image. Windows has no public API for a " +
-                "synced lock-screen slideshow, so this one picture stays put.",
-                16, 156, 556);
-            lockHint.Height = 22;
-            lockHint.ForeColor = SystemColors.GrayText;
-
             _desktopWallpaper = new CheckBox();
             _desktopWallpaper.Text = "Set a desktop wallpaper image";
-            _desktopWallpaper.SetBounds(16, 278, 500, 24);
+            _desktopWallpaper.SetBounds(16, 258, 500, 24);
             _desktopWallpaper.CheckedChanged += delegate { UpdateDesktopControls(); };
             page.Controls.Add(_desktopWallpaper);
 
             _desktopGroup = new GroupBox();
             _desktopGroup.Text = "Desktop wallpaper image";
-            _desktopGroup.SetBounds(16, 306, 588, 132);
+            _desktopGroup.SetBounds(16, 286, 588, 132);
             page.Controls.Add(_desktopGroup);
 
             _desktopFrame = new RadioButton();
-            _desktopFrame.Text = "First frame of the loop (recommended)";
+            _desktopFrame.Text = "First frame of the loop";
             _desktopFrame.SetBounds(16, 22, 460, 24);
             _desktopFrame.CheckedChanged += delegate { UpdateDesktopControls(); };
             _desktopGroup.Controls.Add(_desktopFrame);
@@ -977,14 +1003,6 @@ namespace LiveBackground
 
             _desktopDrop = MakeImageDropBox(_desktopGroup, 466, 72, 100, 27, "Drop image",
                 delegate { BrowseDesktopImage(); });
-
-            Label desktopHint = MakeLabel(page,
-                "Shown for the first moment after sign-in, before the video starts. " +
-                "In Images mode this group is switched off, because the picture rotation " +
-                "owns the desktop then.",
-                16, 444, 588);
-            desktopHint.Height = 34;
-            desktopHint.ForeColor = SystemColors.GrayText;
         }
 
         private Panel MakeImageDropBox(Control parent, int x, int y, int width, int height,
@@ -1205,6 +1223,57 @@ namespace LiveBackground
             return label;
         }
 
+        private static Label MakeTickLabel(Control parent, string text, int y)
+        {
+            Label label = new Label();
+            label.Text = text;
+            label.AutoSize = true;
+            label.Top = y;
+            label.ForeColor = SystemColors.GrayText;
+            parent.Controls.Add(label);
+            return label;
+        }
+
+        // Lines the tick labels up with the slider's real thumb positions. The
+        // trackbar draws its thumb inset by half a thumb width, and that size
+        // depends on the display scale, so the positions are measured instead
+        // of guessed from the control width.
+        private void AlignSlideshowMarks()
+        {
+            if (_layingOutTicks) return;
+            if (_imageInterval == null || _imageCrossfadeBar == null) return;
+            _layingOutTicks = true;
+            try
+            {
+                int[] intervalValues = new int[IntervalPresets.Length];
+                for (int i = 0; i < intervalValues.Length; i++) intervalValues[i] = i;
+                AlignTicks(_imageInterval, _imageIntervalMarks, intervalValues);
+                AlignTicks(_imageCrossfadeBar, _imageCrossfadeMarks,
+                    new[] { _imageCrossfadeBar.Minimum, _imageCrossfadeBar.Maximum });
+            }
+            finally
+            {
+                _layingOutTicks = false;
+                UpdateIntervalControls();
+                UpdateCrossfadeLabel();
+            }
+        }
+
+        private static void AlignTicks(TrackBar bar, Label[] labels, int[] values)
+        {
+            if (labels == null || values == null) return;
+            int old = bar.Value;
+            for (int i = 0; i < labels.Length && i < values.Length; i++)
+            {
+                bar.Value = values[i];
+                TrackbarRect r;
+                SendMessage(bar.Handle, TbmGetThumbRect, IntPtr.Zero, out r);
+                int center = bar.Left + (r.Left + r.Right) / 2;
+                labels[i].Left = Math.Max(0, center - labels[i].Width / 2);
+            }
+            bar.Value = old;
+        }
+
         private void LoadSettings()
         {
             _folderBox.Text = _config.VideoFolder;
@@ -1223,6 +1292,7 @@ namespace LiveBackground
             _imageModeSlideshow.Checked = !imageSingle;
             UpdateImageModeControls();
             SetIntervalSelection(_config.ImageIntervalSeconds);
+            _imageFineSteps.Checked = _config.ImageFineCrossfadeSteps;
             SetCrossfadeSelection(_config.ImageCrossfadeSeconds);
             _imageShuffle.Checked = _config.ImageShuffle;
 
@@ -1279,7 +1349,8 @@ namespace LiveBackground
             bool imageLock = string.Equals(_config.LockScreenMode, "image", StringComparison.OrdinalIgnoreCase);
             _lockCustom.Checked = customLock;
             _lockImages.Checked = imageLock;
-            _lockPrevious.Checked = !customLock && !imageLock;
+            // "frame" is the default, so anything unknown lands there too.
+            if (!customLock && !imageLock) _lockFrame.Checked = true;
             _lockPath.Text = _config.LockScreenImage;
             UpdateLockControls();
 
@@ -1547,11 +1618,8 @@ namespace LiveBackground
         private void UpdateClipHintText()
         {
             if (_clipHint == null) return;
-            _clipHint.Text = _modeSingle.Checked
-                ? "One clip plays. Click the checkbox of the clip you want; " +
-                  "ticking another clip switches to it."
-                : "The list order is the play order. Tick the clips you want to play. " +
-                  "New clips start unticked; use Move up / Move down to reorder.";
+            // The help paragraph was removed; the label stays for status messages.
+            _clipHint.Text = "";
         }
 
         // ---------------------------------------------------------------
@@ -1668,11 +1736,8 @@ namespace LiveBackground
         private void UpdateImageHintText()
         {
             if (_imageHint == null) return;
-            _imageHint.Text = _imageModeSingle.Checked
-                ? "One image is shown all the time. Click the checkbox of the image you want; " +
-                  "ticking another image switches to it."
-                : "The list order is the slideshow order. Tick the images you want to see. " +
-                  "New images start ticked; use Move up / Move down to reorder.";
+            // The help paragraph was removed; the label stays for status messages.
+            _imageHint.Text = "";
         }
 
         private void CaptureImagePlaylist()
@@ -2104,8 +2169,34 @@ namespace LiveBackground
             if (_imageCrossfadeBar == null) return;
             if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
             if (seconds > 5.0) seconds = 5.0;
-            _imageCrossfadeBar.Value = Clamp((int)Math.Round(seconds * 2.0), 0, 10);
+            ApplyImageCrossfadeStepMode();
+            _imageCrossfadeBar.Value = SnapImageCrossfade(
+                Clamp((int)Math.Round(seconds * 2.0), 0, 10));
             UpdateCrossfadeLabel();
+        }
+
+        // The picture crossfade runs from 0 to 5 seconds. With the
+        // half-second option off the slider snaps to whole seconds; on it
+        // moves in 0.5 s steps. The trackbar always stores half-seconds,
+        // so a coarse value is simply an even one.
+        private void ApplyImageCrossfadeStepMode()
+        {
+            if (_imageCrossfadeBar == null) return;
+            bool fine = _imageFineSteps != null && _imageFineSteps.Checked;
+            _imageCrossfadeBar.SmallChange = fine ? 1 : 2;
+            _imageCrossfadeBar.LargeChange = fine ? 2 : 4;
+            _imageCrossfadeBar.TickFrequency = fine ? 1 : 2;
+            int snapped = SnapImageCrossfade(_imageCrossfadeBar.Value);
+            if (snapped != _imageCrossfadeBar.Value) _imageCrossfadeBar.Value = snapped;
+            UpdateCrossfadeLabel();
+        }
+
+        private int SnapImageCrossfade(int value)
+        {
+            value = Clamp(value, 0, 10);
+            bool fine = _imageFineSteps != null && _imageFineSteps.Checked;
+            if (!fine && (value % 2) != 0) value = (value + 1) / 2 * 2;
+            return Clamp(value, 0, 10);
         }
 
         private double SelectedCrossfadeSeconds()
@@ -2588,6 +2679,61 @@ namespace LiveBackground
 
         private void SaveClicked(object sender, EventArgs e)
         {
+            // Everything the controls currently say, validated exactly
+            // like "Rebuild now" does. Null means a message box has
+            // already explained the problem.
+            AppConfig updated = CollectConfig();
+            if (updated == null) return;
+
+            bool startupChanged = _startWithWindows.Checked != IsStartupEnabled(updated.TaskName);
+            if (startupChanged)
+            {
+                InstallState state = InstallState.Load(_appRoot);
+                Action<string> log = delegate(string message) { Log.Info("settings: " + message); };
+                if (_startWithWindows.Checked)
+                {
+                    Installer.CreateStartup(_appRoot, updated, state, log);
+                    state.Save(_appRoot);
+                }
+                else
+                {
+                    Installer.RemoveStartup(_appRoot, updated, log);
+                }
+            }
+
+            try
+            {
+                ConfigStore.Save(_appRoot, updated);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not save the settings: " + ex.Message,
+                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            Program.ApplyConfig(updated);
+            Close();
+        }
+
+        // "Rebuild now" in the settings window: apply what the form
+        // currently shows to the running wallpaper, but keep the window
+        // open and leave saving to "Save and apply". A cached video
+        // selection swaps in instantly; a new one is encoded while the
+        // progress card follows it. Image settings apply instantly.
+        private void RebuildNowClicked(object sender, EventArgs e)
+        {
+            AppConfig staged = CollectConfig();
+            if (staged == null) return;
+            Program.ApplyConfig(staged);
+        }
+
+        // Reads the whole form into the config that "Save and apply"
+        // writes and "Rebuild now" applies to the running wallpaper,
+        // without touching the startup task or the disk. Returns null -
+        // after showing a message box - when something is invalid.
+        private AppConfig CollectConfig()
+        {
             bool imagesMode = _wallpaperImages.Checked;
             string folder = _folderBox.Text.Trim();
             string imageFolder = _imageFolderBox.Text.Trim();
@@ -2598,7 +2744,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Choose an image folder first.", "LiveBackground",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 string resolvedImages = Util.ResolvePath(_appRoot, imageFolder);
                 if (MediaPipeline.ScanImages(resolvedImages).Count == 0)
@@ -2606,7 +2752,7 @@ namespace LiveBackground
                     MessageBox.Show(this, "Add at least one picture to " + resolvedImages +
                         " and press Refresh.", "LiveBackground",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 if (_imageList.CheckedItems.Count == 0)
                 {
@@ -2614,7 +2760,7 @@ namespace LiveBackground
                             ? "Tick the image you want to show."
                             : "Tick at least one image for the slideshow.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
             }
             else
@@ -2623,24 +2769,26 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Choose a video folder first.", "LiveBackground",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
 
                 if (_modePlaylist.Checked && _clipList.CheckedItems.Count == 0)
                 {
                     MessageBox.Show(this, "Tick at least one clip in the playlist.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 if (_modeSingle.Checked && SingleIndex() < 0)
                 {
                     MessageBox.Show(this, "Tick the clip you want to play.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
             }
 
-            string lockMode = "previous";
+            // "First frame of the video loop" needs no stored path; it follows
+            // whatever the wallpaper builds.
+            string lockMode = "frame";
             string lockImage = "";
             if (_lockCustom.Checked)
             {
@@ -2650,7 +2798,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Choose an existing image for the lock screen.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 try
                 {
@@ -2661,7 +2809,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Could not copy the lock-screen image: " + ex.Message,
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
             }
             else if (_lockImages.Checked)
@@ -2672,7 +2820,7 @@ namespace LiveBackground
                     MessageBox.Show(this, "Add pictures to your image folder first, then pick one " +
                         "for the lock screen.", "LiveBackground",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 string full = Path.Combine(Util.ResolvePath(_appRoot,
                     imageFolder.Length == 0 ? _config.ImageFolder : imageFolder), selected);
@@ -2680,7 +2828,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "That lock-screen image no longer exists. Pick another one.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 lockMode = "image";
                 lockImage = RelativeToAppRoot(_appRoot, full);
@@ -2701,7 +2849,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Choose an existing image for the desktop wallpaper.",
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
                 try
                 {
@@ -2711,7 +2859,7 @@ namespace LiveBackground
                 {
                     MessageBox.Show(this, "Could not copy the desktop image: " + ex.Message,
                         "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
+                    return null;
                 }
             }
 
@@ -2748,6 +2896,7 @@ namespace LiveBackground
                 : _singleImageName;
             updated.ImageIntervalSeconds = SelectedIntervalSeconds();
             updated.ImageCrossfadeSeconds = SelectedCrossfadeSeconds();
+            updated.ImageFineCrossfadeSteps = _imageFineSteps.Checked;
             updated.ImageShuffle = _imageShuffle.Checked && !_imageModeSingle.Checked;
             updated.LockScreenMode = lockMode;
             updated.LockScreenImage = lockImage;
@@ -2761,35 +2910,7 @@ namespace LiveBackground
             updated.ScreensaverActive = _screensaverActive.Checked;
             updated.Normalize();
 
-            bool startupChanged = _startWithWindows.Checked != IsStartupEnabled(updated.TaskName);
-            if (startupChanged)
-            {
-                InstallState state = InstallState.Load(_appRoot);
-                Action<string> log = delegate(string message) { Log.Info("settings: " + message); };
-                if (_startWithWindows.Checked)
-                {
-                    Installer.CreateStartup(_appRoot, updated, state, log);
-                    state.Save(_appRoot);
-                }
-                else
-                {
-                    Installer.RemoveStartup(_appRoot, updated, log);
-                }
-            }
-
-            try
-            {
-                ConfigStore.Save(_appRoot, updated);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Could not save the settings: " + ex.Message,
-                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            Program.ApplyConfig(updated);
-            Close();
+            return updated;
         }
 
         private static bool IsStartupEnabled(string taskName)

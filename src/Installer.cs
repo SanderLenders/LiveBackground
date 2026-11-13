@@ -50,6 +50,7 @@ namespace LiveBackground
         public static string ResumeFlag(string appRoot) { return Path.Combine(appRoot, "resume.flag"); }
         public static string RebuildFlag(string appRoot) { return Path.Combine(appRoot, "rebuild.flag"); }
         public static string BundledVideoDir(string appRoot) { return Path.Combine(Paths.ProgramRoot, "videos"); }
+        public static string BundledImageDir(string appRoot) { return Path.Combine(Paths.ProgramRoot, "images", "wallpapers"); }
 
         public static int Install(string appRoot, AppConfig config, bool createStartup, Action<string> log)
         {
@@ -99,6 +100,8 @@ namespace LiveBackground
                 log("desktop wallpaper set to " + Path.GetFileName(wallpaper));
             }
 
+            // No live image here; the running app keeps the lock screen up to
+            // date after the restart below.
             ApplyLockScreen(appRoot, config, state, log);
 
             StopApp(appRoot, log, false);
@@ -142,6 +145,7 @@ namespace LiveBackground
             string imageFolder = Util.ResolvePath(appRoot, config.ImageFolder);
             log("image folder: " + imageFolder);
             Directory.CreateDirectory(imageFolder);
+            SeedImages(appRoot, imageFolder, log);
 
             // Save what was on screen before the app changes anything.
             if (string.IsNullOrEmpty(state.WallpaperBackup) || !File.Exists(state.WallpaperBackup))
@@ -162,8 +166,58 @@ namespace LiveBackground
         {
             InstallState state = InstallState.Load(appRoot);
             Prepare(appRoot, config, state, log);
+            // A fresh install has no current picture yet; the default lock
+            // screen is the loop's first frame anyway.
             ApplyLockScreen(appRoot, config, state, log);
+            EnsureStartupOnFirstRun(appRoot, config, state, log);
             log("first run: user library ready at " + appRoot);
+        }
+
+        // A fresh copy starts with "Start LiveBackground when I sign in" on.
+        // The installer normally creates the tasks before the first launch;
+        // this covers portable copies and installs where that step did not
+        // run. Creating a task for the current user does not need elevation,
+        // so the first launch never shows a UAC prompt.
+        private static void EnsureStartupOnFirstRun(string appRoot, AppConfig config,
+            InstallState state, Action<string> log)
+        {
+            string watchdog = StartupTask.WatchdogName(config.TaskName);
+            if (StartupTask.Exists(config.TaskName) && StartupTask.Exists(watchdog))
+            {
+                Shortcut.Remove(Shortcut.StartupShortcutPath(config.TaskName));
+                state.UsedTask = true;
+                state.Save(appRoot);
+                return;
+            }
+
+            string error;
+            bool ok = StartupTask.Create(appRoot, config.TaskName, AppExe(appRoot), out error);
+            if (ok)
+            {
+                bool watchdogOk = StartupTask.CreateWatchdog(appRoot, config.TaskName,
+                    AppExe(appRoot), out error);
+                Shortcut.Remove(Shortcut.StartupShortcutPath(config.TaskName));
+                state.UsedTask = true;
+                state.Save(appRoot);
+                log("logon task created: " + config.TaskName);
+                if (!watchdogOk) log("WARNING: could not create the watchdog task: " + error);
+                return;
+            }
+
+            log("WARNING: could not create the logon task: " + error);
+            log("falling back to a Startup folder shortcut (no crash watchdog)");
+            string shortcutError;
+            if (Shortcut.Create(Shortcut.StartupShortcutPath(config.TaskName), AppExe(appRoot),
+                "--startup", Paths.ProgramRoot, "LiveBackground video wallpaper", out shortcutError))
+            {
+                state.UsedTask = false;
+                state.Save(appRoot);
+                log("Startup shortcut created: " + Shortcut.StartupShortcutPath(config.TaskName));
+            }
+            else
+            {
+                log("ERROR: could not create the Startup shortcut: " + shortcutError);
+            }
         }
 
         public static int Uninstall(string appRoot, AppConfig config, bool removeFiles, Action<string> log)
@@ -450,12 +504,15 @@ namespace LiveBackground
             }
         }
 
-        public static void ApplyLockScreen(string appRoot, AppConfig config, InstallState state, Action<string> log)
+        public static void ApplyLockScreen(string appRoot, AppConfig config, InstallState state,
+            Action<string> log)
         {
             string target = "";
-            if (string.Equals(config.LockScreenMode, "previous", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(config.LockScreenMode, "frame", StringComparison.OrdinalIgnoreCase))
             {
-                target = state.WallpaperBackup;
+                // The same still the desktop wallpaper uses behind the video,
+                // so the lock screen always matches the loop that is playing.
+                target = MediaPipeline.FramePath(appRoot);
             }
             else if (string.Equals(config.LockScreenMode, "custom", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(config.LockScreenMode, "image", StringComparison.OrdinalIgnoreCase))
@@ -498,13 +555,41 @@ namespace LiveBackground
             state.SeededVideos = true;
         }
 
+        // Same idea as SeedVideos: a fresh install starts with the bundled
+        // picture in the image folder, and only when that folder is empty,
+        // so it never touches a library the user has filled already.
+        private static void SeedImages(string appRoot, string imageFolder, Action<string> log)
+        {
+            if (MediaPipeline.ScanImages(imageFolder).Count > 0) return;
+            string bundled = BundledImageDir(appRoot);
+            if (!Directory.Exists(bundled)) return;
+
+            List<string> samples = MediaPipeline.ScanImages(bundled);
+            if (samples.Count == 0) return;
+
+            foreach (string sample in samples)
+            {
+                try
+                {
+                    string target = Path.Combine(imageFolder, Path.GetFileName(sample));
+                    File.Copy(sample, target, false);
+                    log("added sample image: " + Path.GetFileName(sample));
+                }
+                catch (Exception ex) { log("WARNING: could not copy sample image: " + ex.Message); }
+            }
+        }
+
         private static void BackupCurrentWallpaper(string appRoot, InstallState state, Action<string> log)
         {
             string wallpaper = ReadWallpaperPath();
             if (string.IsNullOrEmpty(wallpaper) || !File.Exists(wallpaper)) return;
 
             string cache = MediaPipeline.CacheDir(appRoot);
-            if (wallpaper.StartsWith(cache, StringComparison.OrdinalIgnoreCase)) return;
+            if (wallpaper.StartsWith(cache, StringComparison.OrdinalIgnoreCase))
+            {
+                log("the desktop is already showing a LiveBackground frame, so there is nothing to save");
+                return;
+            }
 
             string ext = Util.DetectImageExtension(wallpaper);
             if (ext == ".img") { log("could not identify the current wallpaper format, not backing it up"); return; }

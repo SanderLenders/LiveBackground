@@ -44,12 +44,14 @@ copy of the source, contact the person who gave you the package; a copy will be
 provided at no more than the cost of distribution.
 
 
-3. Sample video
+3. Bundled media
 ---------------
-File    : videos\Galaxy-hd_1920_1080_30fps.mp4
-The sample clip was supplied by the user of this package. It is not part of
-the LiveBackground software and is not covered by the GPL. Replace or delete
-it as you like.
+Files   : videos\Galaxy HD Clip.mp4
+          videos\Fokuz Recordings Clip.mp4
+          images\wallpapers\Galaxy Image.jpg
+The clips and the picture were supplied by the user of this package. They are
+not part of the LiveBackground software and are not covered by the GPL.
+Replace or delete them as you like.
 
 
 Notes

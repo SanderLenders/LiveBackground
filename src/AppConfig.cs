@@ -29,10 +29,12 @@ namespace LiveBackground
         [DataMember(Name = "videoFolder")] public string VideoFolder = @"%USERPROFILE%\LiveBackground\Videos";
         [DataMember(Name = "imageFolder")] public string ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
         [DataMember(Name = "imageMode")] public string ImageMode = "single";
-        [DataMember(Name = "imageSingle")] public string ImageSingle = "";
+        // Fresh installs start on the bundled standard picture.
+        [DataMember(Name = "imageSingle")] public string ImageSingle = "Galaxy Image.jpg";
         [DataMember(Name = "imagePlaylist")] public List<PlaylistEntry> ImagePlaylist = new List<PlaylistEntry>();
-        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 10;
+        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 5;
         [DataMember(Name = "imageCrossfadeSeconds")] public double ImageCrossfadeSeconds = 2.0;
+        [DataMember(Name = "imageFineCrossfadeSteps")] public bool ImageFineCrossfadeSteps = false;
         [DataMember(Name = "imageShuffle")] public bool ImageShuffle = false;
         [DataMember(Name = "crossfadeSeconds")] public double CrossfadeSeconds = 3.0;
         [DataMember(Name = "fineCrossfadeSteps")] public bool FineCrossfadeSteps = false;
@@ -42,11 +44,12 @@ namespace LiveBackground
         [DataMember(Name = "crf")] public int Crf = 18;
         [DataMember(Name = "preset")] public string Preset = "veryfast";
         [DataMember(Name = "shuffle")] public bool Shuffle = false;
-        [DataMember(Name = "playbackMode")] public string PlaybackMode = "playlist";
-        [DataMember(Name = "singleClip")] public string SingleClip = "";
+        [DataMember(Name = "playbackMode")] public string PlaybackMode = "single";
+        // Fresh installs start on the bundled standard clip in One-clip mode.
+        [DataMember(Name = "singleClip")] public string SingleClip = "Galaxy HD Clip.mp4";
         [DataMember(Name = "playlist")] public List<PlaylistEntry> Playlist = new List<PlaylistEntry>();
         [DataMember(Name = "autoRebuild")] public bool AutoRebuild = true;
-        [DataMember(Name = "lockScreenMode")] public string LockScreenMode = "previous";
+        [DataMember(Name = "lockScreenMode")] public string LockScreenMode = "frame";
         [DataMember(Name = "lockScreenImage")] public string LockScreenImage = "";
         [DataMember(Name = "desktopWallpaper")] public bool DesktopWallpaper = true;
         [DataMember(Name = "desktopWallpaperMode")] public string DesktopWallpaperMode = "frame";
@@ -68,10 +71,11 @@ namespace LiveBackground
             VideoFolder = @"%USERPROFILE%\LiveBackground\Videos";
             ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
             ImageMode = "single";
-            ImageSingle = "";
+            ImageSingle = "Galaxy Image.jpg";
             ImagePlaylist = new List<PlaylistEntry>();
-            ImageIntervalSeconds = 10;
+            ImageIntervalSeconds = 5;
             ImageCrossfadeSeconds = 2.0;
+            ImageFineCrossfadeSteps = false;
             ImageShuffle = false;
             CrossfadeSeconds = 3.0;
             FineCrossfadeSteps = false;
@@ -81,11 +85,11 @@ namespace LiveBackground
             Crf = 18;
             Preset = "veryfast";
             Shuffle = false;
-            PlaybackMode = "playlist";
-            SingleClip = "";
+            PlaybackMode = "single";
+            SingleClip = "Galaxy HD Clip.mp4";
             Playlist = new List<PlaylistEntry>();
             AutoRebuild = true;
-            LockScreenMode = "previous";
+            LockScreenMode = "frame";
             LockScreenImage = "";
             DesktopWallpaper = true;
             DesktopWallpaperMode = "frame";
@@ -126,6 +130,7 @@ namespace LiveBackground
             }
             ImageIntervalSeconds = other.ImageIntervalSeconds;
             ImageCrossfadeSeconds = other.ImageCrossfadeSeconds;
+            ImageFineCrossfadeSteps = other.ImageFineCrossfadeSteps;
             ImageShuffle = other.ImageShuffle;
             CrossfadeSeconds = other.CrossfadeSeconds;
             FineCrossfadeSteps = other.FineCrossfadeSteps;
@@ -184,7 +189,7 @@ namespace LiveBackground
             }
             if (ImageSingle == null) ImageSingle = "";
             if (ImagePlaylist == null) ImagePlaylist = new List<PlaylistEntry>();
-            if (ImageIntervalSeconds < 1) ImageIntervalSeconds = 10;
+            if (ImageIntervalSeconds < 1) ImageIntervalSeconds = 5;
             if (ImageIntervalSeconds > 86400) ImageIntervalSeconds = 86400;
             // 0 is allowed and means "no crossfade". The desktop image layer
             // only blends during a transition; between pictures it is static.
@@ -207,7 +212,14 @@ namespace LiveBackground
             }
             if (SingleClip == null) SingleClip = "";
             if (Playlist == null) Playlist = new List<PlaylistEntry>();
-            if (string.IsNullOrEmpty(LockScreenMode)) LockScreenMode = "previous";
+            // "previous" and the old "followimage" option were removed;
+            // configs saved by older versions move to the first loop frame.
+            if (string.IsNullOrEmpty(LockScreenMode) ||
+                string.Equals(LockScreenMode, "previous", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(LockScreenMode, "followimage", StringComparison.OrdinalIgnoreCase))
+            {
+                LockScreenMode = "frame";
+            }
             if (!string.Equals(DesktopWallpaperMode, "custom", StringComparison.OrdinalIgnoreCase))
             {
                 DesktopWallpaperMode = "frame";

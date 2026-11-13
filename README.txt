@@ -28,7 +28,8 @@ Install
 3. Leave "Start LiveBackground when I sign in" ticked if you want the video at
    logon.
 4. When the installer finishes, LiveBackground starts and builds its first loop
-   in the background. The bundled sample clip is used until you add your own.
+   in the background. It starts on the bundled "Galaxy HD Clip.mp4"; the bundled
+   "Galaxy Image.jpg" is waiting in your image folder.
 
 The installer places the program in:
     C:\Program Files\LiveBackground
@@ -114,7 +115,7 @@ Right-click the tray icon for:
   Exit                                 stop the wallpaper completely
 
 The cross-fade slider runs from 1 to 10 seconds in 1-second steps. Tick
-"Allow half-second steps (0.5 s)" to use 0.5-second steps. The window shows
+"Allow half-second steps" to use 0.5-second steps. The window shows
 the fade that will actually be applied and the resulting loop length.
 
 Fades are capped at one third of the shorter neighbouring clip, so a 10 s
@@ -156,8 +157,8 @@ changes what is currently on your desktop.
 If every clip is unticked, the app falls back to playing every clip in the
 folder in filename order, so an empty playlist is never a black desktop.
 
-The first time the app runs it adds the bundled sample clip to the folder. After
-that, the folder is yours: add, replace or delete videos.
+The first time the app runs it adds the bundled clips and picture to the
+folders. After that, the folders are yours: add, replace or delete videos.
 
 If Windows says a video is in use, click "Stop video" in the Videos tab first.
 That stops the player and releases the file; "Start video" brings the wallpaper
@@ -213,8 +214,9 @@ away. Pictures you untick are remembered and skipped.
 The slideshow interval is chosen on the Slideshow tab with a preset slider
 (5, 10, 15, 20, 30 or 60 seconds). Tick "Custom" to enter any number of seconds
 from 1 to 86400. The "Crossfade" slider controls picture transitions: 0 = off
-(instant), 0.5 to 5 seconds, 0.5-second steps, default 2.0 seconds. The
-crossfade is drawn below the icons and only runs while a picture is changing.
+(instant), 1 to 5 seconds in 1-second steps. Tick "Allow half-second steps" for
+0.5-second steps. The crossfade is drawn below the icons and only runs while a
+picture is changing.
 
 The rotation is done by LiveBackground itself, not by the Windows slideshow
 feature, so the ticks, the custom order and the short intervals work exactly as
@@ -228,7 +230,7 @@ running and starts it again after a crash. It does not restart the app when you
 exit it from the tray. If you chose the Startup-folder fallback instead of the
 scheduled tasks, the watchdog is not installed.
 
-While Images mode is active, the desktop-wallpaper options on the Windows tab
+While Images mode is active, the desktop-wallpaper options on the Other tab
 are switched off, because the picture rotation owns the desktop. The image
 folder is watched, so adding or removing a picture takes effect without a
 restart.
@@ -242,9 +244,8 @@ What appears where
   about half a second, so there is no visible cut.
 - Images mode: the selected picture, or the ticked pictures in slideshow order.
   No video is running.
-- Lock screen: your previous desktop wallpaper (saved at install time), a
-  custom image you pick, or one of your image wallpapers. The app does not put
-  the video on the lock screen and Windows has no public API for a synced
+- Lock screen: the first frame of the video loop, a custom image you pick, or
+  one of your image wallpapers. Windows has no public API for a synced
   lock-screen slideshow, so the lock screen is always one still picture.
 - Power: the video does not keep the display awake by default. The screen dims,
   turns off and locks according to your Windows power settings, exactly as it
@@ -252,20 +253,19 @@ What appears where
   active" on the Playback tab; turning it off keeps the screen awake while the
   video plays.
 
-To use a custom desktop wallpaper, open the Windows tab and choose "Use a
+To use a custom desktop wallpaper, open the Other tab and choose "Use a
 custom image" under "Desktop wallpaper image". To use a custom lock-screen
 image, choose "Use a custom image" under "Lock screen". Both images are copied
 into %USERPROFILE%\LiveBackground\images, so moving the original file later
 does not break the setting.
 
 To use one of your image wallpapers on the lock screen, choose "Use an image
-from my image wallpapers" on the Windows tab and pick a picture from the list.
+from my image wallpapers" on the Other tab and pick a picture from the list.
 That picture is read from the image folder, so it changes if you replace or
 rename the file.
 
 If a custom image is deleted from the library, the app falls back to the first
-frame of the loop for the desktop, and to the saved previous wallpaper for the
-lock screen.
+frame of the loop for the desktop, and leaves the lock screen unchanged.
 
 
 Commands
@@ -317,8 +317,9 @@ Useful fields:
     imageMode          "single" or "slideshow"
     imageSingle        file name used when imageMode is "single"
     imagePlaylist      ordered list of {name, enabled} entries for images
-    imageIntervalSeconds  seconds between slideshow pictures (default 10)
+    imageIntervalSeconds  seconds between slideshow pictures (default 5)
     imageCrossfadeSeconds picture crossfade, 0 = off, 0.5 to 5 (default 2)
+    imageFineCrossfadeSteps true to allow 0.5-second steps for pictures
     imageShuffle       true to pick a random picture each time
     crossfadeSeconds   cross-fade length, 0.5 to 10 (default 3)
     fineCrossfadeSteps true to allow 0.5-second steps in the settings window
@@ -327,7 +328,7 @@ Useful fields:
     fps                loop frame rate (default 30)
     crf                x264 quality, lower is better/bigger (default 18)
     preset             x264 speed preset (default "veryfast")
-    lockScreenMode     "previous", "custom" or "image"
+    lockScreenMode     "frame", "custom" or "image"
     lockScreenImage    path used when lockScreenMode is "custom" or "image"
     desktopWallpaper   turn the still desktop wallpaper on/off (default true)
     desktopWallpaperMode  "frame" (first loop frame) or "custom"
@@ -451,7 +452,7 @@ Third-party software
 --------------------
 This folder bundles mpv and FFmpeg. Both are free software under the GNU GPL.
 See THIRD-PARTY.txt and assets\licenses\ for versions, licenses and source
-links. The bundled sample video is not part of the software.
+links. The bundled clips and picture are not part of the software.
 
 
 Known limitations
