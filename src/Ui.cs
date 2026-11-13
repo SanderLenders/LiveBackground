@@ -270,6 +270,15 @@ namespace LiveBackground
     {
         private static TrayApp _tray;
 
+        // A build can be requested a fraction of a second before the tray
+        // thread has finished starting. The card request is held here and
+        // replayed once the tray is ready, so the first encode still shows
+        // its card. A build that finishes before then simply clears it.
+        private static readonly object ProgressSync = new object();
+        private static string _pendingProgressTitle;
+        private static double _pendingProgressFraction;
+        private static string _pendingProgressStatus;
+
         public static void Start(string appRoot)
         {
             if (_tray != null) return;
@@ -279,19 +288,40 @@ namespace LiveBackground
                 {
                     Application.EnableVisualStyles();
                     Application.SetCompatibleTextRenderingDefault(false);
-                    _tray = new TrayApp(appRoot);
-                    Application.Run(_tray);
+                    TrayApp tray = new TrayApp(appRoot);
+                    TrayReady(tray);
+                    Application.Run(tray);
                 }
                 catch (Exception ex)
                 {
                     Log.Warn("the tray icon could not be created: " + ex.Message);
-                    _tray = null;
+                    lock (ProgressSync) { _tray = null; }
                 }
             });
             thread.IsBackground = true;
             thread.SetApartmentState(ApartmentState.STA);
             thread.Name = "livebackground-tray";
             thread.Start();
+        }
+
+        private static void TrayReady(TrayApp tray)
+        {
+            string title;
+            double fraction;
+            string status;
+            lock (ProgressSync)
+            {
+                _tray = tray;
+                title = _pendingProgressTitle;
+                fraction = _pendingProgressFraction;
+                status = _pendingProgressStatus;
+                _pendingProgressTitle = null;
+                _pendingProgressFraction = 0;
+                _pendingProgressStatus = null;
+            }
+            if (string.IsNullOrEmpty(title)) return;
+            tray.BuildProgressStart(title);
+            if (!string.IsNullOrEmpty(status)) tray.BuildProgressUpdate(fraction, status);
         }
 
         public static bool ShowSettings()
@@ -317,19 +347,46 @@ namespace LiveBackground
         public static void BuildProgressStart(string title)
         {
             TrayApp tray = _tray;
-            if (tray != null) tray.BuildProgressStart(title);
+            if (tray != null)
+            {
+                tray.BuildProgressStart(title);
+                return;
+            }
+            lock (ProgressSync)
+            {
+                _pendingProgressTitle = title;
+                _pendingProgressFraction = 0;
+                _pendingProgressStatus = null;
+            }
         }
 
         public static void BuildProgressUpdate(double fraction, string status)
         {
             TrayApp tray = _tray;
-            if (tray != null) tray.BuildProgressUpdate(fraction, status);
+            if (tray != null)
+            {
+                tray.BuildProgressUpdate(fraction, status);
+                return;
+            }
+            lock (ProgressSync)
+            {
+                if (_pendingProgressTitle == null) return;
+                _pendingProgressFraction = fraction;
+                _pendingProgressStatus = status;
+            }
         }
 
         public static void BuildProgressFinish(bool success, string message)
         {
             TrayApp tray = _tray;
-            if (tray != null) tray.BuildProgressFinish(success, message);
+            if (tray != null)
+            {
+                tray.BuildProgressFinish(success, message);
+                return;
+            }
+            // The build finished before the tray existed; there is nothing
+            // to show, so cancel the pending card instead of leaving it.
+            lock (ProgressSync) { _pendingProgressTitle = null; }
         }
 
         public static void Stop()

@@ -29,6 +29,10 @@ namespace LiveBackground
         private static DateTime _nextCheck = DateTime.MinValue;
         private static BuildResult _pendingBuild;
         private static BuildResult _pendingBuild2;
+        // True while the running background worker also builds the main loop.
+        // Its result is what finishes the progress card, so a second-screen
+        // result must not finish the same card a second time.
+        private static bool _buildCardForMain;
         private static DateTime _lastWatcherEvent = DateTime.MinValue;
         private static string _lastMissingLog = "";
         private static string _lastMissingLog2 = "";
@@ -753,11 +757,16 @@ namespace LiveBackground
                                 if (_player2.IsRunning) _player2.Stop();
                                 _player2.Start(_progman, _mediaPath2);
                             }
+                            // When only the second screen needed a loop, this
+                            // result owns the progress card; the main result
+                            // is what finishes it otherwise.
+                            if (!_buildCardForMain) Ui.BuildProgressFinish(true, "Wallpaper updated");
                         }
                         else
                         {
                             Log.Warn("second-screen rebuild failed: " + finished2.Message);
                             _nextCheck = DateTime.UtcNow.AddSeconds(60);
+                            if (!_buildCardForMain) Ui.BuildProgressFinish(false, "Build failed - see logs\\app.log");
                         }
                     }
 
@@ -1073,6 +1082,7 @@ namespace LiveBackground
             {
                 _building = true;
                 _buildingSignature = mainSignature;
+                _buildCardForMain = buildMain;
             }
             Log.Info(buildMain && buildSecond ? "starting background build (both screens)"
                 : buildSecond ? "starting background build (second screen)"

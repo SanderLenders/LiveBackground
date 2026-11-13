@@ -1,5 +1,19 @@
 # LiveBackground change list
 
+## 1.6.2
+
+### Build progress card
+
+- **Fixed: the "Building wallpaper video" card could stay on screen at 100%
+  forever.** When only the second screen needed a new loop (for example
+  "Rebuild now" on the Second screen tab, or the first run with a second
+  display), the card was started but never told to finish, because only the
+  main loop's result closed it. The second-screen result now closes the card
+  too, on success and on failure, and the card fades away as usual.
+- **The first build after launch now shows its card.** The card request could
+  arrive a fraction of a second before the tray thread was ready and was
+  silently dropped. It is now held and shown as soon as the tray is ready.
+
 ## 1.6.1
 
 ### Second screen
