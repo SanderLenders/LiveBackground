@@ -485,8 +485,10 @@ namespace LiveBackground
             _player = new MpvPlayer(_appRoot, _config);
 
             // A second display gets its own player. It mirrors the main loop by
-            // default; an independent second loop is built on demand.
-            if (_screens.Count >= 2)
+            // default; an independent second loop is built on demand. Duplicate
+            // mode drives both targets from one desktop monitor, so it never
+            // gets a second player.
+            if (_screens.Count >= 2 && !Screens.IsDuplicate(_screens))
             {
                 _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
                 RefreshSecondMediaPath();
@@ -781,7 +783,8 @@ namespace LiveBackground
                     {
                         _layoutChanged = false;
                         firstPlacementLogged = false;
-                        if (_screens.Count < 2)
+                        bool wantSecond = _screens.Count >= 2 && !Screens.IsDuplicate(_screens);
+                        if (!wantSecond)
                         {
                             if (_player2 != null)
                             {
@@ -1506,6 +1509,7 @@ namespace LiveBackground
                 sb.Append(screens[i].Describe());
             }
             if (screens.Count > 2) sb.Append(" (only the first two are used)");
+            if (Screens.IsDuplicate(screens)) sb.Append(" (Windows is duplicating)");
             return sb.ToString();
         }
 

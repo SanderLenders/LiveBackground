@@ -68,8 +68,8 @@ fixed order:
 
   Videos     video folder, playlist with checkboxes, Move up/down, drop box,
              Refresh, Open folder, Rebuild now and Stop video   (Video mode)
-  Second     the second screen: mirror the main clip, or give it its own
-  screen     folder, playlist and clip   (Video mode, two monitors)
+  Second     the second screen: Extended/Duplicate mode, mirror the main clip,
+  screen     or give it its own folder, playlist and clip   (Video mode, two monitors)
   Playback   cross-fade length, resolution, frame rate, quality and screensaver
              (Video mode)
   Images     image folder, one-image or slideshow mode, ticks, Move up/down,
@@ -190,6 +190,18 @@ If two monitors are connected, LiveBackground covers both with the wallpaper.
 The Second screen tab controls what the extra monitor shows; it is greyed out
 when only one monitor is attached.
 
+The top of the tab shows the Windows display mode: Extended (two separate
+screens) or Duplicate (both screens show the same). The radio buttons show what
+Windows is doing right now; click one to change it. The app never changes the
+display mode on its own. The "Display settings" button opens the Windows display
+settings, where the screens can be arranged. While Windows is duplicating, the
+second-screen loop controls are disabled with an explanation, because both
+screens show the same picture anyway.
+
+The tab also keeps up with changes: while the settings window is open it checks
+the display layout about every 1.5 seconds, so plugging in a screen or changing
+the Windows mode enables or greys the tab without pressing Save first.
+
 By default the second screen shows the same clip as the main screen. The same
 loop is cropped to fit each monitor, so a wide clip fills a taller or narrower
 second panel without stretching, and only one loop is ever rendered.
@@ -198,14 +210,13 @@ Turn off "Use the same video as the main screen" to give the second screen its
 own video. Its folder, playlist (with the same ticks, Move up/down and Sort A-Z
 controls as the Videos tab) and single clip are chosen on the Second screen
 tab. Press Rebuild now to render that loop; it is rendered once and cached, so
-later restarts reuse it. The two screens then play independently.
+later restarts reuse it. The two screens then play independently. Rebuild now is
+available whenever a second screen is attached, including while the screens are
+mirroring.
 
 Adding, removing or moving a monitor while the app runs is picked up within a
 couple of seconds; the players move to the right screen and keep playing. A
 third monitor is ignored: only the main screen and one extra are used.
-
-Note: this build was developed on a single-monitor PC, so the two-screen
-behaviour has not been tested with an actual second display yet.
 
 
 Image wallpapers and the slideshow
@@ -489,9 +500,9 @@ links. The bundled clips and picture are not part of the software.
 
 Known limitations
 -----------------
-- One or two monitors. A third monitor is ignored, and the two-screen feature
-  has not been tested on real two-monitor hardware yet (see "The second
-  screen").
+- One or two monitors. A third monitor is ignored. The two-screen feature has
+  been tested with real two-monitor hardware; the newer Extended/Duplicate
+  switching on the Second screen tab (see "The second screen") is still new.
 - Windows 11 may put the tray icon in the hidden-icons overflow. Drag it onto
   the taskbar if you want it always visible.
 - The video must be a normal local file; DRM-protected content will not play.

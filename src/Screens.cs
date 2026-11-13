@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Text;
 
 namespace LiveBackground
@@ -98,6 +100,90 @@ namespace LiveBackground
             if (screen == null) return "";
             return "Screen " + (screen.Index + 1) + " (" + screen.Bounds.Width + "x" +
                 screen.Bounds.Height + ")";
+        }
+
+        // Windows "Duplicate these displays" drives two targets from one
+        // desktop monitor, so EnumDisplayMonitors reports a single screen.
+        // The display config still lists both active paths, which is the
+        // reliable tell. The bounds check is a fallback for drivers that
+        // surface both monitors with identical coordinates instead.
+        public static bool IsDuplicate(List<ScreenInfo> screens)
+        {
+            int monitors = screens == null ? 0 : screens.Count;
+            int paths = ActivePathCount();
+            if (paths > 0 && paths > monitors) return true;
+
+            if (screens != null)
+            {
+                for (int i = 0; i < screens.Count; i++)
+                {
+                    for (int j = i + 1; j < screens.Count; j++)
+                    {
+                        if (screens[i].Bounds == screens[j].Bounds) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static int ActivePathCount()
+        {
+            try
+            {
+                uint paths;
+                uint modes;
+                int result = Native.GetDisplayConfigBufferSizes(
+                    Native.QDC_ONLY_ACTIVE_PATHS, out paths, out modes);
+                if (result == 0) return (int)paths;
+                Log.Warn("GetDisplayConfigBufferSizes returned " + result);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("could not read the display config: " + ex.Message);
+            }
+            return 0;
+        }
+
+        // Switches Windows between Extended (true) and Duplicate (false).
+        // DisplaySwitch.exe is the fallback for drivers that reject the
+        // topology call. Never called automatically: the user chooses it.
+        public static bool SetTopology(bool extend)
+        {
+            uint flags = (extend ? Native.SDC_TOPOLOGY_EXTEND : Native.SDC_TOPOLOGY_CLONE)
+                | Native.SDC_APPLY;
+            try
+            {
+                int result = Native.SetDisplayConfig(0, IntPtr.Zero, 0, IntPtr.Zero, flags);
+                if (result == 0) return true;
+                Log.Warn("SetDisplayConfig(" + (extend ? "extend" : "clone") +
+                    ") returned " + result);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("SetDisplayConfig threw: " + ex.Message);
+            }
+
+            try
+            {
+                string exe = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.System),
+                    "DisplaySwitch.exe");
+                if (File.Exists(exe))
+                {
+                    ProcessStartInfo info = new ProcessStartInfo(exe,
+                        extend ? "/extend" : "/clone");
+                    info.UseShellExecute = false;
+                    info.CreateNoWindow = true;
+                    Process.Start(info);
+                    Log.Info("display mode changed with DisplaySwitch.exe");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("DisplaySwitch fallback failed: " + ex.Message);
+            }
+            return false;
         }
     }
 }

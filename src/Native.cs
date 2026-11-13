@@ -105,6 +105,25 @@ namespace LiveBackground
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
+        // Display topology. QDC_ONLY_ACTIVE_PATHS counts the targets Windows is
+        // actually driving, which is how Duplicate mode (two targets, one
+        // desktop monitor) is told apart from Extended (two targets, two
+        // monitors). SetDisplayConfig applies a topology without the app having
+        // to build a full path/mode table.
+        public const uint QDC_ONLY_ACTIVE_PATHS = 0x00000002;
+        public const uint SDC_TOPOLOGY_CLONE = 0x00000002;
+        public const uint SDC_TOPOLOGY_EXTEND = 0x00000004;
+        public const uint SDC_APPLY = 0x00000080;
+        public const uint SDC_ALLOW_CHANGES = 0x00000400;
+
+        [DllImport("user32.dll")]
+        public static extern int GetDisplayConfigBufferSizes(uint flags,
+            out uint numPathArrayElements, out uint numModeInfoArrayElements);
+
+        [DllImport("user32.dll")]
+        public static extern int SetDisplayConfig(uint numPathArrayElements, IntPtr pathArray,
+            uint numModeInfoArrayElements, IntPtr modeInfoArray, uint flags);
+
         [DllImport("user32.dll")]
         public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
 

@@ -1,5 +1,31 @@
 # LiveBackground change list
 
+## 1.6.1
+
+### Second screen
+
+- **Duplicate vs Extended is now visible and switchable from the app.** The
+  Second screen tab has a "Windows display mode" row with **Extended** and
+  **Duplicate** radio buttons that show what Windows is currently doing. Clicking
+  one changes the mode (via `SetDisplayConfig`, with `DisplaySwitch.exe` as a
+  fallback). The app **never** changes the mode on its own.
+- **"Display settings" button** opens the Windows display settings
+  (`ms-settings:display`) for arranging the screens.
+- While Windows is **duplicating**, the second-screen loop controls are disabled
+  with an explanation, because both screens show the same picture. The tab stays
+  open so the mode can be switched back to Extended.
+- **The tab now updates live.** While the settings window is open it re-checks
+  the display layout about every 1.5 seconds, so plugging a screen or changing
+  the Windows display mode enables or greys the tab without pressing Save first.
+
+### Settings window
+
+- **"Rebuild now" on the Second screen tab** is enabled whenever a second screen
+  is attached, including while the screens are mirroring (it applies the whole
+  form, so it just rebuilds the main loop in that case).
+- Every "Rebuild now" press is written to the log, along with whether it was
+  applied or cancelled.
+
 ## 1.6.0
 
 ### Second screen (two monitors)

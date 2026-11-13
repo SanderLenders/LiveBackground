@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
@@ -118,6 +119,17 @@ namespace LiveBackground
         private bool _lastSecondSingleMode;
         private int _secondProbeGeneration;
         private bool _hasSecondScreen;
+        // Display-mode row: Windows Extended vs Duplicate. The radios reflect
+        // what Windows currently does and only change it when clicked.
+        private RadioButton _secondExtend;
+        private RadioButton _secondDuplicate;
+        private Button _secondDisplaySettings;
+        private bool _secondDuplicateLayout;
+        private bool _updatingTopology;
+        // Re-checks the display layout while the window is open, so plugging a
+        // screen or changing the Windows mode updates the tab without a save.
+        private System.Windows.Forms.Timer _screenTimer;
+        private string _lastScreenSignature = "";
 
         private const int TbmGetThumbRect = 0x0419;
 
@@ -163,8 +175,13 @@ namespace LiveBackground
         {
             _appRoot = appRoot;
             _config = Program.Config.Clone();
-            try { _hasSecondScreen = Screens.Enumerate().Count >= 2; }
-            catch { _hasSecondScreen = false; }
+            try
+            {
+                List<ScreenInfo> initial = Screens.Enumerate();
+                _hasSecondScreen = initial.Count >= 2;
+                _secondDuplicateLayout = Screens.IsDuplicate(initial);
+            }
+            catch { _hasSecondScreen = false; _secondDuplicateLayout = false; }
 
             Text = "LiveBackground settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -296,6 +313,13 @@ namespace LiveBackground
             CancelButton = cancel;
 
             LoadSettings();
+
+            // A light poll, running only while this window is open. Two Win32
+            // calls every 1.5 s is far cheaper than the watchdog's own 2 s
+            // layout check, and it keeps the Second screen tab honest.
+            _screenTimer = new System.Windows.Forms.Timer();
+            _screenTimer.Interval = 1500;
+            _screenTimer.Tick += ScreenTimerTick;
         }
 
         // Tabs that belong to the other wallpaper mode cannot be opened. The
@@ -318,7 +342,10 @@ namespace LiveBackground
         {
             if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return false;
             if (!TabEnabled(index)) return true;
-            return _tabs.TabPages[index] == _secondTab && !_hasSecondScreen;
+            // While Windows is duplicating, the tab is still useful: that is
+            // where the user switches back to Extended.
+            return _tabs.TabPages[index] == _secondTab &&
+                !_hasSecondScreen && !_secondDuplicateLayout;
         }
 
         private void TabSelecting(object sender, TabControlCancelEventArgs e)
@@ -374,13 +401,13 @@ namespace LiveBackground
             RefreshClips();
             RefreshImages();
             // The display layout can change while the app runs, so re-check it
-            // when the window opens.
-            try { _hasSecondScreen = Screens.Enumerate().Count >= 2; } catch { }
-            UpdateSecondControls();
+            // when the window opens and then keep polling while it is visible.
+            RefreshScreenState();
             RefreshSecondClips();
             AlignSlideshowMarks();
             _tabs.SelectedTab = _wallpaperImages.Checked ? _imagesTab : _videosTab;
             _tabs.Invalidate();
+            if (_screenTimer != null) _screenTimer.Start();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -388,6 +415,12 @@ namespace LiveBackground
             // Make any probe thread that is still running drop its result
             // instead of touching the controls while they are torn down.
             _probeGeneration++;
+            if (_screenTimer != null)
+            {
+                _screenTimer.Stop();
+                _screenTimer.Dispose();
+                _screenTimer = null;
+            }
             base.OnFormClosing(e);
         }
 
@@ -537,37 +570,68 @@ namespace LiveBackground
             _secondStatus = MakeLabel(page, "", 16, 42, 588);
             _secondStatus.ForeColor = SystemColors.GrayText;
 
-            Label folderLabel = MakeLabel(page, "Video folder", 16, 72, 200);
+            // Windows display mode. The radios show what Windows is doing and
+            // only change it when the user clicks one; the app never switches
+            // on its own.
+            Label displayLabel = MakeLabel(page, "Windows display mode:", 16, 70, 146);
+            displayLabel.Font = new Font(Font, FontStyle.Bold);
+
+            _secondExtend = new RadioButton();
+            _secondExtend.Text = "Extended";
+            _secondExtend.SetBounds(166, 68, 100, 22);
+            _secondExtend.Click += SecondTopologyClicked;
+            page.Controls.Add(_secondExtend);
+
+            _secondDuplicate = new RadioButton();
+            _secondDuplicate.Text = "Duplicate";
+            _secondDuplicate.SetBounds(270, 68, 110, 22);
+            _secondDuplicate.Click += SecondTopologyClicked;
+            page.Controls.Add(_secondDuplicate);
+
+            _secondDisplaySettings = new Button();
+            _secondDisplaySettings.Text = "Display settings";
+            _secondDisplaySettings.SetBounds(474, 66, 130, 26);
+            _secondDisplaySettings.Click += delegate { OpenDisplaySettings(); };
+            page.Controls.Add(_secondDisplaySettings);
+            if (_tips != null)
+            {
+                _tips.SetToolTip(_secondDisplaySettings,
+                    "Open the Windows display settings to arrange the screens.");
+                _tips.SetToolTip(_secondExtend, "Two separate screens; the second one gets its own loop.");
+                _tips.SetToolTip(_secondDuplicate, "Both screens show the same picture.");
+            }
+
+            Label folderLabel = MakeLabel(page, "Video folder", 16, 106, 200);
             folderLabel.Font = new Font(Font, FontStyle.Bold);
 
             _secondFolderBox = new TextBox();
-            _secondFolderBox.SetBounds(16, 94, 470, 24);
+            _secondFolderBox.SetBounds(16, 128, 470, 24);
             page.Controls.Add(_secondFolderBox);
 
             _secondBrowse = new Button();
             _secondBrowse.Text = "Browse...";
-            _secondBrowse.SetBounds(494, 92, 110, 27);
+            _secondBrowse.SetBounds(494, 126, 110, 27);
             _secondBrowse.Click += delegate { BrowseSecondFolder(); };
             page.Controls.Add(_secondBrowse);
 
             _secondModePlaylist = new RadioButton();
             _secondModePlaylist.Text = "All clips in this order";
-            _secondModePlaylist.SetBounds(16, 128, 180, 22);
+            _secondModePlaylist.SetBounds(16, 162, 180, 22);
             _secondModePlaylist.CheckedChanged += delegate { UpdateSecondModeControls(); };
             page.Controls.Add(_secondModePlaylist);
 
             _secondModeSingle = new RadioButton();
             _secondModeSingle.Text = "One clip";
-            _secondModeSingle.SetBounds(204, 128, 80, 22);
+            _secondModeSingle.SetBounds(204, 162, 80, 22);
             _secondModeSingle.CheckedChanged += delegate { UpdateSecondModeControls(); };
             page.Controls.Add(_secondModeSingle);
 
-            _secondSingleHint = MakeLabel(page, "Pick one clip in the list below", 290, 128, 314);
+            _secondSingleHint = MakeLabel(page, "Pick one clip in the list below", 290, 162, 314);
             _secondSingleHint.ForeColor = SystemColors.GrayText;
             _secondSingleHint.Visible = false;
 
             _secondList = new ListView();
-            _secondList.SetBounds(16, 160, 588, 176);
+            _secondList.SetBounds(16, 194, 588, 150);
             _secondList.View = View.Details;
             _secondList.CheckBoxes = true;
             _secondList.FullRowSelect = true;
@@ -581,41 +645,41 @@ namespace LiveBackground
 
             _secondMoveUp = new Button();
             _secondMoveUp.Text = "Move up";
-            _secondMoveUp.SetBounds(16, 344, 90, 28);
+            _secondMoveUp.SetBounds(16, 350, 90, 28);
             _secondMoveUp.Click += delegate { MoveSecond(-1); };
             page.Controls.Add(_secondMoveUp);
 
             _secondMoveDown = new Button();
             _secondMoveDown.Text = "Move down";
-            _secondMoveDown.SetBounds(112, 344, 100, 28);
+            _secondMoveDown.SetBounds(112, 350, 100, 28);
             _secondMoveDown.Click += delegate { MoveSecond(1); };
             page.Controls.Add(_secondMoveDown);
 
             _secondSortAz = new Button();
             _secondSortAz.Text = "Sort A-Z";
-            _secondSortAz.SetBounds(218, 344, 90, 28);
+            _secondSortAz.SetBounds(218, 350, 90, 28);
             _secondSortAz.Click += delegate { SortSecond(); };
             page.Controls.Add(_secondSortAz);
 
             _secondRefresh = new Button();
             _secondRefresh.Text = "Refresh";
-            _secondRefresh.SetBounds(16, 380, 100, 28);
+            _secondRefresh.SetBounds(16, 386, 100, 28);
             _secondRefresh.Click += delegate { CaptureSecondPlaylist(); RefreshSecondClips(); };
             page.Controls.Add(_secondRefresh);
 
             _secondOpen = new Button();
             _secondOpen.Text = "Open folder";
-            _secondOpen.SetBounds(124, 380, 110, 28);
+            _secondOpen.SetBounds(124, 386, 110, 28);
             _secondOpen.Click += delegate { OpenSecondFolder(); };
             page.Controls.Add(_secondOpen);
 
             _secondRebuild = new Button();
             _secondRebuild.Text = "Rebuild now";
-            _secondRebuild.SetBounds(242, 380, 110, 28);
+            _secondRebuild.SetBounds(242, 386, 110, 28);
             _secondRebuild.Click += RebuildNowClicked;
             page.Controls.Add(_secondRebuild);
 
-            _secondHint = MakeLabel(page, "", 16, 416, 588);
+            _secondHint = MakeLabel(page, "", 16, 422, 588);
             _secondHint.Height = 40;
             _secondHint.ForeColor = SystemColors.GrayText;
         }
@@ -627,10 +691,22 @@ namespace LiveBackground
         private void UpdateSecondControls()
         {
             if (_secondSame == null) return;
-            bool active = _hasSecondScreen && !_secondSame.Checked;
+            bool duplicate = _secondDuplicateLayout;
+            bool twoMonitors = _hasSecondScreen || duplicate;
+            bool active = _hasSecondScreen && !duplicate && !_secondSame.Checked;
             bool single = _secondModeSingle != null && _secondModeSingle.Checked;
 
-            _secondSame.Enabled = _hasSecondScreen;
+            // The display-mode row stays usable while duplicating - that is how
+            // the user gets back to Extended. The loop controls do not, because
+            // both screens show the same picture anyway.
+            if (_secondExtend != null)
+            {
+                _secondExtend.Enabled = twoMonitors;
+                _secondDuplicate.Enabled = twoMonitors;
+            }
+            if (_secondDisplaySettings != null) _secondDisplaySettings.Enabled = true;
+
+            _secondSame.Enabled = _hasSecondScreen && !duplicate;
             _secondFolderBox.Enabled = active;
             _secondBrowse.Enabled = active;
             _secondModePlaylist.Enabled = active;
@@ -641,12 +717,20 @@ namespace LiveBackground
             _secondSortAz.Enabled = active && !single;
             _secondRefresh.Enabled = active;
             _secondOpen.Enabled = active;
-            _secondRebuild.Enabled = active;
+            // Enabled whenever a real second screen exists: it applies the
+            // whole form, so while mirroring it simply rebuilds the main loop.
+            _secondRebuild.Enabled = _hasSecondScreen && !duplicate;
             if (_secondSingleHint != null) _secondSingleHint.Visible = active && single;
 
             if (_secondStatus != null)
             {
-                if (!_hasSecondScreen)
+                if (duplicate)
+                {
+                    _secondStatus.Text = "Windows is duplicating the display: both screens show " +
+                        "the same picture. Choose \"Extended\" above to give the second screen its " +
+                        "own loop.";
+                }
+                else if (!_hasSecondScreen)
                 {
                     _secondStatus.Text =
                         "Only one screen is connected. Connect a second screen to use these settings.";
@@ -661,6 +745,119 @@ namespace LiveBackground
                     _secondStatus.Text = "Screen 2 plays its own loop. Choose the folder and clips " +
                         "below, then press Rebuild now.";
                 }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Display mode (Extended / Duplicate)
+        // ---------------------------------------------------------------
+
+        // Re-reads the layout and refreshes the tab. Cheap enough to run on a
+        // timer while the window is open.
+        private void RefreshScreenState()
+        {
+            List<ScreenInfo> screens;
+            try { screens = Screens.Enumerate(); }
+            catch { screens = new List<ScreenInfo>(); }
+
+            bool hasSecond = screens.Count >= 2;
+            bool duplicate = false;
+            try { duplicate = Screens.IsDuplicate(screens); } catch { }
+            string signature = Screens.Signature(screens) + "|dup=" + duplicate;
+
+            _lastScreenSignature = signature;
+            _hasSecondScreen = hasSecond;
+            _secondDuplicateLayout = duplicate;
+
+            if (_secondExtend != null)
+            {
+                _updatingTopology = true;
+                try
+                {
+                    // In Duplicate mode Windows reports a single monitor, so
+                    // "not duplicating" is the Extended state.
+                    _secondExtend.Checked = !duplicate;
+                    _secondDuplicate.Checked = duplicate;
+                }
+                finally { _updatingTopology = false; }
+            }
+
+            UpdateSecondControls();
+        }
+
+        private void ScreenTimerTick(object sender, EventArgs e)
+        {
+            List<ScreenInfo> screens;
+            string signature;
+            bool duplicate;
+            try
+            {
+                screens = Screens.Enumerate();
+                duplicate = Screens.IsDuplicate(screens);
+                signature = Screens.Signature(screens) + "|dup=" + duplicate;
+            }
+            catch { return; }
+
+            if (string.Equals(signature, _lastScreenSignature, StringComparison.Ordinal)) return;
+            Log.Info("settings: display layout changed while the window was open");
+            _lastScreenSignature = signature;
+            _hasSecondScreen = screens.Count >= 2;
+            _secondDuplicateLayout = duplicate;
+
+            if (_secondExtend != null)
+            {
+                _updatingTopology = true;
+                try
+                {
+                    _secondExtend.Checked = !duplicate;
+                    _secondDuplicate.Checked = duplicate;
+                }
+                finally { _updatingTopology = false; }
+            }
+            UpdateSecondControls();
+            _tabs.Invalidate();
+        }
+
+        // A radio click is the only thing that changes the Windows display
+        // mode. Never automatic, and only when the click really changes it.
+        private void SecondTopologyClicked(object sender, EventArgs e)
+        {
+            if (_updatingTopology || _secondExtend == null || _secondDuplicate == null) return;
+            bool extend = sender == _secondExtend;
+            if (extend == !_secondDuplicateLayout) return;
+
+            Log.Info("settings: display mode change requested: " +
+                (extend ? "Extended" : "Duplicate"));
+            bool ok;
+            try { ok = Screens.SetTopology(extend); }
+            catch (Exception ex)
+            {
+                Log.Warn("display mode change failed: " + ex.Message);
+                ok = false;
+            }
+            if (!ok)
+            {
+                MessageBox.Show(this,
+                    "Windows would not change the display mode. Use the Display settings " +
+                    "button to change it there.",
+                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            // Windows applies this asynchronously; the timer picks up the
+            // result, and this immediate re-read catches the common case.
+            RefreshScreenState();
+        }
+
+        private void OpenDisplaySettings()
+        {
+            try
+            {
+                ProcessStartInfo info = new ProcessStartInfo("ms-settings:display");
+                info.UseShellExecute = true;
+                Process.Start(info);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("could not open the display settings: " + ex.Message);
             }
         }
 
@@ -3275,9 +3472,16 @@ namespace LiveBackground
         // progress card follows it. Image settings apply instantly.
         private void RebuildNowClicked(object sender, EventArgs e)
         {
+            Log.Info("settings: Rebuild now requested" +
+                (sender == _secondRebuild ? " (Second screen tab)" : ""));
             AppConfig staged = CollectConfig();
-            if (staged == null) return;
+            if (staged == null)
+            {
+                Log.Info("settings: Rebuild now cancelled, the settings are not valid");
+                return;
+            }
             Program.ApplyConfig(staged);
+            Log.Info("settings: Rebuild now applied to the running wallpaper");
         }
 
         // Reads the whole form into the config that "Save and apply"
