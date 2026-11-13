@@ -92,6 +92,33 @@ namespace LiveBackground
         private CheckBox _imageShuffle;
         private bool _layingOutTicks;
 
+        // Second screen: the same controls as the Videos tab, plus a switch
+        // that makes screen 2 mirror the main loop. Only meaningful when two
+        // displays are connected.
+        private TabPage _secondTab;
+        private Label _secondStatus;
+        private CheckBox _secondSame;
+        private TextBox _secondFolderBox;
+        private Button _secondBrowse;
+        private RadioButton _secondModePlaylist;
+        private RadioButton _secondModeSingle;
+        private Label _secondSingleHint;
+        private ListView _secondList;
+        private Label _secondHint;
+        private Button _secondMoveUp;
+        private Button _secondMoveDown;
+        private Button _secondSortAz;
+        private Button _secondRefresh;
+        private Button _secondOpen;
+        private Button _secondRebuild;
+        private readonly List<string> _secondPaths = new List<string>();
+        private readonly List<double> _secondDurations = new List<double>();
+        private bool _loadingSecond;
+        private string _singleSecondName = "";
+        private bool _lastSecondSingleMode;
+        private int _secondProbeGeneration;
+        private bool _hasSecondScreen;
+
         private const int TbmGetThumbRect = 0x0419;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -136,6 +163,8 @@ namespace LiveBackground
         {
             _appRoot = appRoot;
             _config = Program.Config.Clone();
+            try { _hasSecondScreen = Screens.Enumerate().Count >= 2; }
+            catch { _hasSecondScreen = false; }
 
             Text = "LiveBackground settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -230,17 +259,20 @@ namespace LiveBackground
             Controls.Add(_tabs);
 
             _videosTab = new TabPage("Videos");
+            _secondTab = new TabPage("Second screen");
             _playbackTab = new TabPage("Playback");
             _imagesTab = new TabPage("Images");
             _slideshowTab = new TabPage("Slideshow");
             _windowsTab = new TabPage("Other");
             _tabs.TabPages.Add(_videosTab);
+            _tabs.TabPages.Add(_secondTab);
             _tabs.TabPages.Add(_playbackTab);
             _tabs.TabPages.Add(_imagesTab);
             _tabs.TabPages.Add(_slideshowTab);
             _tabs.TabPages.Add(_windowsTab);
 
             BuildVideosTab(_videosTab);
+            BuildSecondTab(_secondTab);
             BuildPlaybackTab(_playbackTab);
             BuildImagesTab(_imagesTab);
             BuildSlideshowTab(_slideshowTab);
@@ -266,12 +298,27 @@ namespace LiveBackground
             LoadSettings();
         }
 
+        // Tabs that belong to the other wallpaper mode cannot be opened. The
+        // Second screen tab is a video setting too, so it follows the Videos
+        // tab.
         private bool TabEnabled(int index)
         {
+            if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return true;
+            TabPage page = _tabs.TabPages[index];
             bool images = _wallpaperImages != null && _wallpaperImages.Checked;
-            if (index == 0 || index == 1) return !images;
-            if (index == 2 || index == 3) return images;
+            if (page == _videosTab || page == _playbackTab || page == _secondTab) return !images;
+            if (page == _imagesTab || page == _slideshowTab) return images;
             return true;
+        }
+
+        // A tab that is selectable but currently useless is greyed without
+        // being blocked: the Second screen tab explains itself when only one
+        // display is attached.
+        private bool TabGreyed(int index)
+        {
+            if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return false;
+            if (!TabEnabled(index)) return true;
+            return _tabs.TabPages[index] == _secondTab && !_hasSecondScreen;
         }
 
         private void TabSelecting(object sender, TabControlCancelEventArgs e)
@@ -290,7 +337,7 @@ namespace LiveBackground
 
             // The active tab is drawn in bold so it stays obvious that the
             // greyed tabs belong to the other wallpaper mode.
-            bool enabled = TabEnabled(e.Index);
+            bool enabled = !TabGreyed(e.Index);
             bool selected = e.Index == _tabs.SelectedIndex;
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
@@ -326,6 +373,11 @@ namespace LiveBackground
             UpdateVideoToggle();
             RefreshClips();
             RefreshImages();
+            // The display layout can change while the app runs, so re-check it
+            // when the window opens.
+            try { _hasSecondScreen = Screens.Enumerate().Count >= 2; } catch { }
+            UpdateSecondControls();
+            RefreshSecondClips();
             AlignSlideshowMarks();
             _tabs.SelectedTab = _wallpaperImages.Checked ? _imagesTab : _videosTab;
             _tabs.Invalidate();
@@ -469,6 +521,496 @@ namespace LiveBackground
             _dropLabel.DragDrop += DropDragDrop;
             _dropLabel.Click += delegate { BrowseVideos(); };
             _dropPanel.Controls.Add(_dropLabel);
+        }
+
+        // The Second screen tab reuses the Videos tab's controls for the second
+        // display's own loop. There is no drop panel and no per-clip Fade column:
+        // the fade always follows the Playback tab, exactly like the main loop.
+        private void BuildSecondTab(TabPage page)
+        {
+            _secondSame = new CheckBox();
+            _secondSame.Text = "Use the same video as the main screen";
+            _secondSame.SetBounds(16, 14, 420, 24);
+            _secondSame.CheckedChanged += delegate { UpdateSecondControls(); };
+            page.Controls.Add(_secondSame);
+
+            _secondStatus = MakeLabel(page, "", 16, 42, 588);
+            _secondStatus.ForeColor = SystemColors.GrayText;
+
+            Label folderLabel = MakeLabel(page, "Video folder", 16, 72, 200);
+            folderLabel.Font = new Font(Font, FontStyle.Bold);
+
+            _secondFolderBox = new TextBox();
+            _secondFolderBox.SetBounds(16, 94, 470, 24);
+            page.Controls.Add(_secondFolderBox);
+
+            _secondBrowse = new Button();
+            _secondBrowse.Text = "Browse...";
+            _secondBrowse.SetBounds(494, 92, 110, 27);
+            _secondBrowse.Click += delegate { BrowseSecondFolder(); };
+            page.Controls.Add(_secondBrowse);
+
+            _secondModePlaylist = new RadioButton();
+            _secondModePlaylist.Text = "All clips in this order";
+            _secondModePlaylist.SetBounds(16, 128, 180, 22);
+            _secondModePlaylist.CheckedChanged += delegate { UpdateSecondModeControls(); };
+            page.Controls.Add(_secondModePlaylist);
+
+            _secondModeSingle = new RadioButton();
+            _secondModeSingle.Text = "One clip";
+            _secondModeSingle.SetBounds(204, 128, 80, 22);
+            _secondModeSingle.CheckedChanged += delegate { UpdateSecondModeControls(); };
+            page.Controls.Add(_secondModeSingle);
+
+            _secondSingleHint = MakeLabel(page, "Pick one clip in the list below", 290, 128, 314);
+            _secondSingleHint.ForeColor = SystemColors.GrayText;
+            _secondSingleHint.Visible = false;
+
+            _secondList = new ListView();
+            _secondList.SetBounds(16, 160, 588, 176);
+            _secondList.View = View.Details;
+            _secondList.CheckBoxes = true;
+            _secondList.FullRowSelect = true;
+            _secondList.GridLines = true;
+            _secondList.HideSelection = false;
+            _secondList.MultiSelect = false;
+            _secondList.Columns.Add("Clip", 460);
+            _secondList.Columns.Add("Length", 100);
+            _secondList.ItemCheck += SecondItemCheck;
+            page.Controls.Add(_secondList);
+
+            _secondMoveUp = new Button();
+            _secondMoveUp.Text = "Move up";
+            _secondMoveUp.SetBounds(16, 344, 90, 28);
+            _secondMoveUp.Click += delegate { MoveSecond(-1); };
+            page.Controls.Add(_secondMoveUp);
+
+            _secondMoveDown = new Button();
+            _secondMoveDown.Text = "Move down";
+            _secondMoveDown.SetBounds(112, 344, 100, 28);
+            _secondMoveDown.Click += delegate { MoveSecond(1); };
+            page.Controls.Add(_secondMoveDown);
+
+            _secondSortAz = new Button();
+            _secondSortAz.Text = "Sort A-Z";
+            _secondSortAz.SetBounds(218, 344, 90, 28);
+            _secondSortAz.Click += delegate { SortSecond(); };
+            page.Controls.Add(_secondSortAz);
+
+            _secondRefresh = new Button();
+            _secondRefresh.Text = "Refresh";
+            _secondRefresh.SetBounds(16, 380, 100, 28);
+            _secondRefresh.Click += delegate { CaptureSecondPlaylist(); RefreshSecondClips(); };
+            page.Controls.Add(_secondRefresh);
+
+            _secondOpen = new Button();
+            _secondOpen.Text = "Open folder";
+            _secondOpen.SetBounds(124, 380, 110, 28);
+            _secondOpen.Click += delegate { OpenSecondFolder(); };
+            page.Controls.Add(_secondOpen);
+
+            _secondRebuild = new Button();
+            _secondRebuild.Text = "Rebuild now";
+            _secondRebuild.SetBounds(242, 380, 110, 28);
+            _secondRebuild.Click += RebuildNowClicked;
+            page.Controls.Add(_secondRebuild);
+
+            _secondHint = MakeLabel(page, "", 16, 416, 588);
+            _secondHint.Height = 40;
+            _secondHint.ForeColor = SystemColors.GrayText;
+        }
+
+        // ---------------------------------------------------------------
+        // Second screen state
+        // ---------------------------------------------------------------
+
+        private void UpdateSecondControls()
+        {
+            if (_secondSame == null) return;
+            bool active = _hasSecondScreen && !_secondSame.Checked;
+            bool single = _secondModeSingle != null && _secondModeSingle.Checked;
+
+            _secondSame.Enabled = _hasSecondScreen;
+            _secondFolderBox.Enabled = active;
+            _secondBrowse.Enabled = active;
+            _secondModePlaylist.Enabled = active;
+            _secondModeSingle.Enabled = active;
+            _secondList.Enabled = active;
+            _secondMoveUp.Enabled = active && !single;
+            _secondMoveDown.Enabled = active && !single;
+            _secondSortAz.Enabled = active && !single;
+            _secondRefresh.Enabled = active;
+            _secondOpen.Enabled = active;
+            _secondRebuild.Enabled = active;
+            if (_secondSingleHint != null) _secondSingleHint.Visible = active && single;
+
+            if (_secondStatus != null)
+            {
+                if (!_hasSecondScreen)
+                {
+                    _secondStatus.Text =
+                        "Only one screen is connected. Connect a second screen to use these settings.";
+                }
+                else if (_secondSame.Checked)
+                {
+                    _secondStatus.Text = "Screen 2 shows the same video as the main screen, " +
+                        "cropped to fit. Turn the switch off to choose a different clip for it.";
+                }
+                else
+                {
+                    _secondStatus.Text = "Screen 2 plays its own loop. Choose the folder and clips " +
+                        "below, then press Rebuild now.";
+                }
+            }
+        }
+
+        private void UpdateSecondModeControls()
+        {
+            if (_loadingSecond || _secondModeSingle == null) return;
+            bool single = _secondModeSingle.Checked;
+            bool changed = single != _lastSecondSingleMode;
+            _lastSecondSingleMode = single;
+            if (changed)
+            {
+                if (single)
+                {
+                    // Keep the playlist safe before the ticks start showing the
+                    // single-clip choice.
+                    if (_secondList.Items.Count > 0) _config.SecondScreenPlaylist = CurrentSecondPlaylist();
+                    ApplySecondSingleTicks();
+                }
+                else
+                {
+                    ApplySecondPlaylistTicks();
+                }
+            }
+            UpdateSecondControls();
+        }
+
+        // "One clip" mode: the ticks behave like radio buttons.
+        private void SecondItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            if (_loadingSecond || !_secondModeSingle.Checked) return;
+            if (e.NewValue != CheckState.Checked)
+            {
+                e.NewValue = CheckState.Checked;
+                return;
+            }
+            _loadingSecond = true;
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                if (i != e.Index) _secondList.Items[i].Checked = false;
+            }
+            _loadingSecond = false;
+            if (e.Index >= 0 && e.Index < _secondList.Items.Count)
+            {
+                _singleSecondName = _secondList.Items[e.Index].Text;
+            }
+        }
+
+        private int SecondSingleIndex()
+        {
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                if (_secondList.Items[i].Checked) return i;
+            }
+            return -1;
+        }
+
+        private void SelectSecondSingleRow()
+        {
+            int index = -1;
+            if (!string.IsNullOrEmpty(_singleSecondName))
+            {
+                for (int i = 0; i < _secondList.Items.Count; i++)
+                {
+                    if (string.Equals(_secondList.Items[i].Text, _singleSecondName,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+            }
+            if (index < 0 && _secondList.Items.Count > 0) index = 0;
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                _secondList.Items[i].Checked = (i == index);
+            }
+            _singleSecondName = index >= 0 ? _secondList.Items[index].Text : "";
+        }
+
+        private void ApplySecondSingleTicks()
+        {
+            _loadingSecond = true;
+            SelectSecondSingleRow();
+            _loadingSecond = false;
+        }
+
+        private void ApplySecondPlaylistTicks()
+        {
+            Dictionary<string, bool> enabled =
+                new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            if (_config.SecondScreenPlaylist != null)
+            {
+                foreach (PlaylistEntry entry in _config.SecondScreenPlaylist)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                    if (!enabled.ContainsKey(entry.Name)) enabled[entry.Name] = entry.Enabled;
+                }
+            }
+            _loadingSecond = true;
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                bool on;
+                _secondList.Items[i].Checked =
+                    enabled.TryGetValue(_secondList.Items[i].Text, out on) ? on : false;
+            }
+            _loadingSecond = false;
+        }
+
+        private void CaptureSecondPlaylist()
+        {
+            if (!_secondModeSingle.Checked) _config.SecondScreenPlaylist = CurrentSecondPlaylist();
+            if (!string.IsNullOrEmpty(_singleSecondName)) _config.SecondScreenSingleClip = _singleSecondName;
+        }
+
+        private List<PlaylistEntry> CurrentSecondPlaylist()
+        {
+            List<PlaylistEntry> entries = new List<PlaylistEntry>();
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                entries.Add(new PlaylistEntry(_secondList.Items[i].Text, _secondList.Items[i].Checked));
+            }
+            return entries;
+        }
+
+        private void MoveSecond(int delta)
+        {
+            if (_secondList.SelectedIndices.Count == 0) return;
+            int index = _secondList.SelectedIndices[0];
+            int target = index + delta;
+            if (target < 0 || target >= _secondList.Items.Count) return;
+            int[] order = new int[_secondList.Items.Count];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            order[index] = target;
+            order[target] = index;
+            ApplySecondOrder(order, target);
+        }
+
+        private void SortSecond()
+        {
+            int count = _secondList.Items.Count;
+            if (count < 2) return;
+            int[] order = new int[count];
+            for (int i = 0; i < count; i++) order[i] = i;
+            Array.Sort(order, delegate(int a, int b)
+            {
+                return new NaturalComparer().Compare(_secondList.Items[a].Text, _secondList.Items[b].Text);
+            });
+            ApplySecondOrder(order, -1);
+        }
+
+        private void ApplySecondOrder(int[] order, int selectIndex)
+        {
+            if (order.Length != _secondList.Items.Count) return;
+            _loadingSecond = true;
+            ListViewItem[] items = new ListViewItem[order.Length];
+            List<string> paths = new List<string>();
+            List<double> durations = new List<double>();
+            for (int i = 0; i < order.Length; i++)
+            {
+                int old = order[i];
+                ListViewItem source = _secondList.Items[old];
+                ListViewItem item = new ListViewItem(source.Text);
+                item.Checked = source.Checked;
+                item.SubItems.Add(source.SubItems[1].Text);
+                items[i] = item;
+                paths.Add(old < _secondPaths.Count ? _secondPaths[old] : "");
+                durations.Add(old < _secondDurations.Count ? _secondDurations[old] : -1);
+            }
+            _secondList.BeginUpdate();
+            _secondList.Items.Clear();
+            _secondList.Items.AddRange(items);
+            _secondList.EndUpdate();
+            _secondPaths.Clear();
+            _secondPaths.AddRange(paths);
+            _secondDurations.Clear();
+            _secondDurations.AddRange(durations);
+            _loadingSecond = false;
+            if (selectIndex >= 0 && selectIndex < _secondList.Items.Count)
+            {
+                _secondList.Items[selectIndex].Selected = true;
+                _secondList.Items[selectIndex].Focused = true;
+                _secondList.EnsureVisible(selectIndex);
+            }
+        }
+
+        private void RefreshSecondClips()
+        {
+            if (_secondList == null) return;
+            _loadingSecond = true;
+            _secondList.Items.Clear();
+            _secondPaths.Clear();
+            _secondDurations.Clear();
+
+            string folder = Util.ResolvePath(_appRoot, _secondFolderBox.Text);
+            List<string> all = MediaPipeline.ScanVideos(folder);
+            if (all.Count == 0)
+            {
+                _loadingSecond = false;
+                _secondHint.Text = "No videos found in " + folder + ". Add files there and press Refresh.";
+                return;
+            }
+
+            bool hasPlaylist = _config.SecondScreenPlaylist != null &&
+                _config.SecondScreenPlaylist.Count > 0;
+            Dictionary<string, PlaylistEntry> byName =
+                new Dictionary<string, PlaylistEntry>(StringComparer.OrdinalIgnoreCase);
+            if (_config.SecondScreenPlaylist != null)
+            {
+                foreach (PlaylistEntry entry in _config.SecondScreenPlaylist)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                    if (!byName.ContainsKey(entry.Name)) byName[entry.Name] = entry;
+                }
+            }
+            Dictionary<string, string> filesByName =
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string file in all) filesByName[Path.GetFileName(file)] = file;
+
+            List<string> ordered = new List<string>();
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (_config.SecondScreenPlaylist != null)
+            {
+                foreach (PlaylistEntry entry in _config.SecondScreenPlaylist)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                    string name = entry.Name.Trim();
+                    if (!seen.Add(name)) continue;
+                    string file;
+                    if (filesByName.TryGetValue(name, out file)) ordered.Add(file);
+                }
+            }
+            foreach (string file in all)
+            {
+                string name = Path.GetFileName(file);
+                if (seen.Add(name)) ordered.Add(file);
+            }
+
+            foreach (string file in ordered)
+            {
+                string name = Path.GetFileName(file);
+                PlaylistEntry entry;
+                bool enabled = !hasPlaylist;
+                if (byName.TryGetValue(name, out entry)) enabled = entry.Enabled;
+                ListViewItem item = new ListViewItem(name);
+                item.Checked = enabled;
+                item.SubItems.Add("...");
+                _secondList.Items.Add(item);
+                _secondPaths.Add(file);
+                _secondDurations.Add(-1);
+            }
+
+            if (_secondModeSingle.Checked) SelectSecondSingleRow();
+            _loadingSecond = false;
+            _secondHint.Text = "";
+
+            string ffprobe = Paths.Tool(_config.FfprobePath);
+            List<string> probePaths = new List<string>(_secondPaths);
+            int generation = ++_secondProbeGeneration;
+
+            Thread thread = new Thread(delegate()
+            {
+                Dictionary<string, double> durations =
+                    new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (string clip in probePaths)
+                {
+                    double duration;
+                    string error;
+                    if (MediaPipeline.ProbeDuration(ffprobe, clip, out duration, out error))
+                    {
+                        durations[Path.GetFileName(clip)] = duration;
+                    }
+                    else
+                    {
+                        durations[Path.GetFileName(clip)] = -1;
+                    }
+                }
+                try
+                {
+                    BeginInvoke(new Action(delegate()
+                    {
+                        if (generation != _secondProbeGeneration || IsDisposed || !IsHandleCreated) return;
+                        ApplySecondDurations(durations);
+                    }));
+                }
+                catch { }
+            });
+            thread.IsBackground = true;
+            thread.Name = "livebackground-probe2";
+            thread.Start();
+        }
+
+        private void ApplySecondDurations(Dictionary<string, double> durations)
+        {
+            if (IsDisposed || _secondList == null || _secondList.IsDisposed) return;
+            while (_secondDurations.Count < _secondList.Items.Count) _secondDurations.Add(-1);
+            if (_secondDurations.Count > _secondList.Items.Count)
+            {
+                _secondDurations.RemoveRange(_secondList.Items.Count,
+                    _secondDurations.Count - _secondList.Items.Count);
+            }
+            for (int i = 0; i < _secondList.Items.Count; i++)
+            {
+                ListViewItem item = _secondList.Items[i];
+                double duration;
+                if (!durations.TryGetValue(item.Text, out duration)) duration = -1;
+                _secondDurations[i] = duration;
+                item.SubItems[1].Text = duration < 0
+                    ? "unreadable"
+                    : duration.ToString("0.0", CultureInfo.InvariantCulture) + " s";
+            }
+        }
+
+        private void BrowseSecondFolder()
+        {
+            using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Choose the folder with the videos for the second screen";
+                dialog.ShowNewFolderButton = true;
+                string current = Util.ResolvePath(_appRoot, _secondFolderBox.Text);
+                string start = InitialPickerFolder(_secondFolderBox.Text, true);
+                if (Directory.Exists(start)) dialog.SelectedPath = start;
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    _lastPickerFolder = dialog.SelectedPath;
+                    if (!string.Equals(dialog.SelectedPath, current, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // A different folder gets a fresh playlist, exactly like
+                        // the Videos tab.
+                        _config.SecondScreenPlaylist = new List<PlaylistEntry>();
+                        _config.SecondScreenSingleClip = "";
+                    }
+                    _secondFolderBox.Text = dialog.SelectedPath;
+                    RefreshSecondClips();
+                }
+            }
+        }
+
+        private void OpenSecondFolder()
+        {
+            try
+            {
+                string folder = Util.ResolvePath(_appRoot, _secondFolderBox.Text);
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+                System.Diagnostics.Process.Start("explorer.exe", Util.Quote(folder));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not open the folder: " + ex.Message,
+                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void DropPanelPaint(object sender, PaintEventArgs e)
@@ -1372,6 +1914,16 @@ namespace LiveBackground
             }
             catch { }
             _startWithWindows.Checked = startup;
+
+            _secondSame.Checked = _config.SecondScreenSameAsMain;
+            _secondFolderBox.Text = _config.SecondScreenFolder;
+            bool secondSingle = string.Equals(_config.SecondScreenPlaybackMode, "single",
+                StringComparison.OrdinalIgnoreCase);
+            _lastSecondSingleMode = secondSingle;
+            _singleSecondName = _config.SecondScreenSingleClip ?? "";
+            _secondModeSingle.Checked = secondSingle;
+            _secondModePlaylist.Checked = !secondSingle;
+            UpdateSecondControls();
         }
 
         private void ApplyFadeStepMode()
@@ -2786,6 +3338,32 @@ namespace LiveBackground
                 }
             }
 
+            // The second screen only needs its own selection when it is not
+            // mirroring the main loop and a second display is really attached.
+            bool secondOwn = !imagesMode && _hasSecondScreen &&
+                _secondSame != null && !_secondSame.Checked;
+            if (secondOwn)
+            {
+                if (_secondFolderBox.Text.Trim().Length == 0)
+                {
+                    MessageBox.Show(this, "Choose a video folder for the second screen.",
+                        "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return null;
+                }
+                if (_secondModePlaylist.Checked && _secondList.CheckedItems.Count == 0)
+                {
+                    MessageBox.Show(this, "Tick at least one clip for the second screen.",
+                        "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return null;
+                }
+                if (_secondModeSingle.Checked && SecondSingleIndex() < 0)
+                {
+                    MessageBox.Show(this, "Tick the clip the second screen should play.",
+                        "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return null;
+                }
+            }
+
             // "First frame of the video loop" needs no stored path; it follows
             // whatever the wallpaper builds.
             string lockMode = "frame";
@@ -2908,6 +3486,33 @@ namespace LiveBackground
                 ? desktopImage
                 : _config.DesktopWallpaperImage;
             updated.ScreensaverActive = _screensaverActive.Checked;
+
+            // The second screen keeps mirroring by default; its own folder,
+            // mode and playlist are only written back when the switch is off
+            // and a second display is attached. The folder guard mirrors the
+            // Videos tab: an empty box must not wipe a saved playlist.
+            if (_secondSame != null)
+            {
+                updated.SecondScreenSameAsMain = _secondSame.Checked;
+                if (secondOwn)
+                {
+                    string secondFolder = _secondFolderBox.Text.Trim();
+                    if (secondFolder.Length > 0) updated.SecondScreenFolder = secondFolder;
+                    updated.SecondScreenPlaybackMode = _secondModeSingle.Checked ? "single" : "playlist";
+                    updated.SecondScreenSingleClip = string.IsNullOrEmpty(_singleSecondName)
+                        ? _config.SecondScreenSingleClip
+                        : _singleSecondName;
+                    List<PlaylistEntry> secondPlaylist = _secondModeSingle.Checked
+                        ? (_config.SecondScreenPlaylist ?? new List<PlaylistEntry>())
+                        : CurrentSecondPlaylist();
+                    if (secondPlaylist.Count == 0 && _config.SecondScreenPlaylist != null)
+                    {
+                        secondPlaylist = _config.SecondScreenPlaylist;
+                    }
+                    updated.SecondScreenPlaylist = secondPlaylist;
+                }
+            }
+
             updated.Normalize();
 
             return updated;

@@ -15,7 +15,7 @@ What you need
 -------------
 - Windows 11, 64-bit
 - .NET Framework 4.8 (already part of Windows 11)
-- One monitor (multi-monitor is not supported yet)
+- One or two monitors (the main screen plus one extra)
 - Video files stored on a local drive
 
 
@@ -38,7 +38,7 @@ It creates your library in:
     %USERPROFILE%\LiveBackground
         Videos\              your clips
         cache\               the rendered seamless loop and its still frame
-        logs\                app.log, setup.log, mpv.log
+        logs\                app.log, setup.log, mpv.log, mpv2.log
         images\wallpapers\   your image wallpapers
         images\              custom lock-screen and desktop wallpaper images
         backup\              the wallpaper and lock screen from before the install
@@ -68,6 +68,8 @@ fixed order:
 
   Videos     video folder, playlist with checkboxes, Move up/down, drop box,
              Refresh, Open folder, Rebuild now and Stop video   (Video mode)
+  Second     the second screen: mirror the main clip, or give it its own
+  screen     folder, playlist and clip   (Video mode, two monitors)
   Playback   cross-fade length, resolution, frame rate, quality and screensaver
              (Video mode)
   Images     image folder, one-image or slideshow mode, ticks, Move up/down,
@@ -180,6 +182,30 @@ build only fails when no usable clip is left.
 The cross-fade is 3 seconds by default and can be changed in the settings
 window. It is automatically shortened for short clips (at most one third of
 either neighbouring clip), so a 5-second clip does not turn into a blur.
+
+
+The second screen
+-----------------
+If two monitors are connected, LiveBackground covers both with the wallpaper.
+The Second screen tab controls what the extra monitor shows; it is greyed out
+when only one monitor is attached.
+
+By default the second screen shows the same clip as the main screen. The same
+loop is cropped to fit each monitor, so a wide clip fills a taller or narrower
+second panel without stretching, and only one loop is ever rendered.
+
+Turn off "Use the same video as the main screen" to give the second screen its
+own video. Its folder, playlist (with the same ticks, Move up/down and Sort A-Z
+controls as the Videos tab) and single clip are chosen on the Second screen
+tab. Press Rebuild now to render that loop; it is rendered once and cached, so
+later restarts reuse it. The two screens then play independently.
+
+Adding, removing or moving a monitor while the app runs is picked up within a
+couple of seconds; the players move to the right screen and keep playing. A
+third monitor is ignored: only the main screen and one extra are used.
+
+Note: this build was developed on a single-monitor PC, so the two-screen
+behaviour has not been tested with an actual second display yet.
 
 
 Image wallpapers and the slideshow
@@ -334,6 +360,11 @@ Useful fields:
     desktopWallpaperMode  "frame" (first loop frame) or "custom"
     desktopWallpaperImage path used when desktopWallpaperMode is "custom"
     screensaverActive  let Windows dim/lock the screen (default true)
+    secondScreenSameAsMain true: second screen mirrors the main clip (default true)
+    secondScreenFolder folder used when the second screen plays its own video
+    secondScreenPlaybackMode "playlist" or "single" for the second screen
+    secondScreenSingleClip file name used for the second screen in single mode
+    secondScreenPlaylist ordered {name, enabled} entries for the second screen
     taskName           scheduled-task name
 
 If you edited config.json by hand, restart the app so it re-reads the file:
@@ -350,6 +381,7 @@ Logs are in:
     %USERPROFILE%\LiveBackground\logs\app.log
     %USERPROFILE%\LiveBackground\logs\setup.log
     %USERPROFILE%\LiveBackground\logs\mpv.log
+    %USERPROFILE%\LiveBackground\logs\mpv2.log   (the second screen's player)
 
 Nothing appears on the desktop:
 1. Run LiveBackgroundCli.exe status and check "app running" and "mpv running".
@@ -457,7 +489,9 @@ links. The bundled clips and picture are not part of the software.
 
 Known limitations
 -----------------
-- One monitor only.
+- One or two monitors. A third monitor is ignored, and the two-screen feature
+  has not been tested on real two-monitor hardware yet (see "The second
+  screen").
 - Windows 11 may put the tray icon in the hidden-icons overflow. Drag it onto
   the taskbar if you want it always visible.
 - The video must be a normal local file; DRM-protected content will not play.

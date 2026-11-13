@@ -27,6 +27,7 @@ namespace LiveBackground
 
         // Written by the main thread, read by the surface thread's poll timer.
         private IntPtr _progman = IntPtr.Zero;
+        private Rectangle _bounds = Rectangle.Empty;
         private string _requestPath;
         private double _requestFade;
         private bool _requestImmediate;
@@ -38,9 +39,19 @@ namespace LiveBackground
 
         public void Start(IntPtr progman)
         {
+            Start(progman, new Rectangle(0, 0,
+                Math.Max(1, Native.GetSystemMetrics(0)),
+                Math.Max(1, Native.GetSystemMetrics(1))));
+        }
+
+        // bounds is the physical monitor this layer covers. One surface is
+        // created per screen, so the same picture can appear on both.
+        public void Start(IntPtr progman, Rectangle bounds)
+        {
             lock (_sync)
             {
                 _progman = progman;
+                if (bounds.Width > 0 && bounds.Height > 0) _bounds = bounds;
                 if (_started) return;
                 _started = true;
             }
@@ -128,7 +139,7 @@ namespace LiveBackground
         {
             try
             {
-                SurfaceForm form = new SurfaceForm(this);
+                SurfaceForm form = new SurfaceForm(this, _bounds);
                 _form = form;
                 form.CreateSurface();
                 _context = new ApplicationContext();
@@ -206,12 +217,17 @@ namespace LiveBackground
             private double _fadeDuration;
             private bool _visible;
             private IntPtr _attachedParent = IntPtr.Zero;
+            private readonly Rectangle _bounds;
             private int _width;
             private int _height;
 
-            public SurfaceForm(ImageSurface owner)
+            public SurfaceForm(ImageSurface owner, Rectangle bounds)
             {
                 _owner = owner;
+                _bounds = bounds.Width > 0 && bounds.Height > 0
+                    ? bounds
+                    : new Rectangle(0, 0, Math.Max(1, Native.GetSystemMetrics(0)),
+                        Math.Max(1, Native.GetSystemMetrics(1)));
                 FormBorderStyle = FormBorderStyle.None;
                 ShowInTaskbar = false;
                 StartPosition = FormStartPosition.Manual;
@@ -219,9 +235,9 @@ namespace LiveBackground
                 SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                     ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque, true);
 
-                _width = Math.Max(1, Native.GetSystemMetrics(0));
-                _height = Math.Max(1, Native.GetSystemMetrics(1));
-                Bounds = new Rectangle(0, 0, _width, _height);
+                _width = Math.Max(1, _bounds.Width);
+                _height = Math.Max(1, _bounds.Height);
+                Bounds = new Rectangle(_bounds.X, _bounds.Y, _width, _height);
 
                 _pollTimer = new System.Windows.Forms.Timer();
                 _pollTimer.Interval = 100;
@@ -257,7 +273,14 @@ namespace LiveBackground
                 style = (style & ~(Native.WS_POPUP | Native.WS_CAPTION | Native.WS_THICKFRAME)) | Native.WS_CHILD;
                 Native.SetWindowLongPtr(Handle, Native.GWL_STYLE, new IntPtr(style));
                 Native.SetParent(Handle, progman);
-                Native.SetWindowPos(Handle, IntPtr.Zero, 0, 0, _width, _height,
+                Native.RECT target;
+                target.Left = _bounds.X;
+                target.Top = _bounds.Y;
+                target.Right = _bounds.X + _width;
+                target.Bottom = _bounds.Y + _height;
+                Native.MapWindowPoints(IntPtr.Zero, progman, ref target, 2);
+                Native.SetWindowPos(Handle, IntPtr.Zero, target.Left, target.Top,
+                    target.Right - target.Left, target.Bottom - target.Top,
                     Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
                 DesktopHost.PlaceBelowIcons(progman, Handle);
                 _attachedParent = progman;
@@ -388,29 +411,20 @@ namespace LiveBackground
 
             private void ResizeSurface()
             {
-                int width = Math.Max(1, Native.GetSystemMetrics(0));
-                int height = Math.Max(1, Native.GetSystemMetrics(1));
-                if (width == _width && height == _height) return;
-
-                _width = width;
-                _height = height;
-                Bounds = new Rectangle(0, 0, _width, _height);
-                DesktopHost.PlaceBelowIcons(Native.GetParent(Handle), Handle);
-
-                // Re-render the last picture at the new size without a fade.
-                if (!string.IsNullOrEmpty(_currentSource))
+                // The Program recreates the layer with new bounds when the
+                // display layout changes, so here we only repaint the current
+                // picture at the size this surface was built for.
+                if (string.IsNullOrEmpty(_currentSource)) return;
+                try
                 {
-                    try
-                    {
-                        Bitmap next = LoadScaled(_currentSource, _width, _height);
-                        DisposeBitmap(ref _current);
-                        DisposeBitmap(ref _next);
-                        _current = next;
-                        StopFade();
-                        Invalidate();
-                    }
-                    catch (Exception ex) { Log.Warn("could not resize the crossfade image: " + ex.Message); }
+                    Bitmap next = LoadScaled(_currentSource, _width, _height);
+                    DisposeBitmap(ref _current);
+                    DisposeBitmap(ref _next);
+                    _current = next;
+                    StopFade();
+                    Invalidate();
                 }
+                catch (Exception ex) { Log.Warn("could not resize the crossfade image: " + ex.Message); }
             }
 
             private static Bitmap LoadScaled(string path, int width, int height)

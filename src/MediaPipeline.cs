@@ -133,6 +133,10 @@ namespace LiveBackground
 
         public static string ManifestPath(string appRoot) { return Path.Combine(CacheDir(appRoot), "manifest.json"); }
 
+        // The second screen keeps its own "what is playing there" pointer, so
+        // an independent second loop never disturbs the main one.
+        public static string SecondManifestPath(string appRoot) { return Path.Combine(CacheDir(appRoot), "second.json"); }
+
         public static string LoopsDir(string appRoot) { return Path.Combine(CacheDir(appRoot), "loops"); }
 
         public static string CacheIndexPath(string appRoot, string signature)
@@ -201,6 +205,7 @@ namespace LiveBackground
                 if (!Directory.Exists(cache)) return;
                 string loops = LoopsDir(appRoot);
                 MediaManifest live = LoadManifest(appRoot);
+                MediaManifest second = LoadSecondManifest(appRoot);
 
                 List<KeyValuePair<string, MediaManifest>> entries =
                     new List<KeyValuePair<string, MediaManifest>>();
@@ -227,12 +232,15 @@ namespace LiveBackground
 
                 HashSet<string> keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (live != null) AddKeep(keep, cache, live);
+                if (second != null) AddKeep(keep, cache, second);
 
                 int kept = 0;
                 foreach (KeyValuePair<string, MediaManifest> item in entries)
                 {
-                    bool isLive = live != null &&
-                        string.Equals(item.Value.Signature, live.Signature, StringComparison.OrdinalIgnoreCase);
+                    bool isLive = (live != null &&
+                        string.Equals(item.Value.Signature, live.Signature, StringComparison.OrdinalIgnoreCase)) ||
+                        (second != null &&
+                        string.Equals(item.Value.Signature, second.Signature, StringComparison.OrdinalIgnoreCase));
                     if (kept < CacheKeep || isLive)
                     {
                         AddKeep(keep, cache, item.Value);
@@ -495,6 +503,30 @@ namespace LiveBackground
             catch (Exception ex) { Log.Warn("could not read manifest: " + ex.Message); return null; }
         }
 
+        public static MediaManifest LoadSecondManifest(string appRoot)
+        {
+            string path = SecondManifestPath(appRoot);
+            if (!File.Exists(path)) return null;
+            try { return JsonStore.DeserializeFile<MediaManifest>(path); }
+            catch (Exception ex) { Log.Warn("could not read the second-screen manifest: " + ex.Message); return null; }
+        }
+
+        // Same checks as IsCacheValid, but against the second screen's own
+        // manifest and clip selection.
+        public static bool IsSecondCacheValid(string appRoot, AppConfig config, out MediaManifest manifest,
+            bool checkSignature)
+        {
+            manifest = LoadSecondManifest(appRoot);
+            if (manifest == null) return false;
+            if (!File.Exists(LoopPath(appRoot, manifest))) return false;
+            if (manifest.Width != config.RenderWidth || manifest.Height != config.RenderHeight) return false;
+            if (manifest.Fps != config.Fps) return false;
+            if (!checkSignature) return true;
+            AppConfig second = config.SecondScreenConfig();
+            string folder = Util.ResolvePath(appRoot, second.VideoFolder);
+            return manifest.Signature == Signature(folder, second);
+        }
+
         public static bool IsCacheValid(string appRoot, AppConfig config, out MediaManifest manifest)
         {
             return IsCacheValid(appRoot, config, out manifest, true);
@@ -534,6 +566,14 @@ namespace LiveBackground
         public static BuildResult Build(string appRoot, AppConfig config, Action<string> log, Action<double> progress,
             Func<bool> cancelled, bool force, bool cacheOnly)
         {
+            return Build(appRoot, config, log, progress, cancelled, force, cacheOnly, null);
+        }
+
+        // liveManifestPath selects which "now playing" pointer a finished build
+        // writes: the main loop by default, or the second screen's own file.
+        public static BuildResult Build(string appRoot, AppConfig config, Action<string> log, Action<double> progress,
+            Func<bool> cancelled, bool force, bool cacheOnly, string liveManifestPath)
+        {
             BuildResult result = new BuildResult();
             string folder = Util.ResolvePath(appRoot, config.VideoFolder);
             List<string> videos = ResolveClips(folder, config);
@@ -571,7 +611,7 @@ namespace LiveBackground
                     }
                     if (!cacheOnly)
                     {
-                        SaveManifest(ManifestPath(appRoot), cachedManifest);
+                        SaveManifest(liveManifestPath ?? ManifestPath(appRoot), cachedManifest);
                         CleanupCache(appRoot);
                     }
                     result.Success = true;
@@ -766,7 +806,7 @@ namespace LiveBackground
             SaveManifest(CacheIndexPath(appRoot, signature), manifest);
             if (!cacheOnly)
             {
-                SaveManifest(ManifestPath(appRoot), manifest);
+                SaveManifest(liveManifestPath ?? ManifestPath(appRoot), manifest);
                 CleanupCache(appRoot);
             }
 

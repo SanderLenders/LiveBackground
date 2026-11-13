@@ -9,14 +9,23 @@ namespace LiveBackground
     {
         private readonly string _appRoot;
         private readonly AppConfig _config;
+        private readonly string _logName;
         private Process _process;
         private IntPtr _window;
         private DateTime _lastStart = DateTime.MinValue;
 
         public MpvPlayer(string appRoot, AppConfig config)
+            : this(appRoot, config, "mpv.log")
+        {
+        }
+
+        // The second screen gets its own log so the two players never write to
+        // the same file.
+        public MpvPlayer(string appRoot, AppConfig config, string logName)
         {
             _appRoot = appRoot;
             _config = config;
+            _logName = string.IsNullOrEmpty(logName) ? "mpv.log" : logName;
         }
 
         public Process Process { get { return _process; } }
@@ -31,7 +40,7 @@ namespace LiveBackground
 
         public string LogPath
         {
-            get { return Path.Combine(_appRoot, "logs", "mpv.log"); }
+            get { return Path.Combine(_appRoot, "logs", _logName); }
         }
 
         public bool Start(IntPtr progman, string mediaPath)
@@ -59,7 +68,7 @@ namespace LiveBackground
             {
                 if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 4 * 1024 * 1024)
                 {
-                    string old = Path.Combine(logDir, "mpv.old.log");
+                    string old = Path.Combine(logDir, _logName.Replace(".log", ".old.log"));
                     if (File.Exists(old)) File.Delete(old);
                     File.Move(LogPath, old);
                 }

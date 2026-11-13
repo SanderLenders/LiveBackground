@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -86,6 +87,33 @@ namespace LiveBackground
         [DllImport("user32.dll")]
         public static extern int GetSystemMetrics(int nIndex);
 
+        public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct MONITORINFOEX
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+        [DllImport("user32.dll")]
+        public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+        [DllImport("user32.dll")]
+        public static extern int MapWindowPoints(IntPtr hWndFrom, IntPtr hWndTo, ref RECT lpPoints, uint cPoints);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern int SystemParametersInfo(uint uiAction, uint uiParam, string pvParam, uint fWinIni);
 
@@ -158,11 +186,64 @@ namespace LiveBackground
 
         public static IntPtr FindMpvWindow(IntPtr progman)
         {
+            return FindMpvWindow(progman, 0);
+        }
+
+        // With one mpv per screen the first window of the class is no longer
+        // enough; match the player's process id instead.
+        public static IntPtr FindMpvWindow(IntPtr progman, uint processId)
+        {
             foreach (IntPtr h in ChildrenInZOrder(progman))
             {
-                if (ClassOf(h) == "mpv") return h;
+                if (ClassOf(h) != "mpv") continue;
+                if (processId == 0) return h;
+                uint owner;
+                Native.GetWindowThreadProcessId(h, out owner);
+                if (owner == processId) return h;
             }
             return IntPtr.Zero;
+        }
+
+        // Per-monitor DPI awareness keeps every coordinate in physical pixels,
+        // which is what the per-screen placement math assumes. Windows 10 1703+
+        // supports PMv2; older builds fall back to system awareness.
+        public static void EnablePerMonitorDpi()
+        {
+            try
+            {
+                if (Native.SetProcessDpiAwarenessContext(new IntPtr(-4))) return;
+            }
+            catch { }
+            try { Native.SetProcessDPIAware(); } catch { }
+        }
+
+        // Sizes and moves a wallpaper window onto one physical monitor. The
+        // bounds are screen coordinates; the window is a child of Progman, so
+        // they are translated into Progman's client space first.
+        public static void PlaceOnScreen(IntPtr progman, IntPtr hwnd, Rectangle bounds)
+        {
+            if (progman == IntPtr.Zero || hwnd == IntPtr.Zero) return;
+            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+
+            Native.RECT current;
+            if (Native.GetWindowRect(hwnd, out current))
+            {
+                bool matches = current.Left == bounds.Left && current.Top == bounds.Top &&
+                    current.Right == bounds.Right && current.Bottom == bounds.Bottom;
+                if (!matches)
+                {
+                    Native.RECT target;
+                    target.Left = bounds.Left;
+                    target.Top = bounds.Top;
+                    target.Right = bounds.Right;
+                    target.Bottom = bounds.Bottom;
+                    Native.MapWindowPoints(IntPtr.Zero, progman, ref target, 2);
+                    Native.SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
+                        target.Right - target.Left, target.Bottom - target.Top,
+                        Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
+                }
+            }
+            EnsurePlacement(progman, hwnd);
         }
 
         public static IntPtr FindWallpaperLayer(IntPtr progman)

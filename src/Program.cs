@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 
 namespace LiveBackground
@@ -12,8 +14,10 @@ namespace LiveBackground
         private static string _appRoot;
         private static AppConfig _config;
         private static MpvPlayer _player;
+        private static MpvPlayer _player2;
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
+        private static string _mediaPath2 = "";
 
         private static readonly object Sync = new object();
         private static bool _building;
@@ -24,15 +28,19 @@ namespace LiveBackground
         private static bool _dirty;
         private static DateTime _nextCheck = DateTime.MinValue;
         private static BuildResult _pendingBuild;
+        private static BuildResult _pendingBuild2;
         private static DateTime _lastWatcherEvent = DateTime.MinValue;
         private static string _lastMissingLog = "";
+        private static string _lastMissingLog2 = "";
         private static volatile bool _paused;
         private static volatile bool _resumeFromPause;
         private static volatile bool _forceBuild;
+        private static volatile bool _forceBuild2;
         private static volatile int _buildGeneration;
         private static volatile bool _prefetching;
         private static volatile bool _prefetchCancel;
         private static volatile bool _restartPlayer;
+        private static volatile bool _restartPlayer2;
         private static bool _prefetchDone;
         private static DateTime _prefetchAfter = DateTime.MaxValue;
         private static FileSystemWatcher _watcher;
@@ -44,12 +52,21 @@ namespace LiveBackground
         private static DateTime _nextImageAt = DateTime.MinValue;
         private static string _currentImage = "";
         private static string _surfaceImage = "";
-        private static ImageSurface _imageSurface;
+        private static readonly List<ImageSurface> _imageSurfaces = new List<ImageSurface>();
         private static IntPtr _imageProgman = IntPtr.Zero;
         private static string _lastMissingImageLog = "";
         private static readonly Random ImageRandom = new Random();
         private static bool _cleanupDone;
         private static DateTime _processStartUtc;
+
+        // Display layout. _screens[0] is the primary screen and _screens[1] the
+        // optional second one; the list is refreshed when Windows reports a
+        // change.
+        private static List<ScreenInfo> _screens = new List<ScreenInfo>();
+        private static string _screensSignature = "";
+        private static DateTime _nextScreenCheck = DateTime.MinValue;
+        private static bool _layoutChanged;
+        private static bool _screenCountChanged;
 
         public static string AppRoot { get { return _appRoot; } }
         public static AppConfig Config { get { return _config; } }
@@ -141,7 +158,17 @@ namespace LiveBackground
                 StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(_config.LockScreenImage ?? "", updated.LockScreenImage ?? "",
                 StringComparison.OrdinalIgnoreCase);
+            // Which loop the second screen should play: mirroring toggles the
+            // source, an independent selection changes the cached loop.
+            bool secondChanged = _config.SecondScreenSameAsMain != updated.SecondScreenSameAsMain ||
+                !string.Equals(_config.SecondScreenFolder ?? "", updated.SecondScreenFolder ?? "",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(_config.SecondScreenPlaybackMode ?? "", updated.SecondScreenPlaybackMode ?? "",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(_config.SecondScreenSingleClip ?? "", updated.SecondScreenSingleClip ?? "",
+                    StringComparison.OrdinalIgnoreCase);
             _config.CopyFrom(updated);
+            if (secondChanged) _restartPlayer2 = true;
             if (lockChanged) StartLockScreenWorker();
 
             if (IsImagesMode)
@@ -163,13 +190,10 @@ namespace LiveBackground
                     StartImageWatcher(imageFolder);
                 }
                 _imageProgman = Native.FindWindow("Progman", null);
-                StartImageSurface(_imageProgman);
+                StartImageSurfaces(_imageProgman);
                 ApplyImage(false);
                 _imageActive = true;
-                if (_imageSurface != null && !string.IsNullOrEmpty(_currentImage))
-                {
-                    _imageSurface.EnsureVisible();
-                }
+                if (!string.IsNullOrEmpty(_currentImage)) ImageEnsureVisibleAll();
                 Log.Info("settings applied; images mode is active");
                 Ui.BuildProgressFinish(true, "Wallpaper updated");
                 Ui.RefreshMenu();
@@ -178,11 +202,8 @@ namespace LiveBackground
 
             _imageActive = false;
             _nextImageAt = DateTime.MinValue;
-            if (_imageSurface != null)
-            {
-                _imageSurface.Hide();
-                _surfaceImage = "";
-            }
+            ImageHideAll();
+            _surfaceImage = "";
             // Switching back from Images mode has to start the cached loop
             // again; the player was stopped when images mode took over.
             if (screenChanged || wasImages) _restartPlayer = true;
@@ -338,7 +359,8 @@ namespace LiveBackground
                 finally
                 {
                     if (_player != null) _player.Stop();
-                    if (_imageSurface != null) _imageSurface.Shutdown();
+                    if (_player2 != null) _player2.Stop();
+                    ShutdownImageSurfaces();
                     Ui.Stop();
                     try { mutex.ReleaseMutex(); } catch { }
                 }
@@ -392,7 +414,7 @@ namespace LiveBackground
 
         private static int Run()
         {
-            try { Native.SetProcessDPIAware(); } catch { }
+            DesktopHost.EnablePerMonitorDpi();
 
             Log.Info("=== LiveBackground starting ===");
             // Prepare loops for the other clips only after the wallpaper is up,
@@ -408,6 +430,9 @@ namespace LiveBackground
 
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
             _config = ConfigStore.LoadOrCreate(_appRoot);
+            _screens = Screens.Enumerate();
+            _screensSignature = Screens.Signature(_screens);
+            Log.Info("displays: " + DescribeScreens(_screens));
             bool imagesMode = IsImagesMode;
             string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
             string imageFolder = Util.ResolvePath(_appRoot, _config.ImageFolder);
@@ -459,6 +484,19 @@ namespace LiveBackground
 
             _player = new MpvPlayer(_appRoot, _config);
 
+            // A second display gets its own player. It mirrors the main loop by
+            // default; an independent second loop is built on demand.
+            if (_screens.Count >= 2)
+            {
+                _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
+                RefreshSecondMediaPath();
+                if (string.IsNullOrEmpty(_mediaPath2))
+                {
+                    _forceBuild2 = true;
+                    Log.Info("no second-screen loop yet, building in the background");
+                }
+            }
+
             // The lock screen and tray are not needed for the first wallpaper
             // frame. Starting them later keeps them from competing with the
             // first cold disk read.
@@ -473,7 +511,7 @@ namespace LiveBackground
                 {
                     Log.Error("Progman not found for the image layer; the wallpaper fallback is used");
                 }
-                StartImageSurface(_imageProgman);
+                StartImageSurfaces(_imageProgman);
                 StartWatcher(folder);
                 StartImageWatcher(imageFolder);
                 ApplyImage(false);
@@ -495,6 +533,10 @@ namespace LiveBackground
                 if (!string.IsNullOrEmpty(_mediaPath))
                 {
                     _player.Start(_progman, _mediaPath);
+                }
+                if (_player2 != null && !string.IsNullOrEmpty(_mediaPath2))
+                {
+                    _player2.Start(_progman, _mediaPath2);
                 }
 
                 // Create the WorkerW wallpaper layer while mpv is still loading.
@@ -554,12 +596,18 @@ namespace LiveBackground
                     RequestRebuild();
                 }
 
+                RefreshScreensIfNeeded();
+
                 // Pausing keeps the process (and the tray icon) alive, but
                 // stops mpv so the static desktop wallpaper shows through.
-                if (_paused && _player != null && _player.IsRunning)
+                if (_paused)
                 {
-                    _player.Stop();
-                    _resumeFromPause = true;
+                    if (_player != null && _player.IsRunning)
+                    {
+                        _player.Stop();
+                        _resumeFromPause = true;
+                    }
+                    if (_player2 != null && _player2.IsRunning) _player2.Stop();
                 }
 
                 // Images mode never starts mpv or touches the video cache. The
@@ -579,21 +627,29 @@ namespace LiveBackground
                                 Log.Info("Explorer restarted, reattaching the image layer");
                             }
                             _imageProgman = current;
-                            if (_imageSurface != null) _imageSurface.Attach(current);
+                            ImageAttachAll(current);
+                        }
+
+                        // A monitor was added, removed or resized: rebuild the
+                        // layers so each screen gets the right size again.
+                        if (_layoutChanged)
+                        {
+                            _layoutChanged = false;
+                            ShutdownImageSurfaces();
+                            StartImageSurfaces(_imageProgman);
+                            _surfaceImage = "";
+                            if (!string.IsNullOrEmpty(_currentImage)) ApplyImage(false);
                         }
 
                         if (_paused)
                         {
                             // Pausing must reveal the real Windows wallpaper,
                             // which always holds the last picture.
-                            if (_imageSurface != null) _imageSurface.Hide();
+                            ImageHideAll();
                         }
                         else
                         {
-                            if (_imageSurface != null && !string.IsNullOrEmpty(_currentImage))
-                            {
-                                _imageSurface.EnsureVisible();
-                            }
+                            if (!string.IsNullOrEmpty(_currentImage)) ImageEnsureVisibleAll();
                             UpdateImageSlideshow();
                         }
                     }
@@ -645,6 +701,14 @@ namespace LiveBackground
                             _mediaPath = finished.LoopPath;
                             if (_player.IsRunning) _player.Stop();
                             if (!_paused) _player.Start(_progman, _mediaPath);
+                            // Mirroring screens follow the main loop; restart
+                            // the second player so it plays the new file too.
+                            if (_player2 != null && _config.SecondScreenSameAsMain && !_paused)
+                            {
+                                _mediaPath2 = _mediaPath;
+                                _player2.Stop();
+                                _player2.Start(_progman, _mediaPath2);
+                            }
                             string wallpaper = DesktopHost.WallpaperFor(_appRoot, _config, finished.FramePath);
                             if (!string.IsNullOrEmpty(wallpaper)) DesktopHost.SetDesktopWallpaper(wallpaper);
                             // The loop's first frame just changed with the
@@ -658,6 +722,39 @@ namespace LiveBackground
                         {
                             Log.Warn("rebuild failed: " + finished.Message);
                             Ui.BuildProgressFinish(false, "Build failed - see logs\\app.log");
+                            _nextCheck = DateTime.UtcNow.AddSeconds(60);
+                        }
+                    }
+
+                    // Pick up a finished second-screen build.
+                    BuildResult finished2 = null;
+                    lock (Sync)
+                    {
+                        if (_pendingBuild2 != null)
+                        {
+                            finished2 = _pendingBuild2;
+                            _pendingBuild2 = null;
+                        }
+                    }
+                    if (finished2 != null)
+                    {
+                        if (finished2.Cancelled)
+                        {
+                            Log.Info("second-screen build replaced: " + finished2.Message);
+                        }
+                        else if (finished2.Success)
+                        {
+                            Log.Info("second-screen rebuild finished: " + finished2.Message);
+                            _mediaPath2 = finished2.LoopPath;
+                            if (_player2 != null && !_paused)
+                            {
+                                if (_player2.IsRunning) _player2.Stop();
+                                _player2.Start(_progman, _mediaPath2);
+                            }
+                        }
+                        else
+                        {
+                            Log.Warn("second-screen rebuild failed: " + finished2.Message);
                             _nextCheck = DateTime.UtcNow.AddSeconds(60);
                         }
                     }
@@ -677,6 +774,50 @@ namespace LiveBackground
                         }
                     }
 
+                    // A monitor was added, removed or moved. Players are always
+                    // re-placed onto their screen below; only a change in the
+                    // number of screens needs the players rebuilt.
+                    if (_layoutChanged)
+                    {
+                        _layoutChanged = false;
+                        firstPlacementLogged = false;
+                        if (_screens.Count < 2)
+                        {
+                            if (_player2 != null)
+                            {
+                                _player2.Stop();
+                                _player2 = null;
+                            }
+                        }
+                        else if (_player2 == null)
+                        {
+                            _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
+                            _screenCountChanged = true;
+                        }
+                        if (_screenCountChanged && !_paused && _progman != IntPtr.Zero)
+                        {
+                            if (!string.IsNullOrEmpty(_mediaPath) && File.Exists(_mediaPath))
+                                _player.Start(_progman, _mediaPath);
+                            if (_player2 != null && !string.IsNullOrEmpty(_mediaPath2) &&
+                                File.Exists(_mediaPath2))
+                                _player2.Start(_progman, _mediaPath2);
+                        }
+                        _screenCountChanged = false;
+                        RefreshSecondMediaPath();
+                    }
+
+                    if (_restartPlayer2)
+                    {
+                        _restartPlayer2 = false;
+                        RefreshSecondMediaPath();
+                        if (_player2 != null && !_paused && _progman != IntPtr.Zero &&
+                            !string.IsNullOrEmpty(_mediaPath2) && File.Exists(_mediaPath2))
+                        {
+                            if (_player2.IsRunning) _player2.Stop();
+                            _player2.Start(_progman, _mediaPath2);
+                        }
+                    }
+
                     // Follow the video folder if it was changed in the settings.
                     string activeFolder = Util.ResolvePath(_appRoot, _config.VideoFolder);
                     if (!string.Equals(activeFolder, _watchedFolder, StringComparison.OrdinalIgnoreCase))
@@ -688,17 +829,23 @@ namespace LiveBackground
                     }
 
                     // Rebuild when the folder changed, the user asked for it, or
-                    // the cache is stale.
-                    if (!_building && (_forceBuild || DateTime.UtcNow >= _nextCheck))
+                    // the cache is stale. The second screen is checked on the
+                    // same pass, but only while it plays its own loop; when it
+                    // mirrors the main screen there is nothing to render.
+                    bool secondOwnLoop = _player2 != null && !_config.SecondScreenSameAsMain;
+                    if (!_building && (_forceBuild || _forceBuild2 || DateTime.UtcNow >= _nextCheck))
                     {
                         _nextCheck = DateTime.UtcNow.AddSeconds(10);
-                        bool needsBuild = false;
-                        bool force = false;
+                        bool buildMain = false;
+                        bool forceMain = false;
+                        bool buildSecond = false;
+                        bool forceSecond = false;
+
                         if (_forceBuild)
                         {
                             _forceBuild = false;
-                            needsBuild = true;
-                            force = true;
+                            buildMain = true;
+                            forceMain = true;
                         }
                         else if (_dirty)
                         {
@@ -709,46 +856,48 @@ namespace LiveBackground
                                 // nothing, so check the signature before
                                 // throwing away the current loop.
                                 MediaManifest check;
-                                if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) needsBuild = true;
+                                if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                             }
                         }
                         else
                         {
                             MediaManifest check;
-                            if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) needsBuild = true;
+                            if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                         }
 
-                        if (needsBuild)
+                        if (secondOwnLoop)
+                        {
+                            if (_forceBuild2)
+                            {
+                                _forceBuild2 = false;
+                                buildSecond = true;
+                                forceSecond = true;
+                            }
+                            else
+                            {
+                                MediaManifest check;
+                                if (!MediaPipeline.IsSecondCacheValid(_appRoot, _config, out check, true))
+                                {
+                                    buildSecond = true;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _forceBuild2 = false;
+                        }
+
+                        // "Nothing to build" has three distinct causes; say
+                        // which one so the log is actionable. The second screen
+                        // reports the same way, with its own folder.
+                        if (buildMain)
                         {
                             string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
                             if (MediaPipeline.ResolveClips(folder, _config).Count == 0)
                             {
-                                // "Nothing to build" has three distinct causes;
-                                // say which one so the log is actionable.
-                                bool hasEntries = _config.Playlist != null && _config.Playlist.Count > 0;
-                                bool singleMode = string.Equals(_config.PlaybackMode, "single",
-                                    StringComparison.OrdinalIgnoreCase);
-                                bool hasSelection = singleMode
-                                    ? !string.IsNullOrEmpty(_config.SingleClip)
-                                    : HasTickedEntry(_config.Playlist);
                                 string message;
                                 string cardText;
-                                if (hasSelection)
-                                {
-                                    message = (singleMode ? "the selected clip is missing from "
-                                        : "the selected clips are missing from ") + folder;
-                                    cardText = "Nothing to build - the selected clip is missing from the video folder";
-                                }
-                                else if (hasEntries)
-                                {
-                                    message = "no clips are ticked in the playlist";
-                                    cardText = "Nothing to build - no clips are ticked in the playlist";
-                                }
-                                else
-                                {
-                                    message = "no videos in " + folder;
-                                    cardText = "Nothing to build - no videos in the folder";
-                                }
+                                DescribeMissing(folder, _config, out message, out cardText);
                                 if (_lastMissingLog != message)
                                 {
                                     Log.Warn(message);
@@ -758,61 +907,78 @@ namespace LiveBackground
                                 // progress card; with nothing to build that
                                 // card would sit on "Preparing..." forever.
                                 // Finish it with the reason instead.
-                                if (force)
-                                {
-                                    Ui.BuildProgressFinish(false, cardText);
-                                }
+                                if (forceMain) Ui.BuildProgressFinish(false, cardText);
                                 _nextCheck = DateTime.UtcNow.AddSeconds(30);
+                                buildMain = false;
                             }
                             else
                             {
                                 _lastMissingLog = "";
-                                CancelPrefetch();
-                                StartBuildWorker(force);
                             }
+                        }
+
+                        if (buildSecond)
+                        {
+                            AppConfig second = _config.SecondScreenConfig();
+                            string folder = Util.ResolvePath(_appRoot, second.VideoFolder);
+                            if (MediaPipeline.ResolveClips(folder, second).Count == 0)
+                            {
+                                string message;
+                                string cardText;
+                                DescribeMissing(folder, second, out message, out cardText);
+                                if (_lastMissingLog2 != message)
+                                {
+                                    Log.Warn("second screen: " + message);
+                                    _lastMissingLog2 = message;
+                                }
+                                _nextCheck = DateTime.UtcNow.AddSeconds(30);
+                                buildSecond = false;
+                            }
+                            else
+                            {
+                                _lastMissingLog2 = "";
+                            }
+                        }
+
+                        if (buildMain || buildSecond)
+                        {
+                            if (buildMain) CancelPrefetch();
+                            StartBuildWorker(buildMain, forceMain, buildSecond, forceSecond);
                         }
                     }
 
                     if (_player.IsRunning)
                     {
-                        if (_player.Window == IntPtr.Zero || !Native.IsWindow(_player.Window))
+                        bool placed = PlacePlayerOnScreen(_player, 0);
+                        if (placed && !firstPlacementLogged)
                         {
-                            _player.Window = DesktopHost.FindMpvWindow(_progman);
+                            string message = "video window ready after " +
+                                (int)(DateTime.UtcNow - _player.StartedUtc).TotalMilliseconds + " ms";
+                            if (!startDeltaLogged)
+                            {
+                                message += " (" +
+                                    (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds +
+                                    " ms after process start)";
+                                startDeltaLogged = true;
+                            }
+                            Log.Info(message);
+                            firstPlacementLogged = true;
                         }
-                        if (_player.Window != IntPtr.Zero)
-                        {
-                            DesktopHost.EnsureWallpaperLayer(_progman);
-                            bool placed = DesktopHost.EnsurePlacement(_progman, _player.Window);
-                            if (placed && !firstPlacementLogged)
-                            {
-                                string message = "video window ready after " +
-                                    (int)(DateTime.UtcNow - _player.StartedUtc).TotalMilliseconds + " ms";
-                                if (!startDeltaLogged)
-                                {
-                                    message += " (" +
-                                        (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds +
-                                        " ms after process start)";
-                                    startDeltaLogged = true;
-                                }
-                                Log.Info(message);
-                                firstPlacementLogged = true;
-                            }
 
-                            // Old loop/frame files are not urgent. Clean them up
-                            // once the video is visible and no build is running.
-                            if (!_cleanupDone)
+                        // Old loop/frame files are not urgent. Clean them up
+                        // once the video is visible and no build is running.
+                        if (_player.Window != IntPtr.Zero && !_cleanupDone)
+                        {
+                            bool clean = false;
+                            lock (Sync)
                             {
-                                bool clean = false;
-                                lock (Sync)
+                                if (!_building)
                                 {
-                                    if (!_building)
-                                    {
-                                        _cleanupDone = true;
-                                        clean = true;
-                                    }
+                                    _cleanupDone = true;
+                                    clean = true;
                                 }
-                                if (clean) MediaPipeline.CleanupCache(_appRoot);
                             }
+                            if (clean) MediaPipeline.CleanupCache(_appRoot);
                         }
                     }
                     else if (!_building && !_paused && !string.IsNullOrEmpty(_mediaPath))
@@ -840,6 +1006,25 @@ namespace LiveBackground
                         }
                     }
 
+                    // The second screen has its own player and watchdog: place
+                    // it on its monitor and bring it back if it exited.
+                    if (_player2 != null)
+                    {
+                        if (_player2.IsRunning)
+                        {
+                            PlacePlayerOnScreen(_player2, 1);
+                        }
+                        else if (!_building && !_paused && _progman != IntPtr.Zero &&
+                            !string.IsNullOrEmpty(_mediaPath2) && File.Exists(_mediaPath2))
+                        {
+                            if (!_player2.StartedRecently(5))
+                            {
+                                Log.Warn("the second-screen player is not running, restarting");
+                                _player2.Start(_progman, _mediaPath2);
+                            }
+                        }
+                    }
+
                     // Prepare loops for the other clips once the desktop is up
                     // and things are calm, so the first switch is instant too.
                     if (!_prefetchDone && !_prefetching && !_building && !_paused &&
@@ -860,31 +1045,46 @@ namespace LiveBackground
             }
         }
 
-        private static void StartBuildWorker(bool force)
+        // Builds one or both loops in the background. The main loop is built
+        // first so the primary screen never waits for the second one; both are
+        // reported back through their own pending slot.
+        private static void StartBuildWorker(bool buildMain, bool forceMain, bool buildSecond, bool forceSecond)
         {
             int generation = _buildGeneration;
-            string buildSignature = null;
+            string mainSignature = null;
             try
             {
-                buildSignature = MediaPipeline.Signature(
+                mainSignature = MediaPipeline.Signature(
                     Util.ResolvePath(_appRoot, _config.VideoFolder), _config);
             }
             catch { }
-            lock (Sync) { _building = true; _buildingSignature = buildSignature; }
-            Log.Info("starting background build");
+            string secondSignature = null;
+            try
+            {
+                AppConfig second = _config.SecondScreenConfig();
+                secondSignature = MediaPipeline.Signature(
+                    Util.ResolvePath(_appRoot, second.VideoFolder), second);
+            }
+            catch { }
+            lock (Sync)
+            {
+                _building = true;
+                _buildingSignature = mainSignature;
+            }
+            Log.Info(buildMain && buildSecond ? "starting background build (both screens)"
+                : buildSecond ? "starting background build (second screen)"
+                : "starting background build");
 
             // A cached loop is swapped in within a fraction of a second. Do not
             // flash the progress card for work that is already finished.
-            bool cached = false;
-            if (!force)
+            bool cached = true;
+            try
             {
-                try
-                {
-                    string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
-                    cached = MediaPipeline.HasCachedLoop(_appRoot, MediaPipeline.Signature(folder, _config));
-                }
-                catch { }
+                if (buildMain && (forceMain || !MediaPipeline.HasCachedLoop(_appRoot, mainSignature))) cached = false;
+                if (buildSecond && (forceSecond ||
+                    secondSignature == null || !MediaPipeline.HasCachedLoop(_appRoot, secondSignature))) cached = false;
             }
+            catch { cached = false; }
 
             if (!cached)
             {
@@ -894,33 +1094,53 @@ namespace LiveBackground
 
             Thread thread = new Thread(delegate()
             {
-                BuildResult result;
-                try
+                if (buildMain)
                 {
-                    result = MediaPipeline.Build(_appRoot, _config,
-                        delegate(string message) { Log.Info(message); },
-                        delegate(double fraction)
-                        {
-                            Ui.BuildProgressUpdate(fraction, "Encoding the loop...");
-                        },
-                        delegate { return generation != _buildGeneration; },
-                        force, false);
+                    BuildResult result = RunBuild(_config, generation, forceMain, null, "");
+                    lock (Sync) { _pendingBuild = result; }
                 }
-                catch (Exception ex)
+
+                // A generation change means the settings moved on; the main
+                // build already reported that, so do not start a stale second
+                // encode.
+                if (buildSecond && generation == _buildGeneration)
                 {
-                    result = new BuildResult();
-                    result.Message = ex.GetType().Name + ": " + ex.Message;
-                    Log.Error("background build crashed", ex);
+                    AppConfig second = _config.SecondScreenConfig();
+                    BuildResult result = RunBuild(second, generation, forceSecond,
+                        MediaPipeline.SecondManifestPath(_appRoot), "second screen: ");
+                    lock (Sync) { _pendingBuild2 = result; }
                 }
-                lock (Sync)
-                {
-                    _pendingBuild = result;
-                    _building = false;
-                }
+
+                lock (Sync) { _building = false; }
             });
             thread.IsBackground = true;
             thread.Name = "livebackground-build";
             thread.Start();
+        }
+
+        // One encode, with the log/progress/cancel wiring shared by both loops.
+        private static BuildResult RunBuild(AppConfig config, int generation, bool force,
+            string liveManifestPath, string logPrefix)
+        {
+            try
+            {
+                return MediaPipeline.Build(_appRoot, config,
+                    delegate(string message) { Log.Info(logPrefix + message); },
+                    delegate(double fraction)
+                    {
+                        Ui.BuildProgressUpdate(fraction, logPrefix.Length == 0
+                            ? "Encoding the loop..." : "Encoding the second-screen loop...");
+                    },
+                    delegate { return generation != _buildGeneration; },
+                    force, false, liveManifestPath);
+            }
+            catch (Exception ex)
+            {
+                BuildResult result = new BuildResult();
+                result.Message = ex.GetType().Name + ": " + ex.Message;
+                Log.Error(logPrefix.Length == 0 ? "background build crashed" : "second-screen build crashed", ex);
+                return result;
+            }
         }
 
         // Builds the loops for the clips that are not on screen, one at a time,
@@ -1185,11 +1405,11 @@ namespace LiveBackground
             DesktopHost.SetDesktopWallpaper(chosen);
 
             bool surfaceHasImage = string.Equals(chosen, _surfaceImage, StringComparison.OrdinalIgnoreCase);
-            if (_imageSurface != null && _imageSurface.IsStarted && (!surfaceHasImage || !advance))
+            if (!surfaceHasImage || !advance)
             {
-                // The layer fades only for a real slideshow step. Startup and
+                // The layers fade only for a real slideshow step. Startup and
                 // settings changes swap instantly.
-                _imageSurface.Show(chosen, advance ? ImageCrossfadeSeconds() : 0, !advance);
+                ImageShowAll(chosen, advance ? ImageCrossfadeSeconds() : 0, !advance);
                 _surfaceImage = chosen;
             }
 
@@ -1205,16 +1425,189 @@ namespace LiveBackground
             return seconds;
         }
 
-        private static void StartImageSurface(IntPtr progman)
+        // ---------------------------------------------------------------
+        // Image layers, one per screen
+        // ---------------------------------------------------------------
+
+        // Creates or re-sizes one still-image layer per connected screen, so a
+        // slideshow picture covers every monitor.
+        private static void StartImageSurfaces(IntPtr progman)
         {
-            if (_imageSurface == null) _imageSurface = new ImageSurface();
-            if (!_imageSurface.IsStarted)
+            if (_screens == null || _screens.Count == 0) _screens = Screens.Enumerate();
+            int wanted = Math.Max(1, _screens.Count);
+            while (_imageSurfaces.Count > wanted)
             {
-                _imageSurface.Start(progman);
+                ImageSurface extra = _imageSurfaces[_imageSurfaces.Count - 1];
+                _imageSurfaces.RemoveAt(_imageSurfaces.Count - 1);
+                try { extra.Shutdown(); } catch { }
             }
-            else if (progman != IntPtr.Zero)
+            for (int i = 0; i < wanted; i++)
             {
-                _imageSurface.Attach(progman);
+                if (i >= _imageSurfaces.Count) _imageSurfaces.Add(new ImageSurface());
+                ImageSurface surface = _imageSurfaces[i];
+                Rectangle bounds = i < _screens.Count ? _screens[i].Bounds : _screens[0].Bounds;
+                if (!surface.IsStarted) surface.Start(progman, bounds);
+                else if (progman != IntPtr.Zero) surface.Attach(progman);
+            }
+        }
+
+        private static void ShutdownImageSurfaces()
+        {
+            foreach (ImageSurface surface in _imageSurfaces)
+            {
+                try { surface.Shutdown(); } catch { }
+            }
+            _imageSurfaces.Clear();
+        }
+
+        private static void ImageAttachAll(IntPtr progman)
+        {
+            foreach (ImageSurface surface in _imageSurfaces)
+            {
+                if (surface.IsStarted) surface.Attach(progman);
+            }
+        }
+
+        private static void ImageShowAll(string path, double fadeSeconds, bool immediate)
+        {
+            foreach (ImageSurface surface in _imageSurfaces)
+            {
+                if (surface.IsStarted) surface.Show(path, fadeSeconds, immediate);
+            }
+        }
+
+        private static void ImageEnsureVisibleAll()
+        {
+            foreach (ImageSurface surface in _imageSurfaces)
+            {
+                if (surface.IsStarted) surface.EnsureVisible();
+            }
+        }
+
+        private static void ImageHideAll()
+        {
+            foreach (ImageSurface surface in _imageSurfaces)
+            {
+                if (surface.IsStarted) surface.Hide();
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Displays and the second screen
+        // ---------------------------------------------------------------
+
+        private static string DescribeScreens(List<ScreenInfo> screens)
+        {
+            if (screens == null || screens.Count == 0) return "none";
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < screens.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(screens[i].Describe());
+            }
+            if (screens.Count > 2) sb.Append(" (only the first two are used)");
+            return sb.ToString();
+        }
+
+        // Re-enumerates the displays when Windows reports a change. A changed
+        // layout moves the players; a changed screen count rebuilds them.
+        private static void RefreshScreensIfNeeded()
+        {
+            if (DateTime.UtcNow < _nextScreenCheck) return;
+            _nextScreenCheck = DateTime.UtcNow.AddSeconds(2);
+            List<ScreenInfo> now = Screens.Enumerate();
+            string signature = Screens.Signature(now);
+            if (string.Equals(signature, _screensSignature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            int before = _screens == null ? 0 : _screens.Count;
+            _screens = now;
+            _screensSignature = signature;
+            _layoutChanged = true;
+            if (now.Count != before) _screenCountChanged = true;
+            Log.Info("display layout changed: " + DescribeScreens(now));
+        }
+
+        // Points the second player at the right loop: the main one when it
+        // mirrors, otherwise the cached second-screen loop if there is one.
+        private static void RefreshSecondMediaPath()
+        {
+            if (_config == null) return;
+            if (_config.SecondScreenSameAsMain)
+            {
+                _mediaPath2 = _mediaPath;
+                return;
+            }
+
+            MediaManifest manifest;
+            if (MediaPipeline.IsSecondCacheValid(_appRoot, _config, out manifest, false))
+            {
+                _mediaPath2 = MediaPipeline.LoopPath(_appRoot, manifest);
+            }
+            else
+            {
+                _mediaPath2 = "";
+            }
+        }
+
+        private static uint PlayerPid(MpvPlayer player)
+        {
+            if (player == null) return 0;
+            try
+            {
+                Process process = player.Process;
+                if (process != null && !process.HasExited) return (uint)process.Id;
+            }
+            catch { }
+            return 0;
+        }
+
+        // Finds the player's window, sizes it to the screen and keeps it below
+        // the desktop icons. Returns true when the window is really placed.
+        private static bool PlacePlayerOnScreen(MpvPlayer player, int screenIndex)
+        {
+            if (player == null || _screens == null || _screens.Count == 0) return false;
+            if (screenIndex < 0) screenIndex = 0;
+            if (screenIndex >= _screens.Count) screenIndex = _screens.Count - 1;
+
+            if (player.Window == IntPtr.Zero || !Native.IsWindow(player.Window))
+            {
+                player.Window = DesktopHost.FindMpvWindow(_progman, PlayerPid(player));
+            }
+            if (player.Window == IntPtr.Zero) return false;
+
+            DesktopHost.EnsureWallpaperLayer(_progman);
+            DesktopHost.PlaceOnScreen(_progman, player.Window, _screens[screenIndex].Bounds);
+            return true;
+        }
+
+        // Describes why a loop has nothing to build, for the log and the card.
+        private static void DescribeMissing(string folder, AppConfig config,
+            out string message, out string cardText)
+        {
+            bool hasEntries = config.Playlist != null && config.Playlist.Count > 0;
+            bool singleMode = string.Equals(config.PlaybackMode, "single",
+                StringComparison.OrdinalIgnoreCase);
+            bool hasSelection = singleMode
+                ? !string.IsNullOrEmpty(config.SingleClip)
+                : HasTickedEntry(config.Playlist);
+            if (hasSelection)
+            {
+                message = (singleMode ? "the selected clip is missing from "
+                    : "the selected clips are missing from ") + folder;
+                cardText = "Nothing to build - the selected clip is missing from the video folder";
+            }
+            else if (hasEntries)
+            {
+                message = "no clips are ticked in the playlist";
+                cardText = "Nothing to build - no clips are ticked in the playlist";
+            }
+            else
+            {
+                message = "no videos in " + folder;
+                cardText = "Nothing to build - no videos in the folder";
             }
         }
 

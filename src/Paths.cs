@@ -68,6 +68,12 @@ namespace LiveBackground
             {
                 config.VideoFolder = Path.Combine(ProgramRoot, "videos");
             }
+            if (string.IsNullOrEmpty(config.SecondScreenFolder) ||
+                string.Equals(config.SecondScreenFolder, @"%USERPROFILE%\LiveBackground\Videos",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                config.SecondScreenFolder = Path.Combine(ProgramRoot, "videos");
+            }
             if (string.IsNullOrEmpty(config.ImageFolder) ||
                 string.Equals(config.ImageFolder, @"%USERPROFILE%\LiveBackground\images\wallpapers",
                     StringComparison.OrdinalIgnoreCase))

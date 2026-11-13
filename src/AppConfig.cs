@@ -64,6 +64,16 @@ namespace LiveBackground
         // locking the screen. Turning this off keeps the display awake.
         [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = true;
 
+        // The second screen can mirror the main clip or play its own loop.
+        // "Same as main" keeps a single loop and lets each screen crop it;
+        // turning it off renders and caches a separate loop for the second
+        // screen. Only used when two displays are connected.
+        [DataMember(Name = "secondScreenSameAsMain")] public bool SecondScreenSameAsMain = true;
+        [DataMember(Name = "secondScreenFolder")] public string SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
+        [DataMember(Name = "secondScreenPlaybackMode")] public string SecondScreenPlaybackMode = "single";
+        [DataMember(Name = "secondScreenSingleClip")] public string SecondScreenSingleClip = "Galaxy HD Clip.mp4";
+        [DataMember(Name = "secondScreenPlaylist")] public List<PlaylistEntry> SecondScreenPlaylist = new List<PlaylistEntry>();
+
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
@@ -101,6 +111,11 @@ namespace LiveBackground
             ExtraMpvArgs = "";
             LogLevel = "info";
             ScreensaverActive = true;
+            SecondScreenSameAsMain = true;
+            SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
+            SecondScreenPlaybackMode = "single";
+            SecondScreenSingleClip = "Galaxy HD Clip.mp4";
+            SecondScreenPlaylist = new List<PlaylistEntry>();
         }
 
         public AppConfig Clone()
@@ -163,6 +178,38 @@ namespace LiveBackground
             ExtraMpvArgs = other.ExtraMpvArgs;
             LogLevel = other.LogLevel;
             ScreensaverActive = other.ScreensaverActive;
+            SecondScreenSameAsMain = other.SecondScreenSameAsMain;
+            SecondScreenFolder = other.SecondScreenFolder;
+            SecondScreenPlaybackMode = other.SecondScreenPlaybackMode;
+            SecondScreenSingleClip = other.SecondScreenSingleClip;
+            SecondScreenPlaylist = new List<PlaylistEntry>();
+            if (other.SecondScreenPlaylist != null)
+            {
+                foreach (PlaylistEntry entry in other.SecondScreenPlaylist)
+                {
+                    if (entry != null) SecondScreenPlaylist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                }
+            }
+        }
+
+        // A config that builds the second screen's own loop: the same render
+        // settings as the main loop, but the second screen's folder, mode and
+        // clip selection. Used only when "same as main" is off.
+        public AppConfig SecondScreenConfig()
+        {
+            AppConfig second = Clone();
+            second.VideoFolder = SecondScreenFolder;
+            second.PlaybackMode = SecondScreenPlaybackMode;
+            second.SingleClip = SecondScreenSingleClip;
+            second.Playlist = new List<PlaylistEntry>();
+            if (SecondScreenPlaylist != null)
+            {
+                foreach (PlaylistEntry entry in SecondScreenPlaylist)
+                {
+                    if (entry != null) second.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                }
+            }
+            return second;
         }
 
         public void Normalize()
@@ -235,6 +282,18 @@ namespace LiveBackground
             if (string.IsNullOrEmpty(FfprobePath)) FfprobePath = @"tools\ffmpeg\ffprobe.exe";
             if (string.IsNullOrEmpty(VideoFolder)) VideoFolder = @"%USERPROFILE%\LiveBackground\Videos";
 
+            if (string.IsNullOrEmpty(SecondScreenFolder)) SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
+            if (!string.Equals(SecondScreenPlaybackMode, "single", StringComparison.OrdinalIgnoreCase))
+            {
+                SecondScreenPlaybackMode = "playlist";
+            }
+            else
+            {
+                SecondScreenPlaybackMode = "single";
+            }
+            if (SecondScreenSingleClip == null) SecondScreenSingleClip = "";
+            if (SecondScreenPlaylist == null) SecondScreenPlaylist = new List<PlaylistEntry>();
+
             // Drop empty and duplicate names, keeping the first occurrence in
             // the user's order. A clip that is missing from the folder is kept
             // here so it comes back if the file is restored.
@@ -259,6 +318,17 @@ namespace LiveBackground
                 cleanImages.Add(new PlaylistEntry(name, entry.Enabled));
             }
             ImagePlaylist = cleanImages;
+
+            List<PlaylistEntry> cleanSecond = new List<PlaylistEntry>();
+            HashSet<string> seenSecond = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (PlaylistEntry entry in SecondScreenPlaylist)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                string name = entry.Name.Trim();
+                if (name.Length == 0 || !seenSecond.Add(name)) continue;
+                cleanSecond.Add(new PlaylistEntry(name, entry.Enabled));
+            }
+            SecondScreenPlaylist = cleanSecond;
         }
     }
 

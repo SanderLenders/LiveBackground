@@ -1,5 +1,73 @@
 # LiveBackground change list
 
+## 1.6.0
+
+### Second screen (two monitors)
+
+- LiveBackground now supports **two monitors** (the main screen plus one extra).
+  Each screen is cropped independently, so a 16:9 clip fills a differently
+  shaped panel without stretching. A third monitor is ignored; the first two
+  are used.
+- **Hot-plugging works.** Adding, removing, moving or resizing a monitor is
+  detected within a couple of seconds; the players are re-placed automatically
+  and keep playing.
+- New **Second screen** tab in the settings window, between Videos and Playback.
+  It is greyed out when only one monitor is connected, with a status line that
+  explains why. With a second monitor attached it offers the same controls as
+  the Videos tab.
+- **"Use the same video as the main screen"** (default on): the second screen
+  mirrors the main clip, cropped to fit, and no extra loop is rendered. Turn it
+  off to give the second screen its own folder, playlist or single clip; that
+  loop is rendered once and cached separately (`cache\second.json`).
+- The second player writes to `logs\mpv2.log`, so the two players never share a
+  log file.
+- The app now opts into per-monitor DPI awareness (PMv2) so placement uses
+  physical pixels on mixed-scaling setups.
+- **Not yet validated on real hardware.** This build was developed on a
+  single-monitor PC, so two-screen placement, hot-plug and the Second screen tab
+  have not been tested with an actual second display.
+
+### Settings window polish
+
+- **The settings window is a staging area.** Changing ticks, order or text no
+  longer applies anything until you press **Rebuild now** (applies and keeps the
+  window open) or **Save and apply** (writes and closes). Cancel closes the
+  window and keeps whatever "Rebuild now" already applied.
+- **"Save and apply" only rebuilds when the ticks changed.** When nothing that
+  affects the loop changed it just saves and closes; a build for the exact same
+  configuration that is already running is continued instead of restarted.
+- Every tab that can start a build now has its own **Rebuild now** button
+  (Videos and Images).
+- **Lock-screen choices reworked:** "First frame of the video loop" (default),
+  "Use a custom image", or "Use an image from my image wallpapers". The old
+  `followimage`/`previous` values migrate to "first frame".
+- The wallpaper-mode pill now switches mode on any click on the pill, not only
+  on its side labels.
+- Removed the long help paragraphs from the Videos, Playback, Slideshow and
+  Other tabs; slider tick labels are now centred under their ticks.
+
+### Fresh installs
+
+- New installs start in Video mode with only "Galaxy HD Clip.mp4" playing
+  (Playback: crossfade 3 s, half-second steps off, 1920x1080, 30 fps, quality
+  Balanced/CRF 18, screensaver active), Images in one-image mode with
+  "Galaxy Image.jpg" ticked, and Other with start-with-Windows on, lock screen
+  "First frame of the video loop" and the desktop wallpaper image on (also the
+  first frame).
+- Reinstalling over an existing install is an in-place upgrade: your library,
+  settings and wording are preserved. The new defaults only apply to a genuine
+  first install.
+
+### Fixes
+
+- `mpv.log` rotates to `mpv.old.log` at 4 MB, so a long-running session cannot
+  grow a single log without bound.
+- Missing-media messages now distinguish "the selected clip is missing",
+  "no clips are ticked" and "no videos in the folder".
+- The image crossfade layer is one window per screen, so a slideshow covers
+  every monitor.
+- The version is 1.6.0.
+
 ## 1.5.1
 
 ### Fixes from a code review
