@@ -362,22 +362,17 @@ namespace LiveBackground
             if (mpvIndex < 0) return false;
 
             IntPtr icons = FindDesktopIcons(progman);
-            int desiredIndex;
-            IntPtr insertAfter;
+            int iconsIndex = icons != IntPtr.Zero ? kids.IndexOf(icons) : -1;
 
-            if (icons != IntPtr.Zero)
-            {
-                desiredIndex = kids.IndexOf(icons) + 1;
-                insertAfter = icons;
-            }
-            else
-            {
-                desiredIndex = 0;
-                insertAfter = Native.HWND_TOP;
-            }
+            // The video only has to sit behind the desktop icons, above the
+            // real wallpaper. With one player per screen two video windows
+            // share that strip, so any index below the icons is already
+            // correct. Insisting on the single slot directly under the icons
+            // made the players push each other back and forth on every poll,
+            // which churned the z-order and flooded the log.
+            if (mpvIndex > iconsIndex) return true;
 
-            if (mpvIndex == desiredIndex) return true;
-
+            IntPtr insertAfter = icons != IntPtr.Zero ? icons : Native.HWND_TOP;
             Native.SetWindowPos(mpvWnd, insertAfter, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
 

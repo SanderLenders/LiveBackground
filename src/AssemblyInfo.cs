@@ -7,5 +7,5 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("LiveBackground")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 LiveBackground contributors")]
 [assembly: ComVisible(false)]
-[assembly: AssemblyVersion("1.6.2.0")]
-[assembly: AssemblyFileVersion("1.6.2.0")]
+[assembly: AssemblyVersion("1.6.3.0")]
+[assembly: AssemblyFileVersion("1.6.3.0")]

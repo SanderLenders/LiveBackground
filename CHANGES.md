@@ -1,5 +1,18 @@
 # LiveBackground change list
 
+## 1.6.3
+
+### Two screens
+
+- **The desktop layers are no longer re-ordered several times a second with
+  two monitors.** Each video window was forced into the single slot directly
+  below the desktop icons. With one player per screen the two windows then
+  pushed each other out of that slot on every poll, so the app moved them
+  back and forth about five times a second. A window is now left alone as
+  long as it sits anywhere behind the icons, above the wallpaper. This stops
+  the pointless churn and the log line it wrote each time (which rotated
+  `logs\app.log` roughly every half hour).
+
 ## 1.6.2
 
 ### Build progress card
