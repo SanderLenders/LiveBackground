@@ -14,7 +14,7 @@ namespace LiveBackground
     // Headless app + tray icon + this one dialog. Everything is built in code
     // because the project is compiled with the built-in csc and has no
     // designer or resource files.
-    public class SettingsForm : Form
+    public partial class SettingsForm : Form
     {
         private const int FadeMin = 5;      // tenths of a second
         private const int FadeMax = 100;
@@ -319,7 +319,7 @@ namespace LiveBackground
             if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return true;
             TabPage page = _tabs.TabPages[index];
             bool images = _wallpaperImages != null && _wallpaperImages.Checked;
-            if (page == _videosTab || page == _playbackTab || page == _secondTab) return !images;
+            if (page == _videosTab || page == _playbackTab) return !images;
             if (page == _imagesTab || page == _slideshowTab) return images;
             return true;
         }
@@ -379,6 +379,9 @@ namespace LiveBackground
             {
                 _tabs.SelectedTab = images ? _imagesTab : _videosTab;
             }
+            if (_slot2 != null) _slot2.SetWallpaperMode(images);
+            if (_slot3 != null) _slot3.SetWallpaperMode(images);
+            UpdateScreenOptionTabs();
             _tabs.Invalidate();
             UpdateDesktopControls();
         }
@@ -629,7 +632,7 @@ namespace LiveBackground
                 }
                 else
                 {
-                    _multiStatus.Text = "Each connected extra screen has its own tab below.";
+                    _multiStatus.Text = "";
                 }
             }
 
@@ -845,6 +848,8 @@ namespace LiveBackground
             public TabPage Page;
             public string Device = "";
             public bool HasScreen;
+            private Panel _videoPane;
+            public ScreenImagesSlot Images;
 
             public CheckBox Same;
             public TextBox FolderBox;
@@ -892,42 +897,45 @@ namespace LiveBackground
             public TabPage Build()
             {
                 Page = new TabPage(Ordinal() + " Screen");
+                _videoPane = new Panel();
+                _videoPane.SetBounds(0, 0, 604, 379);
+                Page.Controls.Add(_videoPane);
 
                 Same = new CheckBox();
                 Same.Text = "Use the same video as the main screen";
                 Same.SetBounds(12, 12, 420, 24);
                 Same.CheckedChanged += delegate { UpdateControls(); };
-                Page.Controls.Add(Same);
+                _videoPane.Controls.Add(Same);
 
-                _status = MakeLabel(Page, "", 12, 40, 576);
+                _status = MakeLabel(_videoPane, "", 12, 40, 576);
                 _status.ForeColor = SystemColors.GrayText;
 
-                Label folderLabel = MakeLabel(Page, "Video folder", 12, 70, 200);
+                Label folderLabel = MakeLabel(_videoPane, "Video folder", 12, 70, 200);
                 folderLabel.Font = new Font(_form.Font, FontStyle.Bold);
 
                 FolderBox = new TextBox();
                 FolderBox.SetBounds(12, 92, 456, 24);
-                Page.Controls.Add(FolderBox);
+                _videoPane.Controls.Add(FolderBox);
 
                 Button browse = new Button();
                 browse.Text = "Browse...";
                 browse.SetBounds(480, 90, 104, 27);
                 browse.Click += delegate { BrowseFolder(); };
-                Page.Controls.Add(browse);
+                _videoPane.Controls.Add(browse);
 
                 ModePlaylist = new RadioButton();
                 ModePlaylist.Text = "All clips in this order";
                 ModePlaylist.SetBounds(12, 126, 180, 22);
                 ModePlaylist.CheckedChanged += delegate { UpdateModeControls(); };
-                Page.Controls.Add(ModePlaylist);
+                _videoPane.Controls.Add(ModePlaylist);
 
                 ModeSingle = new RadioButton();
                 ModeSingle.Text = "One clip";
                 ModeSingle.SetBounds(200, 126, 80, 22);
                 ModeSingle.CheckedChanged += delegate { UpdateModeControls(); };
-                Page.Controls.Add(ModeSingle);
+                _videoPane.Controls.Add(ModeSingle);
 
-                _singleHint = MakeLabel(Page, "Pick one clip in the list below", 286, 126, 302);
+                _singleHint = MakeLabel(_videoPane, "Pick one clip in the list below", 286, 126, 302);
                 _singleHint.ForeColor = SystemColors.GrayText;
                 _singleHint.Visible = false;
 
@@ -942,49 +950,64 @@ namespace LiveBackground
                 ClipList.Columns.Add("Clip", 452);
                 ClipList.Columns.Add("Length", 92);
                 ClipList.ItemCheck += ItemCheck;
-                Page.Controls.Add(ClipList);
+                _videoPane.Controls.Add(ClipList);
 
                 _moveUp = new Button();
                 _moveUp.Text = "Move up";
                 _moveUp.SetBounds(12, 280, 90, 28);
                 _moveUp.Click += delegate { Move(-1); };
-                Page.Controls.Add(_moveUp);
+                _videoPane.Controls.Add(_moveUp);
 
                 _moveDown = new Button();
                 _moveDown.Text = "Move down";
                 _moveDown.SetBounds(108, 280, 100, 28);
                 _moveDown.Click += delegate { Move(1); };
-                Page.Controls.Add(_moveDown);
+                _videoPane.Controls.Add(_moveDown);
 
                 _sortAz = new Button();
                 _sortAz.Text = "Sort A-Z";
                 _sortAz.SetBounds(214, 280, 90, 28);
                 _sortAz.Click += delegate { Sort(); };
-                Page.Controls.Add(_sortAz);
+                _videoPane.Controls.Add(_sortAz);
 
                 _refresh = new Button();
                 _refresh.Text = "Refresh";
                 _refresh.SetBounds(12, 314, 100, 28);
                 _refresh.Click += delegate { CapturePlaylist(); RefreshClips(); };
-                Page.Controls.Add(_refresh);
+                _videoPane.Controls.Add(_refresh);
 
                 _open = new Button();
                 _open.Text = "Open folder";
                 _open.SetBounds(118, 314, 110, 28);
                 _open.Click += delegate { OpenFolder(); };
-                Page.Controls.Add(_open);
+                _videoPane.Controls.Add(_open);
 
                 _rebuild = new Button();
                 _rebuild.Text = "Rebuild now";
                 _rebuild.SetBounds(234, 314, 110, 28);
                 _rebuild.Click += _form.RebuildNowClicked;
-                Page.Controls.Add(_rebuild);
+                _videoPane.Controls.Add(_rebuild);
 
-                _hint = MakeLabel(Page, "", 12, 348, 572);
+                _hint = MakeLabel(_videoPane, "", 12, 348, 572);
                 _hint.Height = 30;
                 _hint.ForeColor = SystemColors.GrayText;
 
+                Images = new ScreenImagesSlot(_form, _number);
+                Panel imagePane = Images.Build();
+                imagePane.SetBounds(0, 0, 604, 379);
+                imagePane.Visible = false;
+                Page.Controls.Add(imagePane);
+
                 return Page;
+            }
+
+            // The same outer tab serves Videos and Images. Both editors stay
+            // alive, so switching modes never discards a half-finished edit.
+            public void SetWallpaperMode(bool images)
+            {
+                if (_videoPane != null) _videoPane.Visible = !images;
+                if (Images != null && Images.Panel != null) Images.Panel.Visible = images;
+                UpdateControls();
             }
 
             // Binds the slot to a connected monitor. Reloads only when the
@@ -994,6 +1017,7 @@ namespace LiveBackground
             {
                 if (device == null) device = "";
                 bool has = device.Length > 0;
+                if (Images != null) Images.Bind(device);
                 if (string.Equals(device, Device, StringComparison.OrdinalIgnoreCase) && has == HasScreen)
                 {
                     return;
@@ -1045,6 +1069,7 @@ namespace LiveBackground
                 if (settings == null) return;
                 settings.Device = Device;
                 settings.SameAsMain = Same.Checked;
+                if (Images != null) Images.CaptureInto(settings);
                 if (Same.Checked) return;
 
                 string folder = FolderBox.Text.Trim();
@@ -1096,17 +1121,15 @@ namespace LiveBackground
                     {
                         _status.Text = "No " + Ordinal() + " screen is connected.";
                     }
-                    else if (Same.Checked)
-                    {
-                        _status.Text = "This screen shows the same video as the main screen, " +
-                            "cropped to fit. Turn the switch off to choose a different clip for it.";
-                    }
                     else
                     {
-                        _status.Text = "This screen plays its own loop. Choose the folder and " +
-                            "clips below, then press Rebuild now.";
+                        // The controls already explain the normal state; only
+                        // warnings and unavailable-screen states need text.
+                        _status.Text = "";
                     }
                 }
+                if (Images != null) Images.UpdateControls();
+                _form.UpdateScreenOptionTabs();
             }
 
             // Switching between "All clips" and "One clip" reshapes the ticks,
@@ -1651,36 +1674,38 @@ namespace LiveBackground
             _fadeEffective.SetBounds(16, 134, 588, 40);
             page.Controls.Add(_fadeEffective);
 
-            Label resLabel = MakeLabel(page, "Resolution", 16, 232, 110);
+            Label resLabel = MakeLabel(page, "Resolution", 16, 350, 110);
             _resolution = new ComboBox();
-            _resolution.SetBounds(16, 254, 170, 24);
+            _resolution.SetBounds(16, 372, 170, 24);
             _resolution.DropDownStyle = ComboBoxStyle.DropDownList;
             page.Controls.Add(_resolution);
 
-            Label fpsLabel = MakeLabel(page, "Frame rate", 210, 232, 110);
+            Label fpsLabel = MakeLabel(page, "Frame rate", 210, 350, 110);
             _fps = new ComboBox();
-            _fps.SetBounds(210, 254, 100, 24);
+            _fps.SetBounds(210, 372, 100, 24);
             _fps.DropDownStyle = ComboBoxStyle.DropDownList;
             page.Controls.Add(_fps);
 
-            Label qualityLabel = MakeLabel(page, "Quality", 330, 232, 110);
+            Label qualityLabel = MakeLabel(page, "Quality", 330, 350, 110);
             _quality = new ComboBox();
-            _quality.SetBounds(330, 254, 240, 24);
+            _quality.SetBounds(330, 372, 240, 24);
             _quality.DropDownStyle = ComboBoxStyle.DropDownList;
             page.Controls.Add(_quality);
 
             _screensaverActive = new CheckBox();
             _screensaverActive.Text = "Screensaver active (let Windows dim and lock the screen)";
-            _screensaverActive.SetBounds(16, 400, 588, 24);
+            _screensaverActive.SetBounds(16, 420, 588, 24);
             page.Controls.Add(_screensaverActive);
 
             Label screenHint = MakeLabel(page,
                 "On (recommended): Windows dims, turns off and locks the screen according to " +
                 "your power settings, even while the video plays. Off: the video keeps the " +
                 "screen awake.",
-                16, 428, 588);
-            screenHint.Height = 44;
+                16, 448, 588);
+            screenHint.Height = 36;
             screenHint.ForeColor = SystemColors.GrayText;
+
+            BuildScreenFadeTabs(page);
         }
 
         private void BuildImagesTab(TabPage page)
@@ -1994,6 +2019,8 @@ namespace LiveBackground
 
             _desktopDrop = MakeImageDropBox(_desktopGroup, 466, 72, 100, 27, "Drop image",
                 delegate { BrowseDesktopImage(); });
+
+            BuildDesktopFallbackTabs();
         }
 
         private Panel MakeImageDropBox(Control parent, int x, int y, int width, int height,
@@ -2057,6 +2084,11 @@ namespace LiveBackground
             if (file == null) return;
             if (panel == _lockDrop) ApplyLockImage(file);
             else if (panel == _desktopDrop) ApplyDesktopImage(file);
+            else
+            {
+                DesktopSlot slot = panel.Tag as DesktopSlot;
+                if (slot != null) slot.ApplyImage(file);
+            }
         }
 
         private static string FirstDroppedImage(IDataObject data)
@@ -3409,6 +3441,7 @@ namespace LiveBackground
             _desktopPath.Enabled = custom;
             _desktopBrowse.Enabled = custom;
             if (_desktopDrop != null) _desktopDrop.Enabled = custom;
+            if (_desktopSlot2 != null) UpdateScreenOptionTabs();
         }
 
         private void BrowseFolder()
@@ -3794,6 +3827,11 @@ namespace LiveBackground
                 if (!ValidateSlot(_slot2)) return null;
                 if (!ValidateSlot(_slot3)) return null;
             }
+            else
+            {
+                if (_slot2 != null && !_slot2.Images.Validate()) return null;
+                if (_slot3 != null && !_slot3.Images.Validate()) return null;
+            }
 
             // "First frame of the video loop" needs no stored path; it follows
             // whatever the wallpaper builds.
@@ -3912,20 +3950,26 @@ namespace LiveBackground
             updated.DesktopWallpaper = imagesMode
                 ? _config.DesktopWallpaper
                 : _desktopWallpaper.Checked;
-            updated.DesktopWallpaperMode = useCustomWallpaper ? "custom" : "frame";
+            updated.DesktopWallpaperMode = imagesMode
+                ? _config.DesktopWallpaperMode
+                : (useCustomWallpaper ? "custom" : "frame");
             updated.DesktopWallpaperImage = useCustomWallpaper
                 ? desktopImage
                 : _config.DesktopWallpaperImage;
             updated.ScreensaverActive = _screensaverActive.Checked;
 
             // Each connected extra screen keeps its own entry, matched by
-            // device name. Screens that are not connected are left untouched,
-            // so unplugging a monitor never wipes its settings. Skipped in
-            // Images mode, where the Multiple Monitor tab is not editable.
-            if (!imagesMode)
+            // device name. Both video and image settings are captured so an
+            // inactive mode never loses a half-finished edit. Disconnected
+            // screens are left untouched.
+            if (_slot2 != null) _slot2.CaptureInto(updated);
+            if (_slot3 != null) _slot3.CaptureInto(updated);
+            if (_fadeSlot2 != null) _fadeSlot2.CaptureInto(updated);
+            if (_fadeSlot3 != null) _fadeSlot3.CaptureInto(updated);
+            if (!imagesMode && _desktopWallpaper.Checked)
             {
-                if (_slot2 != null) _slot2.CaptureInto(updated);
-                if (_slot3 != null) _slot3.CaptureInto(updated);
+                if (_desktopSlot2 != null && !_desktopSlot2.CaptureAndValidate(updated)) return null;
+                if (_desktopSlot3 != null && !_desktopSlot3.CaptureAndValidate(updated)) return null;
             }
 
             updated.Normalize();

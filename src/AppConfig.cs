@@ -22,10 +22,10 @@ namespace LiveBackground
         }
     }
 
-    // One extra screen's own loop, remembered by the monitor's device name
-    // ("\\.\DISPLAY2") rather than by position, so it survives unplugging,
-    // replugging and reordering the monitors. SameAsMain keeps the screen on
-    // the main loop; turning it off renders and caches a separate loop.
+    // One extra screen's settings, remembered by the monitor's device name
+    // ("\\.\DISPLAY2") rather than by position. Video and Images have separate
+    // mirror switches so a screen can, for example, mirror the video but have
+    // its own slideshow. Everything mirrors the main screen by default.
     [DataContract]
     public class ScreenSettings
     {
@@ -35,6 +35,25 @@ namespace LiveBackground
         [DataMember(Name = "playbackMode")] public string PlaybackMode = "single";
         [DataMember(Name = "singleClip")] public string SingleClip = "Galaxy HD Clip.mp4";
         [DataMember(Name = "playlist")] public List<PlaylistEntry> Playlist = new List<PlaylistEntry>();
+        // Null means "not customized yet": an upgraded screen keeps inheriting
+        // the main video fade until its own fade is saved in the settings.
+        [DataMember(Name = "crossfadeSeconds")] public double? CrossfadeSeconds;
+        [DataMember(Name = "fineCrossfadeSteps")] public bool? FineCrossfadeSteps;
+
+        [DataMember(Name = "imagesSameAsMain")] public bool ImagesSameAsMain = true;
+        [DataMember(Name = "imageFolder")] public string ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
+        [DataMember(Name = "imageMode")] public string ImageMode = "single";
+        [DataMember(Name = "imageSingle")] public string ImageSingle = "Galaxy Image.jpg";
+        [DataMember(Name = "imagePlaylist")] public List<PlaylistEntry> ImagePlaylist = new List<PlaylistEntry>();
+        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 5;
+        [DataMember(Name = "imageCrossfadeSeconds")] public double ImageCrossfadeSeconds = 2.0;
+        [DataMember(Name = "imageFineCrossfadeSteps")] public bool ImageFineCrossfadeSteps = false;
+        [DataMember(Name = "imageShuffle")] public bool ImageShuffle = false;
+
+        // Empty mode means the desktop fallback still follows the main screen.
+        // Once customized, it is "frame" (this screen's loop) or "custom".
+        [DataMember(Name = "desktopWallpaperMode")] public string DesktopWallpaperMode = "";
+        [DataMember(Name = "desktopWallpaperImage")] public string DesktopWallpaperImage = "";
 
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
@@ -45,6 +64,19 @@ namespace LiveBackground
             PlaybackMode = "single";
             SingleClip = "Galaxy HD Clip.mp4";
             Playlist = new List<PlaylistEntry>();
+            CrossfadeSeconds = null;
+            FineCrossfadeSteps = null;
+            ImagesSameAsMain = true;
+            ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
+            ImageMode = "single";
+            ImageSingle = "Galaxy Image.jpg";
+            ImagePlaylist = new List<PlaylistEntry>();
+            ImageIntervalSeconds = 5;
+            ImageCrossfadeSeconds = 2.0;
+            ImageFineCrossfadeSteps = false;
+            ImageShuffle = false;
+            DesktopWallpaperMode = "";
+            DesktopWallpaperImage = "";
         }
 
         public ScreenSettings Clone()
@@ -55,12 +87,31 @@ namespace LiveBackground
             copy.Folder = Folder;
             copy.PlaybackMode = PlaybackMode;
             copy.SingleClip = SingleClip;
-            copy.Playlist = new List<PlaylistEntry>();
-            if (Playlist != null)
+            copy.Playlist = CopyEntries(Playlist);
+            copy.CrossfadeSeconds = CrossfadeSeconds;
+            copy.FineCrossfadeSteps = FineCrossfadeSteps;
+            copy.ImagesSameAsMain = ImagesSameAsMain;
+            copy.ImageFolder = ImageFolder;
+            copy.ImageMode = ImageMode;
+            copy.ImageSingle = ImageSingle;
+            copy.ImagePlaylist = CopyEntries(ImagePlaylist);
+            copy.ImageIntervalSeconds = ImageIntervalSeconds;
+            copy.ImageCrossfadeSeconds = ImageCrossfadeSeconds;
+            copy.ImageFineCrossfadeSteps = ImageFineCrossfadeSteps;
+            copy.ImageShuffle = ImageShuffle;
+            copy.DesktopWallpaperMode = DesktopWallpaperMode;
+            copy.DesktopWallpaperImage = DesktopWallpaperImage;
+            return copy;
+        }
+
+        private static List<PlaylistEntry> CopyEntries(List<PlaylistEntry> entries)
+        {
+            List<PlaylistEntry> copy = new List<PlaylistEntry>();
+            if (entries != null)
             {
-                foreach (PlaylistEntry entry in Playlist)
+                foreach (PlaylistEntry entry in entries)
                 {
-                    if (entry != null) copy.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                    if (entry != null) copy.Add(new PlaylistEntry(entry.Name, entry.Enabled));
                 }
             }
             return copy;
@@ -269,6 +320,30 @@ namespace LiveBackground
                     {
                         if (entry != null) own.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
                     }
+                }
+                if (screen.CrossfadeSeconds.HasValue) own.CrossfadeSeconds = screen.CrossfadeSeconds.Value;
+                if (screen.FineCrossfadeSteps.HasValue) own.FineCrossfadeSteps = screen.FineCrossfadeSteps.Value;
+
+                own.ImageFolder = screen.ImageFolder;
+                own.ImageMode = screen.ImageMode;
+                own.ImageSingle = screen.ImageSingle;
+                own.ImagePlaylist = new List<PlaylistEntry>();
+                if (screen.ImagePlaylist != null)
+                {
+                    foreach (PlaylistEntry entry in screen.ImagePlaylist)
+                    {
+                        if (entry != null) own.ImagePlaylist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                    }
+                }
+                own.ImageIntervalSeconds = screen.ImageIntervalSeconds;
+                own.ImageCrossfadeSeconds = screen.ImageCrossfadeSeconds;
+                own.ImageFineCrossfadeSteps = screen.ImageFineCrossfadeSteps;
+                own.ImageShuffle = screen.ImageShuffle;
+
+                if (!string.IsNullOrEmpty(screen.DesktopWallpaperMode))
+                {
+                    own.DesktopWallpaperMode = screen.DesktopWallpaperMode;
+                    own.DesktopWallpaperImage = screen.DesktopWallpaperImage;
                 }
             }
             return own;
@@ -543,6 +618,59 @@ namespace LiveBackground
                     cleanPlaylist.Add(new PlaylistEntry(name, entry.Enabled));
                 }
                 screen.Playlist = cleanPlaylist;
+
+                if (screen.CrossfadeSeconds.HasValue &&
+                    (double.IsNaN(screen.CrossfadeSeconds.Value) || screen.CrossfadeSeconds.Value < 0.5))
+                {
+                    screen.CrossfadeSeconds = 3.0;
+                }
+                if (screen.CrossfadeSeconds.HasValue && screen.CrossfadeSeconds.Value > 10.0)
+                {
+                    screen.CrossfadeSeconds = 10.0;
+                }
+
+                if (string.IsNullOrEmpty(screen.ImageFolder))
+                {
+                    screen.ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
+                }
+                screen.ImageMode = string.Equals(screen.ImageMode, "slideshow",
+                    StringComparison.OrdinalIgnoreCase) ? "slideshow" : "single";
+                if (screen.ImageSingle == null) screen.ImageSingle = "";
+                if (screen.ImageIntervalSeconds < 1) screen.ImageIntervalSeconds = 5;
+                if (screen.ImageIntervalSeconds > 86400) screen.ImageIntervalSeconds = 86400;
+                if (double.IsNaN(screen.ImageCrossfadeSeconds) || screen.ImageCrossfadeSeconds < 0)
+                {
+                    screen.ImageCrossfadeSeconds = 0;
+                }
+                if (screen.ImageCrossfadeSeconds > 5.0) screen.ImageCrossfadeSeconds = 5.0;
+                List<PlaylistEntry> cleanScreenImages = new List<PlaylistEntry>();
+                HashSet<string> seenScreenImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (screen.ImagePlaylist != null)
+                {
+                    foreach (PlaylistEntry entry in screen.ImagePlaylist)
+                    {
+                        if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                        string name = entry.Name.Trim();
+                        if (name.Length == 0 || !seenScreenImages.Add(name)) continue;
+                        cleanScreenImages.Add(new PlaylistEntry(name, entry.Enabled));
+                    }
+                }
+                screen.ImagePlaylist = cleanScreenImages;
+
+                if (!string.Equals(screen.DesktopWallpaperMode, "frame", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(screen.DesktopWallpaperMode, "custom", StringComparison.OrdinalIgnoreCase))
+                {
+                    screen.DesktopWallpaperMode = "";
+                }
+                else if (string.Equals(screen.DesktopWallpaperMode, "custom", StringComparison.OrdinalIgnoreCase))
+                {
+                    screen.DesktopWallpaperMode = "custom";
+                }
+                else
+                {
+                    screen.DesktopWallpaperMode = "frame";
+                }
+                if (screen.DesktopWallpaperImage == null) screen.DesktopWallpaperImage = "";
 
                 // Keep one device-less entry (the migration slot) and one
                 // entry per device name.

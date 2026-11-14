@@ -1,5 +1,29 @@
 # LiveBackground change list
 
+## 1.8.0
+
+### Per-screen settings, completed
+
+- **Removed the redundant status sentences** from the normal Multiple Monitor
+  view. Warnings for Duplicate mode and disconnected screens are still shown.
+- **Extra screens have independent Images settings too.** The same Multiple
+  Monitor tab now follows the Video/Images switch. Each extra screen can mirror
+  the main slideshow (the factory default) or use its own image folder, single
+  image or slideshow, interval, image crossfade and shuffle setting. Image
+  settings are remembered per monitor and each independent slideshow has its
+  own folder watcher.
+- **Each independent video screen can have its own crossfade.** Playback now
+  has 2nd Screen and 3rd Screen sub-tabs. They are greyed out while that screen
+  mirrors the main loop, is disconnected, or Windows is duplicating. Existing
+  screens keep inheriting the main fade until their own fade is saved.
+- **Desktop fallback images can be set per independent video screen.** Other →
+  Desktop wallpaper image now has Main Screen, 2nd Screen and 3rd Screen tabs.
+  A screen can use the first frame of its own loop or a custom image while its
+  video is paused, stopped or still being built. Mirroring screens continue to
+  use the main desktop wallpaper.
+- **Switching to Images now stops every video player**, including independent
+  extra-screen players that could previously remain visible over the pictures.
+
 ## 1.7.0
 
 ### Multiple monitors

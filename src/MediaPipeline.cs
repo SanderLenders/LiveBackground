@@ -145,7 +145,7 @@ namespace LiveBackground
 
         // Turns "\\.\DISPLAY2" into a file name: only letters and digits are
         // kept, everything else becomes an underscore.
-        private static string ScreenKey(string device)
+        public static string ScreenKey(string device)
         {
             if (string.IsNullOrEmpty(device)) return "screen";
             StringBuilder sb = new StringBuilder(device.Length);

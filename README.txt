@@ -68,10 +68,10 @@ fixed order:
 
   Videos     video folder, playlist with checkboxes, Move up/down, drop box,
              Refresh, Open folder, Rebuild now and Stop video   (Video mode)
-  Second     the second screen: Extended/Duplicate mode, mirror the main clip,
-  screen     or give it its own folder, playlist and clip   (Video mode, two monitors)
-  Playback   cross-fade length, resolution, frame rate, quality and screensaver
-             (Video mode)
+  Multiple   extra screens: Extended/Duplicate mode, per-screen video or image
+  Monitor    settings, with 2nd Screen and 3rd Screen sub-tabs (both modes)
+  Playback   cross-fade length (main and per-screen), resolution, frame rate,
+             quality and screensaver                         (Video mode)
   Images     image folder, one-image or slideshow mode, ticks, Move up/down,
              drop box, Refresh, Open folder and Next image   (Images mode)
   Slideshow  preset interval slider, optional custom seconds, crossfade and
@@ -184,39 +184,41 @@ window. It is automatically shortened for short clips (at most one third of
 either neighbouring clip), so a 5-second clip does not turn into a blur.
 
 
-The second screen
+Multiple monitors
 -----------------
-If two monitors are connected, LiveBackground covers both with the wallpaper.
-The Second screen tab controls what the extra monitor shows; it is greyed out
-when only one monitor is attached.
+LiveBackground supports up to three monitors. The Multiple Monitor tab has a
+2nd Screen and, when a third monitor is connected, a 3rd Screen sub-tab. A
+fourth or later monitor mirrors the main screen. Settings are remembered by
+monitor device name, so unplugging, replugging and reordering screens does not
+mix them up. A disconnected screen keeps its saved settings.
 
-The top of the tab shows the Windows display mode: Extended (two separate
-screens) or Duplicate (both screens show the same). The radio buttons show what
-Windows is doing right now; click one to change it. The app never changes the
-display mode on its own. The "Display settings" button opens the Windows display
-settings, where the screens can be arranged. While Windows is duplicating, the
-second-screen loop controls are disabled with an explanation, because both
-screens show the same picture anyway.
+The top of the tab shows the Windows display mode: Extended (separate screens)
+or Duplicate (every screen shows the same). The radio buttons show what Windows
+is doing right now; click one to change it. The app never changes the display
+mode on its own. "Display settings" opens the Windows arrangement page. While
+Windows is duplicating, the per-screen controls are disabled with an
+explanation.
 
-The tab also keeps up with changes: while the settings window is open it checks
-the display layout about every 1.5 seconds, so plugging in a screen or changing
-the Windows mode enables or greys the tab without pressing Save first.
+The tab follows the Video/Images switch. In Video mode, each extra screen
+mirrors the main clip by default. Turn off "Use the same video as the main
+screen" to choose its own folder, playlist or single clip; its loop is rendered
+once and cached. Rebuild now is available whenever that screen is attached.
 
-By default the second screen shows the same clip as the main screen. The same
-loop is cropped to fit each monitor, so a wide clip fills a taller or narrower
-second panel without stretching, and only one loop is ever rendered.
+In Images mode, each extra screen likewise mirrors the main picture or
+slideshow by default. Turn off "Use the same images as the main screen" to give
+it an independent image folder, one image or slideshow, interval, picture
+crossfade and Shuffle setting. Each independent slideshow has its own folder
+watcher and timer.
 
-Turn off "Use the same video as the main screen" to give the second screen its
-own video. Its folder, playlist (with the same ticks, Move up/down and Sort A-Z
-controls as the Videos tab) and single clip are chosen on the Second screen
-tab. Press Rebuild now to render that loop; it is rendered once and cached, so
-later restarts reuse it. The two screens then play independently. Rebuild now is
-available whenever a second screen is attached, including while the screens are
-mirroring.
+Playback contains 2nd Screen and 3rd Screen crossfade tabs for independent
+video loops. They are greyed out while the corresponding screen mirrors the
+main clip, is disconnected, or Windows is duplicating. Other -> Desktop
+wallpaper image also has per-screen tabs: an independent screen can use the
+first frame of its own loop or a custom fallback image while its video is
+paused, stopped or being built. Mirroring screens use the main fallback.
 
 Adding, removing or moving a monitor while the app runs is picked up within a
-couple of seconds; the players move to the right screen and keep playing. A
-third monitor is ignored: only the main screen and one extra are used.
+couple of seconds; the players and image layers move to the right screens.
 
 
 Image wallpapers and the slideshow
@@ -278,7 +280,8 @@ What appears where
 - Desktop video: the seamless loop, playing below the desktop icons.
 - Desktop wallpaper: frame 0 of the loop, or a custom image you choose. At
   logon Windows shows this still image first, then the video takes over within
-  about half a second, so there is no visible cut.
+  about half a second, so there is no visible cut. An independent extra screen
+  can instead use the first frame of its own loop or its own custom image.
 - Images mode: the selected picture, or the ticked pictures in slideshow order.
   No video is running.
 - Lock screen: the first frame of the video loop, a custom image you pick, or
@@ -371,11 +374,12 @@ Useful fields:
     desktopWallpaperMode  "frame" (first loop frame) or "custom"
     desktopWallpaperImage path used when desktopWallpaperMode is "custom"
     screensaverActive  let Windows dim/lock the screen (default true)
-    secondScreenSameAsMain true: second screen mirrors the main clip (default true)
-    secondScreenFolder folder used when the second screen plays its own video
-    secondScreenPlaybackMode "playlist" or "single" for the second screen
-    secondScreenSingleClip file name used for the second screen in single mode
-    secondScreenPlaylist ordered {name, enabled} entries for the second screen
+    extraScreens       per-monitor settings keyed by device name: video and
+                       image mirror switches (both default true), folders,
+                       playlists, optional video crossfade, slideshow settings
+                       and desktop fallback mode/image
+    secondScreen*      older flat second-screen fields, migrated into
+                       extraScreens automatically
     taskName           scheduled-task name
 
 If you edited config.json by hand, restart the app so it re-reads the file:
@@ -392,7 +396,8 @@ Logs are in:
     %USERPROFILE%\LiveBackground\logs\app.log
     %USERPROFILE%\LiveBackground\logs\setup.log
     %USERPROFILE%\LiveBackground\logs\mpv.log
-    %USERPROFILE%\LiveBackground\logs\mpv2.log   (the second screen's player)
+    %USERPROFILE%\LiveBackground\logs\mpv-____DISPLAY2.log
+                         (an extra screen's player; name follows the device)
 
 Nothing appears on the desktop:
 1. Run LiveBackgroundCli.exe status and check "app running" and "mpv running".
@@ -500,9 +505,10 @@ links. The bundled clips and picture are not part of the software.
 
 Known limitations
 -----------------
-- One or two monitors. A third monitor is ignored. The two-screen feature has
-  been tested with real two-monitor hardware; the newer Extended/Duplicate
-  switching on the Second screen tab (see "The second screen") is still new.
+- Up to three monitors are supported; a fourth or later monitor mirrors the
+  main screen. The three-screen path is designed to stay inert with two
+  monitors, but independent third-screen settings have not been tested on real
+  three-monitor hardware.
 - Windows 11 may put the tray icon in the hidden-icons overflow. Drag it onto
   the taskbar if you want it always visible.
 - The video must be a normal local file; DRM-protected content will not play.
