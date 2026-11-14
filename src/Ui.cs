@@ -223,7 +223,25 @@ namespace LiveBackground
             callback(null);
         }
 
+        // The tray shows the same icon the exe carries (set from
+        // assets\LiveBackground.ico at build time) so the tray, the Start menu
+        // and the taskbar all match. If the executable icon cannot be read,
+        // fall back to a small drawn planet.
         private static Icon CreateIcon()
+        {
+            try
+            {
+                Icon app = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (app != null) return app;
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("could not read the application icon: " + ex.Message);
+            }
+            return DrawFallbackIcon();
+        }
+
+        private static Icon DrawFallbackIcon()
         {
             using (Bitmap bitmap = new Bitmap(32, 32))
             {

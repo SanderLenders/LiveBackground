@@ -1,5 +1,17 @@
 # LiveBackground change list
 
+## 1.6.4
+
+### New icon
+
+- **A new app icon, and the tray now uses it too.** `assets\LiveBackground.ico`
+  is replaced with a rounded-tile artwork (16/24/32/48/64/128/256 px), which
+  Windows shows in the Start menu and on the taskbar. The tray icon used to be
+  drawn in code as a small purple planet and did not match; it now reads the
+  same icon from the executable, so the tray, the Start menu and the taskbar all
+  show the same picture. If the executable icon cannot be read for any reason,
+  the app still falls back to the drawn planet.
+
 ## 1.6.3
 
 ### Two screens
