@@ -24,6 +24,8 @@ namespace LiveBackground
         private readonly AppConfig _config;
 
         private TabControl _tabs;
+        private TabPage _videoGroupTab;
+        private TabPage _imageGroupTab;
         private TabPage _videosTab;
         private TabPage _playbackTab;
         private TabPage _imagesTab;
@@ -93,7 +95,7 @@ namespace LiveBackground
         private CheckBox _imageShuffle;
         private bool _layingOutTicks;
 
-        // Multiple Monitor: the shared Windows display-mode row, plus one
+        // Multi Monitor: the shared Windows display-mode row, plus one
         // settings slot per extra screen ("2nd Screen", "3rd Screen"). Each
         // slot is remembered by monitor device name, so its settings survive
         // replugging and reordering.
@@ -264,18 +266,22 @@ namespace LiveBackground
             _tabs.DrawItem += TabDrawItem;
             Controls.Add(_tabs);
 
+            _videoGroupTab = new TabPage("Videos");
+            _imageGroupTab = new TabPage("Images");
+            _secondTab = new TabPage("Multi Monitor");
+            _windowsTab = new TabPage("Other");
+            _tabs.TabPages.Add(_videoGroupTab);
+            _tabs.TabPages.Add(_imageGroupTab);
+            _tabs.TabPages.Add(_secondTab);
+            _tabs.TabPages.Add(_windowsTab);
+
+            // The two mode-specific editors become inner tabs. Their outer
+            // pages stay available or greyed with the pill, just like Multi
+            // Monitor, without crowding the outer tab strip.
             _videosTab = new TabPage("Videos");
-            _secondTab = new TabPage("Multiple Monitor");
             _playbackTab = new TabPage("Playback");
             _imagesTab = new TabPage("Images");
             _slideshowTab = new TabPage("Slideshow");
-            _windowsTab = new TabPage("Other");
-            _tabs.TabPages.Add(_videosTab);
-            _tabs.TabPages.Add(_secondTab);
-            _tabs.TabPages.Add(_playbackTab);
-            _tabs.TabPages.Add(_imagesTab);
-            _tabs.TabPages.Add(_slideshowTab);
-            _tabs.TabPages.Add(_windowsTab);
 
             BuildVideosTab(_videosTab);
             BuildMultiMonitorTab(_secondTab);
@@ -283,6 +289,8 @@ namespace LiveBackground
             BuildImagesTab(_imagesTab);
             BuildSlideshowTab(_slideshowTab);
             BuildWindowsTab(_windowsTab);
+            BuildModeGroup(_videoGroupTab, _videosTab, _playbackTab);
+            BuildModeGroup(_imageGroupTab, _imagesTab, _slideshowTab);
 
             Button save = new Button();
             save.Text = "Save and apply";
@@ -311,16 +319,24 @@ namespace LiveBackground
             _screenTimer.Tick += ScreenTimerTick;
         }
 
-        // Tabs that belong to the other wallpaper mode cannot be opened. The
-        // Second screen tab is a video setting too, so it follows the Videos
-        // tab.
+        private static void BuildModeGroup(TabPage outer, TabPage first, TabPage second)
+        {
+            TabControl inner = new TabControl();
+            inner.Dock = DockStyle.Fill;
+            inner.TabPages.Add(first);
+            inner.TabPages.Add(second);
+            outer.Controls.Add(inner);
+        }
+
+        // Tabs that belong to the other wallpaper mode cannot be opened. Multi
+        // Monitor and Other remain available in both modes.
         private bool TabEnabled(int index)
         {
             if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return true;
             TabPage page = _tabs.TabPages[index];
             bool images = _wallpaperImages != null && _wallpaperImages.Checked;
-            if (page == _videosTab || page == _playbackTab) return !images;
-            if (page == _imagesTab || page == _slideshowTab) return images;
+            if (page == _videoGroupTab) return !images;
+            if (page == _imageGroupTab) return images;
             return true;
         }
 
@@ -377,7 +393,7 @@ namespace LiveBackground
             bool images = _wallpaperImages.Checked;
             if (!TabEnabled(_tabs.SelectedIndex))
             {
-                _tabs.SelectedTab = images ? _imagesTab : _videosTab;
+                _tabs.SelectedTab = images ? _imageGroupTab : _videoGroupTab;
             }
             if (_slot2 != null) _slot2.SetWallpaperMode(images);
             if (_slot3 != null) _slot3.SetWallpaperMode(images);
@@ -396,7 +412,7 @@ namespace LiveBackground
             // when the window opens and then keep polling while it is visible.
             RefreshScreenState();
             AlignSlideshowMarks();
-            _tabs.SelectedTab = _wallpaperImages.Checked ? _imagesTab : _videosTab;
+            _tabs.SelectedTab = _wallpaperImages.Checked ? _imageGroupTab : _videoGroupTab;
             _tabs.Invalidate();
             if (_screenTimer != null) _screenTimer.Start();
         }
@@ -547,7 +563,7 @@ namespace LiveBackground
             _dropPanel.Controls.Add(_dropLabel);
         }
 
-        // The "Multiple Monitor" tab: the shared Windows display-mode row, plus
+        // The "Multi Monitor" tab: the shared Windows display-mode row, plus
         // one settings slot per extra screen ("2nd Screen", "3rd Screen"). Each
         // slot is remembered by monitor device name, so its settings survive
         // replugging and reordering.
@@ -1694,15 +1710,15 @@ namespace LiveBackground
 
             _screensaverActive = new CheckBox();
             _screensaverActive.Text = "Screensaver active (let Windows dim and lock the screen)";
-            _screensaverActive.SetBounds(16, 420, 588, 24);
+            _screensaverActive.SetBounds(16, 400, 588, 24);
             page.Controls.Add(_screensaverActive);
 
             Label screenHint = MakeLabel(page,
                 "On (recommended): Windows dims, turns off and locks the screen according to " +
                 "your power settings, even while the video plays. Off: the video keeps the " +
                 "screen awake.",
-                16, 448, 588);
-            screenHint.Height = 36;
+                16, 424, 588);
+            screenHint.Height = 28;
             screenHint.ForeColor = SystemColors.GrayText;
 
             BuildScreenFadeTabs(page);
@@ -2396,7 +2412,7 @@ namespace LiveBackground
             catch { }
             _startWithWindows.Checked = startup;
 
-            // The per-screen settings are loaded into the "Multiple Monitor"
+            // The per-screen settings are loaded into the "Multi Monitor"
             // slots when the tab is bound to the connected monitors (OnShown).
         }
 
@@ -3821,7 +3837,7 @@ namespace LiveBackground
 
             // Each connected extra screen only needs its own selection when it
             // is not mirroring the main loop. Skipped in Images mode, where the
-            // Multiple Monitor tab is not editable.
+            // Multi Monitor tab is not editable.
             if (!imagesMode)
             {
                 if (!ValidateSlot(_slot2)) return null;

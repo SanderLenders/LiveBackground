@@ -1,5 +1,18 @@
 # LiveBackground change list
 
+## 1.8.1
+
+### Cleaner settings layout
+
+- **Renamed Multiple Monitor to Multi Monitor** and moved it after the Images
+  editor. The outer settings tabs are now Videos, Images, Multi Monitor and
+  Other.
+- **Videos and Playback are now inner tabs** of the Videos editor; Images and
+  Slideshow are inner tabs of the Images editor. The Video/Images pill keeps
+  switching which outer editor is available, and every inner editor preserves
+  its state when switching modes. Multi Monitor keeps its existing mode-aware
+  behavior.
+
 ## 1.8.0
 
 ### Per-screen settings, completed

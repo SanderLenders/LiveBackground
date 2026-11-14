@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace LiveBackground
 {
-    // Per-screen editors shared by Multiple Monitor, Playback and Other. They
+    // Per-screen editors shared by Multi Monitor, Playback and Other. They
     // live in this partial file so the main Videos/Images editors stay simple.
     public partial class SettingsForm
     {
@@ -460,7 +460,7 @@ namespace LiveBackground
         }
 
         // ---------------------------------------------------------------
-        // Multiple Monitor: independent image and slideshow settings
+        // Multi Monitor: independent image and slideshow settings
         // ---------------------------------------------------------------
 
         private sealed class ScreenImagesSlot

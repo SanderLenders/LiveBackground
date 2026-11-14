@@ -66,17 +66,16 @@ Video or Images. Click the pill switch itself or either word; the pill also
 responds to Space or Enter when focused. The tabs follow the mode, in this
 fixed order:
 
-  Videos     video folder, playlist with checkboxes, Move up/down, drop box,
-             Refresh, Open folder, Rebuild now and Stop video   (Video mode)
-  Multiple   extra screens: Extended/Duplicate mode, per-screen video or image
+  Videos     inner Videos tab: folder, playlist, drop box, Refresh, Open folder,
+             Rebuild now and Stop video; inner Playback tab: main/per-screen
+             crossfades, resolution, frame rate, quality and screensaver
+             (Video mode)
+  Images     inner Images tab: folder, one image or slideshow, ticks, drop box,
+             Refresh, Open folder and Next image; inner Slideshow tab: interval,
+             picture crossfade and Shuffle                 (Images mode)
+  Multi      extra screens: Extended/Duplicate mode, per-screen video or image
   Monitor    settings, with 2nd Screen and 3rd Screen sub-tabs (both modes)
-  Playback   cross-fade length (main and per-screen), resolution, frame rate,
-             quality and screensaver                         (Video mode)
-  Images     image folder, one-image or slideshow mode, ticks, Move up/down,
-             drop box, Refresh, Open folder and Next image   (Images mode)
-  Slideshow  preset interval slider, optional custom seconds, crossfade and
-             Shuffle   (Images mode)
-  Windows    start at sign-in, lock-screen image, desktop wallpaper image
+  Other      start at sign-in, lock-screen image, desktop wallpaper image
              (shared by both modes)
 
 The tabs that belong to the other mode are greyed and cannot be selected. When
@@ -186,7 +185,7 @@ either neighbouring clip), so a 5-second clip does not turn into a blur.
 
 Multiple monitors
 -----------------
-LiveBackground supports up to three monitors. The Multiple Monitor tab has a
+LiveBackground supports up to three monitors. The Multi Monitor tab has a
 2nd Screen and, when a third monitor is connected, a 3rd Screen sub-tab. A
 fourth or later monitor mirrors the main screen. Settings are remembered by
 monitor device name, so unplugging, replugging and reordering screens does not
