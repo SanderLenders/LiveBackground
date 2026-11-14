@@ -133,9 +133,28 @@ namespace LiveBackground
 
         public static string ManifestPath(string appRoot) { return Path.Combine(CacheDir(appRoot), "manifest.json"); }
 
-        // The second screen keeps its own "what is playing there" pointer, so
-        // an independent second loop never disturbs the main one.
-        public static string SecondManifestPath(string appRoot) { return Path.Combine(CacheDir(appRoot), "second.json"); }
+        // Each extra screen keeps its own "what is playing there" pointer, so
+        // an independent screen loop never disturbs the main one. The file is
+        // named after the monitor's device name.
+        public static string ScreenManifestPath(string appRoot, string device)
+        {
+            return Path.Combine(ScreensDir(appRoot), ScreenKey(device) + ".json");
+        }
+
+        public static string ScreensDir(string appRoot) { return Path.Combine(CacheDir(appRoot), "screens"); }
+
+        // Turns "\\.\DISPLAY2" into a file name: only letters and digits are
+        // kept, everything else becomes an underscore.
+        private static string ScreenKey(string device)
+        {
+            if (string.IsNullOrEmpty(device)) return "screen";
+            StringBuilder sb = new StringBuilder(device.Length);
+            foreach (char c in device)
+            {
+                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+            }
+            return sb.ToString();
+        }
 
         public static string LoopsDir(string appRoot) { return Path.Combine(CacheDir(appRoot), "loops"); }
 
@@ -205,7 +224,7 @@ namespace LiveBackground
                 if (!Directory.Exists(cache)) return;
                 string loops = LoopsDir(appRoot);
                 MediaManifest live = LoadManifest(appRoot);
-                MediaManifest second = LoadSecondManifest(appRoot);
+                List<MediaManifest> screenLive = LoadScreenManifests(appRoot);
 
                 List<KeyValuePair<string, MediaManifest>> entries =
                     new List<KeyValuePair<string, MediaManifest>>();
@@ -232,15 +251,25 @@ namespace LiveBackground
 
                 HashSet<string> keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (live != null) AddKeep(keep, cache, live);
-                if (second != null) AddKeep(keep, cache, second);
+                foreach (MediaManifest screen in screenLive) AddKeep(keep, cache, screen);
 
                 int kept = 0;
                 foreach (KeyValuePair<string, MediaManifest> item in entries)
                 {
-                    bool isLive = (live != null &&
-                        string.Equals(item.Value.Signature, live.Signature, StringComparison.OrdinalIgnoreCase)) ||
-                        (second != null &&
-                        string.Equals(item.Value.Signature, second.Signature, StringComparison.OrdinalIgnoreCase));
+                    bool isLive = live != null &&
+                        string.Equals(item.Value.Signature, live.Signature, StringComparison.OrdinalIgnoreCase);
+                    if (!isLive)
+                    {
+                        foreach (MediaManifest screen in screenLive)
+                        {
+                            if (screen != null && string.Equals(item.Value.Signature, screen.Signature,
+                                StringComparison.OrdinalIgnoreCase))
+                            {
+                                isLive = true;
+                                break;
+                            }
+                        }
+                    }
                     if (kept < CacheKeep || isLive)
                     {
                         AddKeep(keep, cache, item.Value);
@@ -503,28 +532,49 @@ namespace LiveBackground
             catch (Exception ex) { Log.Warn("could not read manifest: " + ex.Message); return null; }
         }
 
-        public static MediaManifest LoadSecondManifest(string appRoot)
+        public static MediaManifest LoadScreenManifest(string appRoot, string device)
         {
-            string path = SecondManifestPath(appRoot);
+            string path = ScreenManifestPath(appRoot, device);
             if (!File.Exists(path)) return null;
             try { return JsonStore.DeserializeFile<MediaManifest>(path); }
-            catch (Exception ex) { Log.Warn("could not read the second-screen manifest: " + ex.Message); return null; }
+            catch (Exception ex) { Log.Warn("could not read a screen manifest: " + ex.Message); return null; }
         }
 
-        // Same checks as IsCacheValid, but against the second screen's own
-        // manifest and clip selection.
-        public static bool IsSecondCacheValid(string appRoot, AppConfig config, out MediaManifest manifest,
-            bool checkSignature)
+        // Every per-screen "now playing" pointer, for the cache clean-up.
+        public static List<MediaManifest> LoadScreenManifests(string appRoot)
         {
-            manifest = LoadSecondManifest(appRoot);
+            List<MediaManifest> list = new List<MediaManifest>();
+            try
+            {
+                string dir = ScreensDir(appRoot);
+                if (!Directory.Exists(dir)) return list;
+                foreach (string file in Directory.GetFiles(dir, "*.json"))
+                {
+                    try
+                    {
+                        MediaManifest manifest = JsonStore.DeserializeFile<MediaManifest>(file);
+                        if (manifest != null) list.Add(manifest);
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex) { Log.Warn("could not read the screen manifests: " + ex.Message); }
+            return list;
+        }
+
+        // Same checks as IsCacheValid, but against one screen's own manifest
+        // and clip selection.
+        public static bool IsScreenCacheValid(string appRoot, AppConfig screenConfig, string device,
+            out MediaManifest manifest, bool checkSignature)
+        {
+            manifest = LoadScreenManifest(appRoot, device);
             if (manifest == null) return false;
             if (!File.Exists(LoopPath(appRoot, manifest))) return false;
-            if (manifest.Width != config.RenderWidth || manifest.Height != config.RenderHeight) return false;
-            if (manifest.Fps != config.Fps) return false;
+            if (manifest.Width != screenConfig.RenderWidth || manifest.Height != screenConfig.RenderHeight) return false;
+            if (manifest.Fps != screenConfig.Fps) return false;
             if (!checkSignature) return true;
-            AppConfig second = config.SecondScreenConfig();
-            string folder = Util.ResolvePath(appRoot, second.VideoFolder);
-            return manifest.Signature == Signature(folder, second);
+            string folder = Util.ResolvePath(appRoot, screenConfig.VideoFolder);
+            return manifest.Signature == Signature(folder, screenConfig);
         }
 
         public static bool IsCacheValid(string appRoot, AppConfig config, out MediaManifest manifest)
@@ -570,7 +620,7 @@ namespace LiveBackground
         }
 
         // liveManifestPath selects which "now playing" pointer a finished build
-        // writes: the main loop by default, or the second screen's own file.
+        // writes: the main loop by default, or a screen's own file.
         public static BuildResult Build(string appRoot, AppConfig config, Action<string> log, Action<double> progress,
             Func<bool> cancelled, bool force, bool cacheOnly, string liveManifestPath)
         {

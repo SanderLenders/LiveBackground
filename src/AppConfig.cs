@@ -22,6 +22,51 @@ namespace LiveBackground
         }
     }
 
+    // One extra screen's own loop, remembered by the monitor's device name
+    // ("\\.\DISPLAY2") rather than by position, so it survives unplugging,
+    // replugging and reordering the monitors. SameAsMain keeps the screen on
+    // the main loop; turning it off renders and caches a separate loop.
+    [DataContract]
+    public class ScreenSettings
+    {
+        [DataMember(Name = "device")] public string Device = "";
+        [DataMember(Name = "sameAsMain")] public bool SameAsMain = true;
+        [DataMember(Name = "folder")] public string Folder = @"%USERPROFILE%\LiveBackground\Videos";
+        [DataMember(Name = "playbackMode")] public string PlaybackMode = "single";
+        [DataMember(Name = "singleClip")] public string SingleClip = "Galaxy HD Clip.mp4";
+        [DataMember(Name = "playlist")] public List<PlaylistEntry> Playlist = new List<PlaylistEntry>();
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Device = "";
+            SameAsMain = true;
+            Folder = @"%USERPROFILE%\LiveBackground\Videos";
+            PlaybackMode = "single";
+            SingleClip = "Galaxy HD Clip.mp4";
+            Playlist = new List<PlaylistEntry>();
+        }
+
+        public ScreenSettings Clone()
+        {
+            ScreenSettings copy = new ScreenSettings();
+            copy.Device = Device;
+            copy.SameAsMain = SameAsMain;
+            copy.Folder = Folder;
+            copy.PlaybackMode = PlaybackMode;
+            copy.SingleClip = SingleClip;
+            copy.Playlist = new List<PlaylistEntry>();
+            if (Playlist != null)
+            {
+                foreach (PlaylistEntry entry in Playlist)
+                {
+                    if (entry != null) copy.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                }
+            }
+            return copy;
+        }
+    }
+
     [DataContract]
     public class AppConfig
     {
@@ -74,6 +119,11 @@ namespace LiveBackground
         [DataMember(Name = "secondScreenSingleClip")] public string SecondScreenSingleClip = "Galaxy HD Clip.mp4";
         [DataMember(Name = "secondScreenPlaylist")] public List<PlaylistEntry> SecondScreenPlaylist = new List<PlaylistEntry>();
 
+        // Per-screen settings for the extra monitors, keyed by device name.
+        // The flat SecondScreen* fields above are the older single-screen
+        // shape; Normalize migrates them into this list once.
+        [DataMember(Name = "extraScreens")] public List<ScreenSettings> ExtraScreens = new List<ScreenSettings>();
+
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
@@ -116,6 +166,7 @@ namespace LiveBackground
             SecondScreenPlaybackMode = "single";
             SecondScreenSingleClip = "Galaxy HD Clip.mp4";
             SecondScreenPlaylist = new List<PlaylistEntry>();
+            ExtraScreens = new List<ScreenSettings>();
         }
 
         public AppConfig Clone()
@@ -190,26 +241,127 @@ namespace LiveBackground
                     if (entry != null) SecondScreenPlaylist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
                 }
             }
-        }
-
-        // A config that builds the second screen's own loop: the same render
-        // settings as the main loop, but the second screen's folder, mode and
-        // clip selection. Used only when "same as main" is off.
-        public AppConfig SecondScreenConfig()
-        {
-            AppConfig second = Clone();
-            second.VideoFolder = SecondScreenFolder;
-            second.PlaybackMode = SecondScreenPlaybackMode;
-            second.SingleClip = SecondScreenSingleClip;
-            second.Playlist = new List<PlaylistEntry>();
-            if (SecondScreenPlaylist != null)
+            ExtraScreens = new List<ScreenSettings>();
+            if (other.ExtraScreens != null)
             {
-                foreach (PlaylistEntry entry in SecondScreenPlaylist)
+                foreach (ScreenSettings screen in other.ExtraScreens)
                 {
-                    if (entry != null) second.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                    if (screen != null) ExtraScreens.Add(screen.Clone());
                 }
             }
-            return second;
+        }
+
+        // A config that builds one screen's own loop: the same render settings
+        // as the main loop, but that screen's folder, mode and clip selection.
+        // Used only when "same as main" is off for the screen.
+        public AppConfig ScreenConfig(ScreenSettings screen)
+        {
+            AppConfig own = Clone();
+            if (screen != null)
+            {
+                own.VideoFolder = screen.Folder;
+                own.PlaybackMode = screen.PlaybackMode;
+                own.SingleClip = screen.SingleClip;
+                own.Playlist = new List<PlaylistEntry>();
+                if (screen.Playlist != null)
+                {
+                    foreach (PlaylistEntry entry in screen.Playlist)
+                    {
+                        if (entry != null) own.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                    }
+                }
+            }
+            return own;
+        }
+
+        // The settings for one physical screen, matched by device name.
+        // A screen with no entry of its own falls back to a migrated,
+        // device-less entry (an old second-screen setup); with no such entry
+        // either, the screen mirrors the main loop.
+        public ScreenSettings ScreenFor(string device)
+        {
+            if (ExtraScreens != null)
+            {
+                ScreenSettings legacy = null;
+                foreach (ScreenSettings screen in ExtraScreens)
+                {
+                    if (screen == null) continue;
+                    if (string.IsNullOrEmpty(screen.Device))
+                    {
+                        if (legacy == null) legacy = screen;
+                        continue;
+                    }
+                    if (string.Equals(screen.Device, device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return screen;
+                    }
+                }
+                if (legacy != null) return legacy;
+            }
+            ScreenSettings fallback = new ScreenSettings();
+            fallback.Device = device ?? "";
+            return fallback;
+        }
+
+        // The stored entry for a device, optionally created on the spot. The
+        // settings window uses this so editing a screen always has somewhere
+        // to write, without disturbing screens it does not show.
+        public ScreenSettings ScreenByDevice(string device, bool create)
+        {
+            if (ExtraScreens == null) ExtraScreens = new List<ScreenSettings>();
+            if (!string.IsNullOrEmpty(device))
+            {
+                foreach (ScreenSettings screen in ExtraScreens)
+                {
+                    if (screen != null && !string.IsNullOrEmpty(screen.Device) &&
+                        string.Equals(screen.Device, device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return screen;
+                    }
+                }
+            }
+            if (!create) return null;
+            ScreenSettings created = new ScreenSettings();
+            created.Device = device ?? "";
+            ExtraScreens.Add(created);
+            return created;
+        }
+
+        // Binds a migrated, device-less entry to the first non-primary monitor,
+        // so from then on the settings are remembered by device name. Called at
+        // startup when the screen list is known. Returns true when it changed.
+        public bool BindLegacyScreens(List<ScreenInfo> screens)
+        {
+            if (screens == null || ExtraScreens == null) return false;
+            ScreenSettings legacy = null;
+            foreach (ScreenSettings screen in ExtraScreens)
+            {
+                if (screen != null && string.IsNullOrEmpty(screen.Device))
+                {
+                    legacy = screen;
+                    break;
+                }
+            }
+            if (legacy == null) return false;
+
+            foreach (ScreenInfo screen in screens)
+            {
+                if (screen.Primary) continue;
+                bool taken = false;
+                foreach (ScreenSettings existing in ExtraScreens)
+                {
+                    if (existing != null && !string.IsNullOrEmpty(existing.Device) &&
+                        string.Equals(existing.Device, screen.Device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        taken = true;
+                        break;
+                    }
+                }
+                if (taken) continue;
+                legacy.Device = screen.Device ?? "";
+                return true;
+            }
+            return false;
         }
 
         public void Normalize()
@@ -294,6 +446,30 @@ namespace LiveBackground
             if (SecondScreenSingleClip == null) SecondScreenSingleClip = "";
             if (SecondScreenPlaylist == null) SecondScreenPlaylist = new List<PlaylistEntry>();
 
+            // Migrate the flat second-screen fields from before per-screen
+            // settings existed into one device-less entry. Startup binds that
+            // entry to the first non-primary monitor.
+            if (ExtraScreens == null) ExtraScreens = new List<ScreenSettings>();
+            if (ExtraScreens.Count == 0)
+            {
+                ScreenSettings legacy = new ScreenSettings();
+                legacy.Device = "";
+                legacy.SameAsMain = SecondScreenSameAsMain;
+                legacy.Folder = SecondScreenFolder;
+                legacy.PlaybackMode = SecondScreenPlaybackMode;
+                legacy.SingleClip = SecondScreenSingleClip;
+                legacy.Playlist = new List<PlaylistEntry>();
+                if (SecondScreenPlaylist != null)
+                {
+                    foreach (PlaylistEntry entry in SecondScreenPlaylist)
+                    {
+                        if (entry != null) legacy.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+                    }
+                }
+                ExtraScreens.Add(legacy);
+            }
+            NormalizeScreens();
+
             // Drop empty and duplicate names, keeping the first occurrence in
             // the user's order. A clip that is missing from the folder is kept
             // here so it comes back if the file is restored.
@@ -329,6 +505,59 @@ namespace LiveBackground
                 cleanSecond.Add(new PlaylistEntry(name, entry.Enabled));
             }
             SecondScreenPlaylist = cleanSecond;
+        }
+
+        // Keeps the per-screen list tidy: one entry per device, sane defaults,
+        // and the same playlist clean-up the main and image lists get.
+        private void NormalizeScreens()
+        {
+            List<ScreenSettings> clean = new List<ScreenSettings>();
+            HashSet<string> seenDevices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool legacySeen = false;
+            foreach (ScreenSettings screen in ExtraScreens)
+            {
+                if (screen == null) continue;
+
+                if (string.IsNullOrEmpty(screen.Folder))
+                {
+                    screen.Folder = @"%USERPROFILE%\LiveBackground\Videos";
+                }
+                if (!string.Equals(screen.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase))
+                {
+                    screen.PlaybackMode = "playlist";
+                }
+                else
+                {
+                    screen.PlaybackMode = "single";
+                }
+                if (screen.SingleClip == null) screen.SingleClip = "";
+                if (screen.Playlist == null) screen.Playlist = new List<PlaylistEntry>();
+
+                List<PlaylistEntry> cleanPlaylist = new List<PlaylistEntry>();
+                HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (PlaylistEntry entry in screen.Playlist)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                    string name = entry.Name.Trim();
+                    if (name.Length == 0 || !seen.Add(name)) continue;
+                    cleanPlaylist.Add(new PlaylistEntry(name, entry.Enabled));
+                }
+                screen.Playlist = cleanPlaylist;
+
+                // Keep one device-less entry (the migration slot) and one
+                // entry per device name.
+                if (string.IsNullOrEmpty(screen.Device))
+                {
+                    if (legacySeen) continue;
+                    legacySeen = true;
+                }
+                else if (!seenDevices.Add(screen.Device))
+                {
+                    continue;
+                }
+                clean.Add(screen);
+            }
+            ExtraScreens = clean;
         }
     }
 

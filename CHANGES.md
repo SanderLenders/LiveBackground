@@ -1,5 +1,30 @@
 # LiveBackground change list
 
+## 1.7.0
+
+### Multiple monitors
+
+- **Every extra screen now has its own settings, remembered by monitor.**
+  The "Second screen" tab is renamed **"Multiple Monitor"** and holds a shared
+  Windows display-mode row plus one sub-tab per extra screen: **"2nd Screen"**
+  and **"3rd Screen"**. Each sub-tab has its own switch ("Use the same video as
+  the main screen"), folder, mode (all clips in order / one clip) and clip list,
+  exactly like the Videos tab. The **"3rd Screen" sub-tab is greyed out and
+  cannot be opened while no third monitor is connected**.
+- **Settings are remembered by monitor device name**, so unplugging a screen,
+  plugging it back in, or reordering the screens keeps that screen's folder and
+  clip selection. A screen that is not connected keeps its settings untouched
+  when another screen is saved.
+- **A screen mirrors the main loop until you change it**, so a freshly connected
+  monitor shows the main video right away. Up to three screens are supported;
+  any screen beyond the third mirrors the main loop.
+- **Each extra screen gets its own cached loop** when it is not mirroring, built
+  in the background and stored per monitor (`cache\screens\`), so two screens can
+  play different clips at the same time.
+- **Untested on real three-monitor hardware.** The three-screen path is designed
+  to stay inert on a two-screen PC, but it has only been exercised on two
+  screens; the third screen's own-loop build has not been run on real hardware.
+
 ## 1.6.5
 
 ### Three screens

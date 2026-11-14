@@ -74,6 +74,19 @@ namespace LiveBackground
             {
                 config.SecondScreenFolder = Path.Combine(ProgramRoot, "videos");
             }
+            if (config.ExtraScreens != null)
+            {
+                foreach (ScreenSettings screen in config.ExtraScreens)
+                {
+                    if (screen == null) continue;
+                    if (string.IsNullOrEmpty(screen.Folder) ||
+                        string.Equals(screen.Folder, @"%USERPROFILE%\LiveBackground\Videos",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        screen.Folder = Path.Combine(ProgramRoot, "videos");
+                    }
+                }
+            }
             if (string.IsNullOrEmpty(config.ImageFolder) ||
                 string.Equals(config.ImageFolder, @"%USERPROFILE%\LiveBackground\images\wallpapers",
                     StringComparison.OrdinalIgnoreCase))

@@ -14,11 +14,8 @@ namespace LiveBackground
         private static string _appRoot;
         private static AppConfig _config;
         private static MpvPlayer _player;
-        private static MpvPlayer _player2;
-        private static MpvPlayer _player3;
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
-        private static string _mediaPath2 = "";
 
         private static readonly object Sync = new object();
         private static bool _building;
@@ -29,23 +26,19 @@ namespace LiveBackground
         private static bool _dirty;
         private static DateTime _nextCheck = DateTime.MinValue;
         private static BuildResult _pendingBuild;
-        private static BuildResult _pendingBuild2;
         // True while the running background worker also builds the main loop.
-        // Its result is what finishes the progress card, so a second-screen
-        // result must not finish the same card a second time.
+        // Its result is what finishes the progress card, so a screen result
+        // must not finish the same card a second time.
         private static bool _buildCardForMain;
         private static DateTime _lastWatcherEvent = DateTime.MinValue;
         private static string _lastMissingLog = "";
-        private static string _lastMissingLog2 = "";
         private static volatile bool _paused;
         private static volatile bool _resumeFromPause;
         private static volatile bool _forceBuild;
-        private static volatile bool _forceBuild2;
         private static volatile int _buildGeneration;
         private static volatile bool _prefetching;
         private static volatile bool _prefetchCancel;
         private static volatile bool _restartPlayer;
-        private static volatile bool _restartPlayer2;
         private static bool _prefetchDone;
         private static DateTime _prefetchAfter = DateTime.MaxValue;
         private static FileSystemWatcher _watcher;
@@ -72,6 +65,40 @@ namespace LiveBackground
         private static DateTime _nextScreenCheck = DateTime.MinValue;
         private static bool _layoutChanged;
         private static bool _screenCountChanged;
+
+        // One player per extra screen, at most two (the second and third
+        // monitors). Each is remembered by monitor device name, so its settings
+        // survive replugging and reordering. _screensDirty is set by a settings
+        // save that touched any screen.
+        private static readonly List<ScreenPlayer> _screenPlayers = new List<ScreenPlayer>();
+        private static bool _screensDirty;
+
+        // One extra screen's player and the state the watchdog needs: which
+        // monitor it belongs to, which loop it should show, and whether its
+        // settings changed since the last pass.
+        private sealed class ScreenPlayer
+        {
+            public MpvPlayer Player;
+            public string Device = "";
+            public int Number = 2;          // 2 = "second screen", 3 = "third screen"
+            public int ScreenIndex = 1;     // index into _screens
+            public string MediaPath = "";
+            public bool ForceBuild;
+            public string LastMissingLog = "";
+            public BuildResult Pending;
+        }
+
+        // One extra screen's pending encode: a snapshot of its settings, its
+        // own manifest and the signature used to decide whether it is cached.
+        private sealed class ScreenJob
+        {
+            public ScreenPlayer Screen;
+            public AppConfig Config;
+            public bool Force;
+            public string Signature;
+            public string ManifestPath;
+            public string LogPrefix;
+        }
 
         public static string AppRoot { get { return _appRoot; } }
         public static AppConfig Config { get { return _config; } }
@@ -163,17 +190,16 @@ namespace LiveBackground
                 StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(_config.LockScreenImage ?? "", updated.LockScreenImage ?? "",
                 StringComparison.OrdinalIgnoreCase);
-            // Which loop the second screen should play: mirroring toggles the
-            // source, an independent selection changes the cached loop.
-            bool secondChanged = _config.SecondScreenSameAsMain != updated.SecondScreenSameAsMain ||
-                !string.Equals(_config.SecondScreenFolder ?? "", updated.SecondScreenFolder ?? "",
-                    StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(_config.SecondScreenPlaybackMode ?? "", updated.SecondScreenPlaybackMode ?? "",
-                    StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(_config.SecondScreenSingleClip ?? "", updated.SecondScreenSingleClip ?? "",
-                    StringComparison.OrdinalIgnoreCase);
+            // Any change to a screen's own settings (mirroring, folder, mode or
+            // clip) is noticed here, so the players are re-pointed and any
+            // needed loop rebuilt in the watchdog. The token covers all screens
+            // at once; comparing it before and after CopyFrom catches them.
+            string screensBefore = ScreensToken(_config);
             _config.CopyFrom(updated);
-            if (secondChanged) _restartPlayer2 = true;
+            if (!string.Equals(screensBefore, ScreensToken(_config), StringComparison.Ordinal))
+            {
+                _screensDirty = true;
+            }
             if (lockChanged) StartLockScreenWorker();
 
             if (IsImagesMode)
@@ -364,8 +390,10 @@ namespace LiveBackground
                 finally
                 {
                     if (_player != null) _player.Stop();
-                    if (_player2 != null) _player2.Stop();
-                    if (_player3 != null) _player3.Stop();
+                    foreach (ScreenPlayer screen in _screenPlayers)
+                    {
+                        if (screen.Player != null) screen.Player.Stop();
+                    }
                     ShutdownImageSurfaces();
                     Ui.Stop();
                     try { mutex.ReleaseMutex(); } catch { }
@@ -439,6 +467,14 @@ namespace LiveBackground
             _screens = Screens.Enumerate();
             _screensSignature = Screens.Signature(_screens);
             Log.Info("displays: " + DescribeScreens(_screens));
+            // An old config's single second-screen block becomes the settings
+            // for the first extra monitor, remembered by its device name from
+            // then on.
+            if (_config.BindLegacyScreens(_screens))
+            {
+                try { ConfigStore.Save(_appRoot, _config); }
+                catch (Exception ex) { Log.Warn("could not save the bound screens: " + ex.Message); }
+            }
             bool imagesMode = IsImagesMode;
             string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
             string imageFolder = Util.ResolvePath(_appRoot, _config.ImageFolder);
@@ -490,28 +526,11 @@ namespace LiveBackground
 
             _player = new MpvPlayer(_appRoot, _config);
 
-            // A second display gets its own player. It mirrors the main loop by
-            // default; an independent second loop is built on demand. Duplicate
-            // mode drives both targets from one desktop monitor, so it never
-            // gets a second player.
-            if (_screens.Count >= 2 && !Screens.IsDuplicate(_screens))
-            {
-                _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
-                RefreshSecondMediaPath();
-                if (string.IsNullOrEmpty(_mediaPath2))
-                {
-                    _forceBuild2 = true;
-                    Log.Info("no second-screen loop yet, building in the background");
-                }
-            }
-
-            // A third display always mirrors the main loop for now. It gets its
-            // own settings and its own loop in a later step; Duplicate mode
-            // reports a single desktop monitor, so it never gets a third player.
-            if (_screens.Count >= 3 && !Screens.IsDuplicate(_screens))
-            {
-                _player3 = new MpvPlayer(_appRoot, _config, "mpv3.log");
-            }
+            // Each extra display gets its own player. A screen mirrors the main
+            // loop by default; an independent loop is built on demand. Duplicate
+            // mode drives every target from one desktop monitor, so it never
+            // gets extra players.
+            RebuildScreenPlayers();
 
             // The lock screen and tray are not needed for the first wallpaper
             // frame. Starting them later keeps them from competing with the
@@ -550,13 +569,12 @@ namespace LiveBackground
                 {
                     _player.Start(_progman, _mediaPath);
                 }
-                if (_player2 != null && !string.IsNullOrEmpty(_mediaPath2))
+                foreach (ScreenPlayer screen in _screenPlayers)
                 {
-                    _player2.Start(_progman, _mediaPath2);
-                }
-                if (_player3 != null && !string.IsNullOrEmpty(_mediaPath))
-                {
-                    _player3.Start(_progman, _mediaPath);
+                    if (screen.Player != null && !string.IsNullOrEmpty(screen.MediaPath))
+                    {
+                        screen.Player.Start(_progman, screen.MediaPath);
+                    }
                 }
 
                 // Create the WorkerW wallpaper layer while mpv is still loading.
@@ -589,8 +607,10 @@ namespace LiveBackground
                     Log.Info("stop flag detected, exiting");
                     Util.SafeDelete(Installer.StopFlag(_appRoot));
                     if (_player != null) _player.Stop();
-                    if (_player2 != null) _player2.Stop();
-                    if (_player3 != null) _player3.Stop();
+                    foreach (ScreenPlayer screen in _screenPlayers)
+                    {
+                        if (screen.Player != null) screen.Player.Stop();
+                    }
                     return 0;
                 }
 
@@ -629,8 +649,10 @@ namespace LiveBackground
                         _player.Stop();
                         _resumeFromPause = true;
                     }
-                    if (_player2 != null && _player2.IsRunning) _player2.Stop();
-                    if (_player3 != null && _player3.IsRunning) _player3.Stop();
+                    foreach (ScreenPlayer screen in _screenPlayers)
+                    {
+                        if (screen.Player != null && screen.Player.IsRunning) screen.Player.Stop();
+                    }
                 }
 
                 // Images mode never starts mpv or touches the video cache. The
@@ -725,19 +747,15 @@ namespace LiveBackground
                             if (_player.IsRunning) _player.Stop();
                             if (!_paused) _player.Start(_progman, _mediaPath);
                             // Mirroring screens follow the main loop; restart
-                            // the second player so it plays the new file too.
-                            if (_player2 != null && _config.SecondScreenSameAsMain && !_paused)
+                            // them so they play the new file too. A screen with
+                            // its own loop is left to its own build.
+                            foreach (ScreenPlayer screen in _screenPlayers)
                             {
-                                _mediaPath2 = _mediaPath;
-                                _player2.Stop();
-                                _player2.Start(_progman, _mediaPath2);
-                            }
-                            // The third screen always mirrors the main loop, so
-                            // it follows the freshly built file too.
-                            if (_player3 != null && !_paused)
-                            {
-                                _player3.Stop();
-                                _player3.Start(_progman, _mediaPath);
+                                if (screen.Player == null || _paused) continue;
+                                if (!_config.ScreenFor(screen.Device).SameAsMain) continue;
+                                screen.MediaPath = _mediaPath;
+                                if (screen.Player.IsRunning) screen.Player.Stop();
+                                screen.Player.Start(_progman, screen.MediaPath);
                             }
                             string wallpaper = DesktopHost.WallpaperFor(_appRoot, _config, finished.FramePath);
                             if (!string.IsNullOrEmpty(wallpaper)) DesktopHost.SetDesktopWallpaper(wallpaper);
@@ -756,39 +774,43 @@ namespace LiveBackground
                         }
                     }
 
-                    // Pick up a finished second-screen build.
-                    BuildResult finished2 = null;
-                    lock (Sync)
+                    // Pick up finished per-screen builds. Each screen reports
+                    // through its own slot, so one screen's result never
+                    // disturbs another's.
+                    foreach (ScreenPlayer screen in _screenPlayers)
                     {
-                        if (_pendingBuild2 != null)
+                        BuildResult finished2 = null;
+                        lock (Sync)
                         {
-                            finished2 = _pendingBuild2;
-                            _pendingBuild2 = null;
+                            if (screen.Pending != null)
+                            {
+                                finished2 = screen.Pending;
+                                screen.Pending = null;
+                            }
                         }
-                    }
-                    if (finished2 != null)
-                    {
+                        if (finished2 == null) continue;
+
                         if (finished2.Cancelled)
                         {
-                            Log.Info("second-screen build replaced: " + finished2.Message);
+                            Log.Info(ScreenLabel(screen) + " build replaced: " + finished2.Message);
                         }
                         else if (finished2.Success)
                         {
-                            Log.Info("second-screen rebuild finished: " + finished2.Message);
-                            _mediaPath2 = finished2.LoopPath;
-                            if (_player2 != null && !_paused)
+                            Log.Info(ScreenLabel(screen) + " rebuild finished: " + finished2.Message);
+                            screen.MediaPath = finished2.LoopPath;
+                            if (screen.Player != null && !_paused)
                             {
-                                if (_player2.IsRunning) _player2.Stop();
-                                _player2.Start(_progman, _mediaPath2);
+                                if (screen.Player.IsRunning) screen.Player.Stop();
+                                screen.Player.Start(_progman, screen.MediaPath);
                             }
-                            // When only the second screen needed a loop, this
+                            // When only an extra screen needed a loop, this
                             // result owns the progress card; the main result
                             // is what finishes it otherwise.
                             if (!_buildCardForMain) Ui.BuildProgressFinish(true, "Wallpaper updated");
                         }
                         else
                         {
-                            Log.Warn("second-screen rebuild failed: " + finished2.Message);
+                            Log.Warn(ScreenLabel(screen) + " rebuild failed: " + finished2.Message);
                             _nextCheck = DateTime.UtcNow.AddSeconds(60);
                             if (!_buildCardForMain) Ui.BuildProgressFinish(false, "Build failed - see logs\\app.log");
                         }
@@ -810,64 +832,47 @@ namespace LiveBackground
                     }
 
                     // A monitor was added, removed or moved. Players are always
-                    // re-placed onto their screen below; only a change in the
-                    // number of screens needs the players rebuilt.
+                    // re-placed onto their screen below; the player list is
+                    // rebuilt so it matches the connected monitors again.
                     if (_layoutChanged)
                     {
                         _layoutChanged = false;
                         firstPlacementLogged = false;
-                        bool wantSecond = _screens.Count >= 2 && !Screens.IsDuplicate(_screens);
-                        if (!wantSecond)
-                        {
-                            if (_player2 != null)
-                            {
-                                _player2.Stop();
-                                _player2 = null;
-                            }
-                        }
-                        else if (_player2 == null)
-                        {
-                            _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
-                            _screenCountChanged = true;
-                        }
-                        bool wantThird = _screens.Count >= 3 && !Screens.IsDuplicate(_screens);
-                        if (!wantThird)
-                        {
-                            if (_player3 != null)
-                            {
-                                _player3.Stop();
-                                _player3 = null;
-                            }
-                        }
-                        else if (_player3 == null)
-                        {
-                            _player3 = new MpvPlayer(_appRoot, _config, "mpv3.log");
-                            _screenCountChanged = true;
-                        }
+                        int playersBefore = _screenPlayers.Count;
+                        RebuildScreenPlayers();
+                        if (_screenPlayers.Count != playersBefore) _screenCountChanged = true;
                         if (_screenCountChanged && !_paused && _progman != IntPtr.Zero)
                         {
                             if (!string.IsNullOrEmpty(_mediaPath) && File.Exists(_mediaPath))
                                 _player.Start(_progman, _mediaPath);
-                            if (_player2 != null && !string.IsNullOrEmpty(_mediaPath2) &&
-                                File.Exists(_mediaPath2))
-                                _player2.Start(_progman, _mediaPath2);
-                            if (_player3 != null && !string.IsNullOrEmpty(_mediaPath) &&
-                                File.Exists(_mediaPath))
-                                _player3.Start(_progman, _mediaPath);
+                            foreach (ScreenPlayer screen in _screenPlayers)
+                            {
+                                if (screen.Player != null && !string.IsNullOrEmpty(screen.MediaPath) &&
+                                    File.Exists(screen.MediaPath))
+                                {
+                                    screen.Player.Start(_progman, screen.MediaPath);
+                                }
+                            }
                         }
                         _screenCountChanged = false;
-                        RefreshSecondMediaPath();
                     }
 
-                    if (_restartPlayer2)
+                    // A settings save may have changed one or more screens.
+                    // Re-point each player at the loop its settings now ask for
+                    // and restart it; a needed rebuild is picked up below.
+                    if (_screensDirty)
                     {
-                        _restartPlayer2 = false;
-                        RefreshSecondMediaPath();
-                        if (_player2 != null && !_paused && _progman != IntPtr.Zero &&
-                            !string.IsNullOrEmpty(_mediaPath2) && File.Exists(_mediaPath2))
+                        _screensDirty = false;
+                        RebuildScreenPlayers();
+                        foreach (ScreenPlayer screen in _screenPlayers)
                         {
-                            if (_player2.IsRunning) _player2.Stop();
-                            _player2.Start(_progman, _mediaPath2);
+                            RefreshScreenMediaPath(screen);
+                            if (screen.Player != null && !_paused && _progman != IntPtr.Zero &&
+                                !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
+                            {
+                                if (screen.Player.IsRunning) screen.Player.Stop();
+                                screen.Player.Start(_progman, screen.MediaPath);
+                            }
                         }
                     }
 
@@ -882,17 +887,14 @@ namespace LiveBackground
                     }
 
                     // Rebuild when the folder changed, the user asked for it, or
-                    // the cache is stale. The second screen is checked on the
+                    // the cache is stale. Every extra screen is checked on the
                     // same pass, but only while it plays its own loop; when it
                     // mirrors the main screen there is nothing to render.
-                    bool secondOwnLoop = _player2 != null && !_config.SecondScreenSameAsMain;
-                    if (!_building && (_forceBuild || _forceBuild2 || DateTime.UtcNow >= _nextCheck))
+                    if (!_building && (_forceBuild || AnyScreenBuildForced() || DateTime.UtcNow >= _nextCheck))
                     {
                         _nextCheck = DateTime.UtcNow.AddSeconds(10);
                         bool buildMain = false;
                         bool forceMain = false;
-                        bool buildSecond = false;
-                        bool forceSecond = false;
 
                         if (_forceBuild)
                         {
@@ -918,31 +920,73 @@ namespace LiveBackground
                             if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                         }
 
-                        if (secondOwnLoop)
+                        // Each screen with its own loop that is missing or stale
+                        // becomes a job. The settings are snapshotted here so a
+                        // later save cannot make the encode write the wrong loop.
+                        List<ScreenJob> screenJobs = new List<ScreenJob>();
+                        foreach (ScreenPlayer screen in _screenPlayers)
                         {
-                            if (_forceBuild2)
+                            if (screen.Player == null) continue;
+                            ScreenSettings settings = _config.ScreenFor(screen.Device);
+                            if (settings.SameAsMain)
                             {
-                                _forceBuild2 = false;
-                                buildSecond = true;
-                                forceSecond = true;
+                                screen.ForceBuild = false;
+                                continue;
+                            }
+                            bool buildScreen = false;
+                            bool forceScreen = false;
+                            if (screen.ForceBuild)
+                            {
+                                screen.ForceBuild = false;
+                                buildScreen = true;
+                                forceScreen = true;
                             }
                             else
                             {
+                                AppConfig screenConfig = _config.ScreenConfig(settings);
                                 MediaManifest check;
-                                if (!MediaPipeline.IsSecondCacheValid(_appRoot, _config, out check, true))
+                                if (!MediaPipeline.IsScreenCacheValid(_appRoot, screenConfig, screen.Device,
+                                    out check, true))
                                 {
-                                    buildSecond = true;
+                                    buildScreen = true;
                                 }
                             }
-                        }
-                        else
-                        {
-                            _forceBuild2 = false;
+                            if (!buildScreen) continue;
+
+                            // "Nothing to build" has three distinct causes; say
+                            // which one so the log is actionable.
+                            AppConfig own = _config.ScreenConfig(settings);
+                            string folder = Util.ResolvePath(_appRoot, own.VideoFolder);
+                            if (MediaPipeline.ResolveClips(folder, own).Count == 0)
+                            {
+                                string message;
+                                string cardText;
+                                DescribeMissing(folder, own, out message, out cardText);
+                                if (!string.Equals(message, screen.LastMissingLog, StringComparison.Ordinal))
+                                {
+                                    Log.Warn(ScreenLabel(screen) + ": " + message);
+                                    screen.LastMissingLog = message;
+                                }
+                                _nextCheck = DateTime.UtcNow.AddSeconds(30);
+                                continue;
+                            }
+                            screen.LastMissingLog = "";
+
+                            ScreenJob job = new ScreenJob();
+                            job.Screen = screen;
+                            job.Config = own;
+                            job.Force = forceScreen;
+                            job.ManifestPath = MediaPipeline.ScreenManifestPath(_appRoot, screen.Device);
+                            job.LogPrefix = ScreenLabel(screen) + ": ";
+                            try
+                            {
+                                job.Signature = MediaPipeline.Signature(
+                                    Util.ResolvePath(_appRoot, own.VideoFolder), own);
+                            }
+                            catch { }
+                            screenJobs.Add(job);
                         }
 
-                        // "Nothing to build" has three distinct causes; say
-                        // which one so the log is actionable. The second screen
-                        // reports the same way, with its own folder.
                         if (buildMain)
                         {
                             string folder = Util.ResolvePath(_appRoot, _config.VideoFolder);
@@ -970,33 +1014,10 @@ namespace LiveBackground
                             }
                         }
 
-                        if (buildSecond)
-                        {
-                            AppConfig second = _config.SecondScreenConfig();
-                            string folder = Util.ResolvePath(_appRoot, second.VideoFolder);
-                            if (MediaPipeline.ResolveClips(folder, second).Count == 0)
-                            {
-                                string message;
-                                string cardText;
-                                DescribeMissing(folder, second, out message, out cardText);
-                                if (_lastMissingLog2 != message)
-                                {
-                                    Log.Warn("second screen: " + message);
-                                    _lastMissingLog2 = message;
-                                }
-                                _nextCheck = DateTime.UtcNow.AddSeconds(30);
-                                buildSecond = false;
-                            }
-                            else
-                            {
-                                _lastMissingLog2 = "";
-                            }
-                        }
-
-                        if (buildMain || buildSecond)
+                        if (buildMain || screenJobs.Count > 0)
                         {
                             if (buildMain) CancelPrefetch();
-                            StartBuildWorker(buildMain, forceMain, buildSecond, forceSecond);
+                            StartBuildWorker(buildMain, forceMain, screenJobs);
                         }
                     }
 
@@ -1059,41 +1080,22 @@ namespace LiveBackground
                         }
                     }
 
-                    // The second screen has its own player and watchdog: place
+                    // Each extra screen has its own player and watchdog: place
                     // it on its monitor and bring it back if it exited.
-                    if (_player2 != null)
+                    foreach (ScreenPlayer screen in _screenPlayers)
                     {
-                        if (_player2.IsRunning)
+                        if (screen.Player == null) continue;
+                        if (screen.Player.IsRunning)
                         {
-                            PlacePlayerOnScreen(_player2, 1);
+                            PlacePlayerOnScreen(screen.Player, screen.ScreenIndex);
                         }
                         else if (!_building && !_paused && _progman != IntPtr.Zero &&
-                            !string.IsNullOrEmpty(_mediaPath2) && File.Exists(_mediaPath2))
+                            !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
                         {
-                            if (!_player2.StartedRecently(5))
+                            if (!screen.Player.StartedRecently(5))
                             {
-                                Log.Warn("the second-screen player is not running, restarting");
-                                _player2.Start(_progman, _mediaPath2);
-                            }
-                        }
-                    }
-
-                    // The third screen mirrors the main loop and has the same
-                    // watchdog: place it on its monitor and bring it back if it
-                    // exited.
-                    if (_player3 != null)
-                    {
-                        if (_player3.IsRunning)
-                        {
-                            PlacePlayerOnScreen(_player3, 2);
-                        }
-                        else if (!_building && !_paused && _progman != IntPtr.Zero &&
-                            !string.IsNullOrEmpty(_mediaPath) && File.Exists(_mediaPath))
-                        {
-                            if (!_player3.StartedRecently(5))
-                            {
-                                Log.Warn("the third-screen player is not running, restarting");
-                                _player3.Start(_progman, _mediaPath);
+                                Log.Warn("the " + ScreenLabel(screen) + " player is not running, restarting");
+                                screen.Player.Start(_progman, screen.MediaPath);
                             }
                         }
                     }
@@ -1118,35 +1120,33 @@ namespace LiveBackground
             }
         }
 
-        // Builds one or both loops in the background. The main loop is built
-        // first so the primary screen never waits for the second one; both are
-        // reported back through their own pending slot.
-        private static void StartBuildWorker(bool buildMain, bool forceMain, bool buildSecond, bool forceSecond)
+        // Builds the main loop and/or the extra screens' own loops in the
+        // background. The main loop is built first so the primary screen never
+        // waits for the others; every result is reported back through the
+        // screen's own pending slot.
+        private static void StartBuildWorker(bool buildMain, bool forceMain, List<ScreenJob> screens)
         {
             int generation = _buildGeneration;
             string mainSignature = null;
-            try
+            if (buildMain)
             {
-                mainSignature = MediaPipeline.Signature(
-                    Util.ResolvePath(_appRoot, _config.VideoFolder), _config);
+                try
+                {
+                    mainSignature = MediaPipeline.Signature(
+                        Util.ResolvePath(_appRoot, _config.VideoFolder), _config);
+                }
+                catch { }
             }
-            catch { }
-            string secondSignature = null;
-            try
-            {
-                AppConfig second = _config.SecondScreenConfig();
-                secondSignature = MediaPipeline.Signature(
-                    Util.ResolvePath(_appRoot, second.VideoFolder), second);
-            }
-            catch { }
+            if (screens == null) screens = new List<ScreenJob>();
+
             lock (Sync)
             {
                 _building = true;
                 _buildingSignature = mainSignature;
                 _buildCardForMain = buildMain;
             }
-            Log.Info(buildMain && buildSecond ? "starting background build (both screens)"
-                : buildSecond ? "starting background build (second screen)"
+            Log.Info(buildMain && screens.Count > 0 ? "starting background build (main and extra screens)"
+                : screens.Count > 0 ? "starting background build (extra screens)"
                 : "starting background build");
 
             // A cached loop is swapped in within a fraction of a second. Do not
@@ -1154,9 +1154,13 @@ namespace LiveBackground
             bool cached = true;
             try
             {
-                if (buildMain && (forceMain || !MediaPipeline.HasCachedLoop(_appRoot, mainSignature))) cached = false;
-                if (buildSecond && (forceSecond ||
-                    secondSignature == null || !MediaPipeline.HasCachedLoop(_appRoot, secondSignature))) cached = false;
+                if (buildMain && (forceMain || mainSignature == null ||
+                    !MediaPipeline.HasCachedLoop(_appRoot, mainSignature))) cached = false;
+                foreach (ScreenJob job in screens)
+                {
+                    if (job.Force || job.Signature == null ||
+                        !MediaPipeline.HasCachedLoop(_appRoot, job.Signature)) cached = false;
+                }
             }
             catch { cached = false; }
 
@@ -1175,14 +1179,13 @@ namespace LiveBackground
                 }
 
                 // A generation change means the settings moved on; the main
-                // build already reported that, so do not start a stale second
-                // encode.
-                if (buildSecond && generation == _buildGeneration)
+                // build already reported that, so do not start a stale encode.
+                foreach (ScreenJob job in screens)
                 {
-                    AppConfig second = _config.SecondScreenConfig();
-                    BuildResult result = RunBuild(second, generation, forceSecond,
-                        MediaPipeline.SecondManifestPath(_appRoot), "second screen: ");
-                    lock (Sync) { _pendingBuild2 = result; }
+                    if (generation != _buildGeneration) break;
+                    BuildResult result = RunBuild(job.Config, generation, job.Force,
+                        job.ManifestPath, job.LogPrefix);
+                    lock (Sync) { job.Screen.Pending = result; }
                 }
 
                 lock (Sync) { _building = false; }
@@ -1192,18 +1195,19 @@ namespace LiveBackground
             thread.Start();
         }
 
-        // One encode, with the log/progress/cancel wiring shared by both loops.
+        // One encode, with the log/progress/cancel wiring shared by every loop.
         private static BuildResult RunBuild(AppConfig config, int generation, bool force,
             string liveManifestPath, string logPrefix)
         {
+            string who = string.IsNullOrEmpty(logPrefix) ? "" : logPrefix.TrimEnd(' ', ':');
             try
             {
                 return MediaPipeline.Build(_appRoot, config,
                     delegate(string message) { Log.Info(logPrefix + message); },
                     delegate(double fraction)
                     {
-                        Ui.BuildProgressUpdate(fraction, logPrefix.Length == 0
-                            ? "Encoding the loop..." : "Encoding the second-screen loop...");
+                        Ui.BuildProgressUpdate(fraction, string.IsNullOrEmpty(who)
+                            ? "Encoding the loop..." : "Encoding the " + who + " loop...");
                     },
                     delegate { return generation != _buildGeneration; },
                     force, false, liveManifestPath);
@@ -1212,7 +1216,7 @@ namespace LiveBackground
             {
                 BuildResult result = new BuildResult();
                 result.Message = ex.GetType().Name + ": " + ex.Message;
-                Log.Error(logPrefix.Length == 0 ? "background build crashed" : "second-screen build crashed", ex);
+                Log.Error(string.IsNullOrEmpty(who) ? "background build crashed" : who + " build crashed", ex);
                 return result;
             }
         }
@@ -1567,7 +1571,7 @@ namespace LiveBackground
         }
 
         // ---------------------------------------------------------------
-        // Displays and the second screen
+        // Displays and the extra screens
         // ---------------------------------------------------------------
 
         private static string DescribeScreens(List<ScreenInfo> screens)
@@ -1605,26 +1609,161 @@ namespace LiveBackground
             Log.Info("display layout changed: " + DescribeScreens(now));
         }
 
-        // Points the second player at the right loop: the main one when it
-        // mirrors, otherwise the cached second-screen loop if there is one.
-        private static void RefreshSecondMediaPath()
+        // Creates, keeps or retires one player per extra screen (at most two),
+        // so the player list always matches the connected monitors. Players are
+        // matched by device name, so a re-ordered monitor keeps its settings.
+        private static void RebuildScreenPlayers()
         {
-            if (_config == null) return;
-            if (_config.SecondScreenSameAsMain)
+            bool duplicate = _screens != null && Screens.IsDuplicate(_screens);
+            List<ScreenInfo> extras = new List<ScreenInfo>();
+            if (!duplicate && _screens != null)
             {
-                _mediaPath2 = _mediaPath;
+                foreach (ScreenInfo screen in _screens)
+                {
+                    if (screen.Primary) continue;
+                    if (extras.Count >= 2) break;
+                    extras.Add(screen);
+                }
+            }
+
+            // Retire the players whose monitor is gone.
+            for (int i = _screenPlayers.Count - 1; i >= 0; i--)
+            {
+                ScreenPlayer existing = _screenPlayers[i];
+                bool keep = false;
+                foreach (ScreenInfo screen in extras)
+                {
+                    if (string.Equals(screen.Device, existing.Device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        keep = true;
+                        break;
+                    }
+                }
+                if (keep) continue;
+                if (existing.Player != null)
+                {
+                    try { existing.Player.Stop(); } catch { }
+                }
+                _screenPlayers.RemoveAt(i);
+            }
+
+            // Add a player for each new monitor and refresh the ones kept.
+            int number = 2;
+            foreach (ScreenInfo screen in extras)
+            {
+                ScreenPlayer player = null;
+                foreach (ScreenPlayer existing in _screenPlayers)
+                {
+                    if (string.Equals(existing.Device, screen.Device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        player = existing;
+                        break;
+                    }
+                }
+                if (player == null)
+                {
+                    player = new ScreenPlayer();
+                    player.Device = screen.Device ?? "";
+                    player.Player = new MpvPlayer(_appRoot, _config, ScreenLogName(player.Device));
+                    _screenPlayers.Add(player);
+                }
+                player.Number = number;
+                player.ScreenIndex = screen.Index;
+                RefreshScreenMediaPath(player);
+                if (string.IsNullOrEmpty(player.MediaPath) && !_config.ScreenFor(player.Device).SameAsMain)
+                {
+                    player.ForceBuild = true;
+                    Log.Info("no loop yet for the " + ScreenLabel(player) + ", building in the background");
+                }
+                number++;
+            }
+        }
+
+        // Points one screen's player at the right loop: the main one when it
+        // mirrors, otherwise the cached loop for that screen if there is one.
+        private static void RefreshScreenMediaPath(ScreenPlayer screen)
+        {
+            if (screen == null || _config == null) return;
+            ScreenSettings settings = _config.ScreenFor(screen.Device);
+            if (settings.SameAsMain)
+            {
+                screen.MediaPath = _mediaPath;
                 return;
             }
 
+            AppConfig screenConfig = _config.ScreenConfig(settings);
             MediaManifest manifest;
-            if (MediaPipeline.IsSecondCacheValid(_appRoot, _config, out manifest, false))
+            if (MediaPipeline.IsScreenCacheValid(_appRoot, screenConfig, screen.Device, out manifest, false))
             {
-                _mediaPath2 = MediaPipeline.LoopPath(_appRoot, manifest);
+                screen.MediaPath = MediaPipeline.LoopPath(_appRoot, manifest);
             }
             else
             {
-                _mediaPath2 = "";
+                screen.MediaPath = "";
             }
+        }
+
+        // True while any screen still has a rebuild waiting to start.
+        private static bool AnyScreenBuildForced()
+        {
+            foreach (ScreenPlayer screen in _screenPlayers)
+            {
+                if (screen.ForceBuild) return true;
+            }
+            return false;
+        }
+
+        // "second screen" / "third screen" for the log and the progress card,
+        // matching the names the settings window uses.
+        private static string ScreenLabel(ScreenPlayer screen)
+        {
+            if (screen == null) return "screen";
+            if (screen.Number == 2) return "second screen";
+            if (screen.Number == 3) return "third screen";
+            return "screen " + screen.Number;
+        }
+
+        // A stable log file name per monitor: "mpv-<device>.log" with anything
+        // that is not a letter or digit turned into an underscore.
+        private static string ScreenLogName(string device)
+        {
+            StringBuilder sb = new StringBuilder("mpv-");
+            if (!string.IsNullOrEmpty(device))
+            {
+                foreach (char c in device)
+                {
+                    sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+                }
+            }
+            sb.Append(".log");
+            return sb.ToString();
+        }
+
+        // A fingerprint of every screen's settings, so a save that changed any
+        // of them can be told apart from a save that did not.
+        private static string ScreensToken(AppConfig config)
+        {
+            if (config == null || config.ExtraScreens == null) return "";
+            StringBuilder sb = new StringBuilder();
+            foreach (ScreenSettings screen in config.ExtraScreens)
+            {
+                if (screen == null) continue;
+                sb.Append(screen.Device ?? "").Append('\u0001')
+                  .Append(screen.SameAsMain ? '1' : '0').Append('\u0001')
+                  .Append(screen.Folder ?? "").Append('\u0001')
+                  .Append(screen.PlaybackMode ?? "").Append('\u0001')
+                  .Append(screen.SingleClip ?? "").Append('\u0001');
+                if (screen.Playlist != null)
+                {
+                    foreach (PlaylistEntry entry in screen.Playlist)
+                    {
+                        if (entry == null) continue;
+                        sb.Append(entry.Name).Append(':').Append(entry.Enabled ? '1' : '0').Append(';');
+                    }
+                }
+                sb.Append('\u0002');
+            }
+            return sb.ToString();
         }
 
         private static uint PlayerPid(MpvPlayer player)
