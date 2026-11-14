@@ -1,5 +1,19 @@
 # LiveBackground change list
 
+## 1.6.5
+
+### Three screens
+
+- **A third monitor now shows the same video as the main screen.** Up to three
+  displays are supported: the primary screen runs the main loop, the second
+  screen keeps its own settings as before, and a third screen mirrors the main
+  loop (cropped to fit), the same way the second screen mirrors it by default.
+  Windows "Duplicate these displays" still counts as a single desktop screen, so
+  no extra player starts in that mode. The third screen picks up the video when
+  a monitor is plugged in while the app is running, and lets it go when the
+  monitor is removed. Settings for the third screen (its own folder and clips)
+  come in a later release; for now it always mirrors the main screen.
+
 ## 1.6.4
 
 ### New icon

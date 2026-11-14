@@ -15,6 +15,7 @@ namespace LiveBackground
         private static AppConfig _config;
         private static MpvPlayer _player;
         private static MpvPlayer _player2;
+        private static MpvPlayer _player3;
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
         private static string _mediaPath2 = "";
@@ -63,9 +64,9 @@ namespace LiveBackground
         private static bool _cleanupDone;
         private static DateTime _processStartUtc;
 
-        // Display layout. _screens[0] is the primary screen and _screens[1] the
-        // optional second one; the list is refreshed when Windows reports a
-        // change.
+        // Display layout. _screens[0] is the primary screen and _screens[1] and
+        // _screens[2] the optional extra ones; the list is refreshed when
+        // Windows reports a change.
         private static List<ScreenInfo> _screens = new List<ScreenInfo>();
         private static string _screensSignature = "";
         private static DateTime _nextScreenCheck = DateTime.MinValue;
@@ -364,6 +365,7 @@ namespace LiveBackground
                 {
                     if (_player != null) _player.Stop();
                     if (_player2 != null) _player2.Stop();
+                    if (_player3 != null) _player3.Stop();
                     ShutdownImageSurfaces();
                     Ui.Stop();
                     try { mutex.ReleaseMutex(); } catch { }
@@ -503,6 +505,14 @@ namespace LiveBackground
                 }
             }
 
+            // A third display always mirrors the main loop for now. It gets its
+            // own settings and its own loop in a later step; Duplicate mode
+            // reports a single desktop monitor, so it never gets a third player.
+            if (_screens.Count >= 3 && !Screens.IsDuplicate(_screens))
+            {
+                _player3 = new MpvPlayer(_appRoot, _config, "mpv3.log");
+            }
+
             // The lock screen and tray are not needed for the first wallpaper
             // frame. Starting them later keeps them from competing with the
             // first cold disk read.
@@ -544,6 +554,10 @@ namespace LiveBackground
                 {
                     _player2.Start(_progman, _mediaPath2);
                 }
+                if (_player3 != null && !string.IsNullOrEmpty(_mediaPath))
+                {
+                    _player3.Start(_progman, _mediaPath);
+                }
 
                 // Create the WorkerW wallpaper layer while mpv is still loading.
                 StartWallpaperLayerWarmup(_progman);
@@ -575,6 +589,8 @@ namespace LiveBackground
                     Log.Info("stop flag detected, exiting");
                     Util.SafeDelete(Installer.StopFlag(_appRoot));
                     if (_player != null) _player.Stop();
+                    if (_player2 != null) _player2.Stop();
+                    if (_player3 != null) _player3.Stop();
                     return 0;
                 }
 
@@ -614,6 +630,7 @@ namespace LiveBackground
                         _resumeFromPause = true;
                     }
                     if (_player2 != null && _player2.IsRunning) _player2.Stop();
+                    if (_player3 != null && _player3.IsRunning) _player3.Stop();
                 }
 
                 // Images mode never starts mpv or touches the video cache. The
@@ -715,6 +732,13 @@ namespace LiveBackground
                                 _player2.Stop();
                                 _player2.Start(_progman, _mediaPath2);
                             }
+                            // The third screen always mirrors the main loop, so
+                            // it follows the freshly built file too.
+                            if (_player3 != null && !_paused)
+                            {
+                                _player3.Stop();
+                                _player3.Start(_progman, _mediaPath);
+                            }
                             string wallpaper = DesktopHost.WallpaperFor(_appRoot, _config, finished.FramePath);
                             if (!string.IsNullOrEmpty(wallpaper)) DesktopHost.SetDesktopWallpaper(wallpaper);
                             // The loop's first frame just changed with the
@@ -806,6 +830,20 @@ namespace LiveBackground
                             _player2 = new MpvPlayer(_appRoot, _config, "mpv2.log");
                             _screenCountChanged = true;
                         }
+                        bool wantThird = _screens.Count >= 3 && !Screens.IsDuplicate(_screens);
+                        if (!wantThird)
+                        {
+                            if (_player3 != null)
+                            {
+                                _player3.Stop();
+                                _player3 = null;
+                            }
+                        }
+                        else if (_player3 == null)
+                        {
+                            _player3 = new MpvPlayer(_appRoot, _config, "mpv3.log");
+                            _screenCountChanged = true;
+                        }
                         if (_screenCountChanged && !_paused && _progman != IntPtr.Zero)
                         {
                             if (!string.IsNullOrEmpty(_mediaPath) && File.Exists(_mediaPath))
@@ -813,6 +851,9 @@ namespace LiveBackground
                             if (_player2 != null && !string.IsNullOrEmpty(_mediaPath2) &&
                                 File.Exists(_mediaPath2))
                                 _player2.Start(_progman, _mediaPath2);
+                            if (_player3 != null && !string.IsNullOrEmpty(_mediaPath) &&
+                                File.Exists(_mediaPath))
+                                _player3.Start(_progman, _mediaPath);
                         }
                         _screenCountChanged = false;
                         RefreshSecondMediaPath();
@@ -1033,6 +1074,26 @@ namespace LiveBackground
                             {
                                 Log.Warn("the second-screen player is not running, restarting");
                                 _player2.Start(_progman, _mediaPath2);
+                            }
+                        }
+                    }
+
+                    // The third screen mirrors the main loop and has the same
+                    // watchdog: place it on its monitor and bring it back if it
+                    // exited.
+                    if (_player3 != null)
+                    {
+                        if (_player3.IsRunning)
+                        {
+                            PlacePlayerOnScreen(_player3, 2);
+                        }
+                        else if (!_building && !_paused && _progman != IntPtr.Zero &&
+                            !string.IsNullOrEmpty(_mediaPath) && File.Exists(_mediaPath))
+                        {
+                            if (!_player3.StartedRecently(5))
+                            {
+                                Log.Warn("the third-screen player is not running, restarting");
+                                _player3.Start(_progman, _mediaPath);
                             }
                         }
                     }
@@ -1518,7 +1579,7 @@ namespace LiveBackground
                 if (i > 0) sb.Append(", ");
                 sb.Append(screens[i].Describe());
             }
-            if (screens.Count > 2) sb.Append(" (only the first two are used)");
+            if (screens.Count > 3) sb.Append(" (only the first three are used)");
             if (Screens.IsDuplicate(screens)) sb.Append(" (Windows is duplicating)");
             return sb.ToString();
         }
