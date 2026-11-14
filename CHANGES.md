@@ -1,5 +1,15 @@
 # LiveBackground change list
 
+## 1.8.2
+
+### Main-row tab switching
+
+- **The settings window now shows exactly four main-row tabs.** In Video mode
+  they are Videos, Playback, Multi Monitor and Other. In Images mode the first
+  two are replaced by Images and Slideshow. Multi Monitor and Other stay fixed.
+- **No inner Videos/Playback or Images/Slideshow tabs.** The pill swaps the
+  first two main-row pages directly while preserving every editor's state.
+
 ## 1.8.1
 
 ### Cleaner settings layout

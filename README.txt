@@ -63,24 +63,24 @@ notification area; Windows 11 may keep it in the hidden-icons overflow
 Double-click the icon, or open "LiveBackground settings" from the Start Menu,
 to change settings. At the top of the window, choose the wallpaper mode:
 Video or Images. Click the pill switch itself or either word; the pill also
-responds to Space or Enter when focused. The tabs follow the mode, in this
-fixed order:
+responds to Space or Enter when focused. Exactly four main-row tabs are shown.
+The pill replaces the first two; Multi Monitor and Other stay in place:
 
-  Videos     inner Videos tab: folder, playlist, drop box, Refresh, Open folder,
-             Rebuild now and Stop video; inner Playback tab: main/per-screen
-             crossfades, resolution, frame rate, quality and screensaver
-             (Video mode)
-  Images     inner Images tab: folder, one image or slideshow, ticks, drop box,
-             Refresh, Open folder and Next image; inner Slideshow tab: interval,
-             picture crossfade and Shuffle                 (Images mode)
-  Multi      extra screens: Extended/Duplicate mode, per-screen video or image
-  Monitor    settings, with 2nd Screen and 3rd Screen sub-tabs (both modes)
-  Other      start at sign-in, lock-screen image, desktop wallpaper image
-             (shared by both modes)
+  Video mode:   Videos, Playback, Multi Monitor, Other
+  Images mode:  Images, Slideshow, Multi Monitor, Other
 
-The tabs that belong to the other mode are greyed and cannot be selected. When
-you open the settings window it starts on the first tab of the active mode:
-Videos or Images.
+  Videos/Images       folder, one item or playlist/slideshow, ticks, drop box,
+                      Refresh, Open folder and Rebuild/Next image
+  Playback/Slideshow  main/per-screen video crossfades, resolution, frame rate,
+                      quality and screensaver; or picture interval, crossfade
+                      and Shuffle
+  Multi Monitor       extra screens: Extended/Duplicate mode and per-screen
+                      video or image settings, with 2nd/3rd Screen sub-tabs
+  Other               start at sign-in, lock-screen and desktop wallpaper image
+
+Every editor stays alive while the pill switches, so unsaved edits are kept.
+When you open the settings window it starts on the first tab of the active
+mode: Videos or Images.
 
 Click "Save and apply". The settings are written, the loop rebuilds in the
 background, and the current video keeps playing until the new loop is ready.

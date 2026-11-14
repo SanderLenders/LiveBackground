@@ -24,8 +24,6 @@ namespace LiveBackground
         private readonly AppConfig _config;
 
         private TabControl _tabs;
-        private TabPage _videoGroupTab;
-        private TabPage _imageGroupTab;
         private TabPage _videosTab;
         private TabPage _playbackTab;
         private TabPage _imagesTab;
@@ -266,22 +264,18 @@ namespace LiveBackground
             _tabs.DrawItem += TabDrawItem;
             Controls.Add(_tabs);
 
-            _videoGroupTab = new TabPage("Videos");
-            _imageGroupTab = new TabPage("Images");
-            _secondTab = new TabPage("Multi Monitor");
-            _windowsTab = new TabPage("Other");
-            _tabs.TabPages.Add(_videoGroupTab);
-            _tabs.TabPages.Add(_imageGroupTab);
-            _tabs.TabPages.Add(_secondTab);
-            _tabs.TabPages.Add(_windowsTab);
-
-            // The two mode-specific editors become inner tabs. Their outer
-            // pages stay available or greyed with the pill, just like Multi
-            // Monitor, without crowding the outer tab strip.
             _videosTab = new TabPage("Videos");
             _playbackTab = new TabPage("Playback");
             _imagesTab = new TabPage("Images");
             _slideshowTab = new TabPage("Slideshow");
+            _secondTab = new TabPage("Multi Monitor");
+            _windowsTab = new TabPage("Other");
+            // Only the two editors for the current mode are shown. The pill
+            // swaps these first two pages; Multi Monitor and Other stay put.
+            _tabs.TabPages.Add(_videosTab);
+            _tabs.TabPages.Add(_playbackTab);
+            _tabs.TabPages.Add(_secondTab);
+            _tabs.TabPages.Add(_windowsTab);
 
             BuildVideosTab(_videosTab);
             BuildMultiMonitorTab(_secondTab);
@@ -289,8 +283,6 @@ namespace LiveBackground
             BuildImagesTab(_imagesTab);
             BuildSlideshowTab(_slideshowTab);
             BuildWindowsTab(_windowsTab);
-            BuildModeGroup(_videoGroupTab, _videosTab, _playbackTab);
-            BuildModeGroup(_imageGroupTab, _imagesTab, _slideshowTab);
 
             Button save = new Button();
             save.Text = "Save and apply";
@@ -319,13 +311,29 @@ namespace LiveBackground
             _screenTimer.Tick += ScreenTimerTick;
         }
 
-        private static void BuildModeGroup(TabPage outer, TabPage first, TabPage second)
+        // Keeps the main row at four tabs: the current mode's two editors,
+        // then Multi Monitor and Other. Called only when the pill changes.
+        private void UpdateModeTabs()
         {
-            TabControl inner = new TabControl();
-            inner.Dock = DockStyle.Fill;
-            inner.TabPages.Add(first);
-            inner.TabPages.Add(second);
-            outer.Controls.Add(inner);
+            if (_tabs == null) return;
+            bool images = _wallpaperImages.Checked;
+            TabPage first = images ? _imagesTab : _videosTab;
+            TabPage second = images ? _slideshowTab : _playbackTab;
+            if (_tabs.TabPages.Count == 4 && _tabs.TabPages[0] == first &&
+                _tabs.TabPages[1] == second) return;
+
+            TabPage selected = _tabs.SelectedTab;
+            _tabs.TabPages.Clear();
+            _tabs.TabPages.Add(first);
+            _tabs.TabPages.Add(second);
+            _tabs.TabPages.Add(_secondTab);
+            _tabs.TabPages.Add(_windowsTab);
+            // Stay on Multi Monitor or Other while the pill switches; a mode
+            // editor that just disappeared is replaced by the new first page.
+            _tabs.SelectedTab = selected == _secondTab || selected == _windowsTab
+                ? selected
+                : first;
+            _tabs.Invalidate();
         }
 
         // Tabs that belong to the other wallpaper mode cannot be opened. Multi
@@ -335,8 +343,8 @@ namespace LiveBackground
             if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return true;
             TabPage page = _tabs.TabPages[index];
             bool images = _wallpaperImages != null && _wallpaperImages.Checked;
-            if (page == _videoGroupTab) return !images;
-            if (page == _imageGroupTab) return images;
+            if (page == _videosTab || page == _playbackTab) return !images;
+            if (page == _imagesTab || page == _slideshowTab) return images;
             return true;
         }
 
@@ -391,9 +399,10 @@ namespace LiveBackground
         {
             if (_tabs == null) return;
             bool images = _wallpaperImages.Checked;
+            UpdateModeTabs();
             if (!TabEnabled(_tabs.SelectedIndex))
             {
-                _tabs.SelectedTab = images ? _imageGroupTab : _videoGroupTab;
+                _tabs.SelectedTab = images ? _imagesTab : _videosTab;
             }
             if (_slot2 != null) _slot2.SetWallpaperMode(images);
             if (_slot3 != null) _slot3.SetWallpaperMode(images);
@@ -412,7 +421,8 @@ namespace LiveBackground
             // when the window opens and then keep polling while it is visible.
             RefreshScreenState();
             AlignSlideshowMarks();
-            _tabs.SelectedTab = _wallpaperImages.Checked ? _imageGroupTab : _videoGroupTab;
+            UpdateModeTabs();
+            _tabs.SelectedTab = _wallpaperImages.Checked ? _imagesTab : _videosTab;
             _tabs.Invalidate();
             if (_screenTimer != null) _screenTimer.Start();
         }
@@ -1710,15 +1720,15 @@ namespace LiveBackground
 
             _screensaverActive = new CheckBox();
             _screensaverActive.Text = "Screensaver active (let Windows dim and lock the screen)";
-            _screensaverActive.SetBounds(16, 400, 588, 24);
+            _screensaverActive.SetBounds(16, 420, 588, 24);
             page.Controls.Add(_screensaverActive);
 
             Label screenHint = MakeLabel(page,
                 "On (recommended): Windows dims, turns off and locks the screen according to " +
                 "your power settings, even while the video plays. Off: the video keeps the " +
                 "screen awake.",
-                16, 424, 588);
-            screenHint.Height = 28;
+                16, 448, 588);
+            screenHint.Height = 36;
             screenHint.ForeColor = SystemColors.GrayText;
 
             BuildScreenFadeTabs(page);
