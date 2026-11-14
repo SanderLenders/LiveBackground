@@ -155,7 +155,6 @@ if (-not $MpvSource) {
     $candidates = @(
         (Join-Path $OutDir 'mpv'),
         (Join-Path $env:LOCALAPPDATA 'LiveBackground\mpv'),
-        (Join-Path $env:LOCALAPPDATA 'GalaxyWallpaper\mpv'),
         (Join-Path $root 'mpv')
     )
     foreach ($candidate in $candidates) {
@@ -172,7 +171,7 @@ if (-not $FfmpegSource) {
     $candidates = @(
         (Join-Path $env:LOCALAPPDATA 'Temp\opencode\ffmpeg\extracted\ffmpeg-9.0.2-essentials_build\bin'),
         (Join-Path $OutDir 'tools\ffmpeg'),
-        (Join-Path $env:LOCALAPPDATA 'GalaxyWallpaper\tools\ffmpeg')
+        (Join-Path $env:LOCALAPPDATA 'LiveBackground\tools\ffmpeg')
     )
     foreach ($candidate in $candidates) {
         if (Test-Path (Join-Path $candidate 'ffmpeg.exe')) { $FfmpegSource = $candidate; break }
