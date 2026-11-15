@@ -35,7 +35,6 @@ namespace LiveBackground
         private TextBox _folderBox;
         private RadioButton _modePlaylist;
         private RadioButton _modeSingle;
-        private Label _singleHint;
         private ListView _clipList;
         private Label _clipHint;
         private Button _moveUp;
@@ -171,6 +170,14 @@ namespace LiveBackground
                 _config.BindLegacyScreens(initial);
             }
             catch { _hasSecondScreen = false; _secondDuplicateLayout = false; }
+
+            // The layout below uses fixed pixel coordinates. The app is
+            // per-monitor DPI aware, so on a display that is not at 100% the
+            // font grows while a fixed window does not, and labels start to
+            // clip. Scaling the layout by DPI keeps the proportions correct.
+            // The matching AutoScaleDimensions call is at the very end of the
+            // constructor; see the note there.
+            AutoScaleMode = AutoScaleMode.Dpi;
 
             Text = "LiveBackground settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -309,6 +316,13 @@ namespace LiveBackground
             _screenTimer = new System.Windows.Forms.Timer();
             _screenTimer.Interval = 1500;
             _screenTimer.Tick += ScreenTimerTick;
+
+            // Design size for the pixel layout above. This has to be the last
+            // thing the constructor does: WinForms reads it when the window
+            // handle is first created (that is, when the dialog is shown) and
+            // scales every control by current-DPI / 96. Set any earlier and the
+            // value is overwritten before the controls exist, so nothing scales.
+            AutoScaleDimensions = new SizeF(96F, 96F);
         }
 
         // Keeps the main row at four tabs: the current mode's two editors,
@@ -456,21 +470,19 @@ namespace LiveBackground
             browse.Click += delegate { BrowseFolder(); };
             page.Controls.Add(browse);
 
-            _modePlaylist = new RadioButton();
-            _modePlaylist.Text = "All clips in this order";
-            _modePlaylist.SetBounds(16, 72, 180, 22);
-            _modePlaylist.CheckedChanged += delegate { UpdateModeControls(); };
-            page.Controls.Add(_modePlaylist);
-
+            // "One clip" leads, then the playlist: the narrower choice sits
+            // first so the pair reads in the order the eye expects.
             _modeSingle = new RadioButton();
             _modeSingle.Text = "One clip";
-            _modeSingle.SetBounds(204, 72, 80, 22);
+            _modeSingle.SetBounds(16, 72, 80, 22);
             _modeSingle.CheckedChanged += delegate { UpdateModeControls(); };
             page.Controls.Add(_modeSingle);
 
-            _singleHint = MakeLabel(page, "Pick one clip in the list below", 290, 72, 314);
-            _singleHint.ForeColor = SystemColors.GrayText;
-            _singleHint.Visible = false;
+            _modePlaylist = new RadioButton();
+            _modePlaylist.Text = "All clips in this order";
+            _modePlaylist.SetBounds(104, 72, 180, 22);
+            _modePlaylist.CheckedChanged += delegate { UpdateModeControls(); };
+            page.Controls.Add(_modePlaylist);
 
             _clipList = new ListView();
             _clipList.SetBounds(16, 104, 400, 202);
@@ -883,7 +895,6 @@ namespace LiveBackground
             public RadioButton ModeSingle;
             public ListView ClipList;
             private Label _status;
-            private Label _singleHint;
             private Label _hint;
             private Button _moveUp;
             private Button _moveDown;
@@ -949,21 +960,18 @@ namespace LiveBackground
                 browse.Click += delegate { BrowseFolder(); };
                 _videoPane.Controls.Add(browse);
 
-                ModePlaylist = new RadioButton();
-                ModePlaylist.Text = "All clips in this order";
-                ModePlaylist.SetBounds(12, 126, 180, 22);
-                ModePlaylist.CheckedChanged += delegate { UpdateModeControls(); };
-                _videoPane.Controls.Add(ModePlaylist);
-
+                // "One clip" leads here too, matching the main Videos tab.
                 ModeSingle = new RadioButton();
                 ModeSingle.Text = "One clip";
-                ModeSingle.SetBounds(200, 126, 80, 22);
+                ModeSingle.SetBounds(12, 126, 80, 22);
                 ModeSingle.CheckedChanged += delegate { UpdateModeControls(); };
                 _videoPane.Controls.Add(ModeSingle);
 
-                _singleHint = MakeLabel(_videoPane, "Pick one clip in the list below", 286, 126, 302);
-                _singleHint.ForeColor = SystemColors.GrayText;
-                _singleHint.Visible = false;
+                ModePlaylist = new RadioButton();
+                ModePlaylist.Text = "All clips in this order";
+                ModePlaylist.SetBounds(100, 126, 180, 22);
+                ModePlaylist.CheckedChanged += delegate { UpdateModeControls(); };
+                _videoPane.Controls.Add(ModePlaylist);
 
                 ClipList = new ListView();
                 ClipList.SetBounds(12, 154, 572, 118);
@@ -1133,7 +1141,6 @@ namespace LiveBackground
                 _refresh.Enabled = active;
                 _open.Enabled = active;
                 _rebuild.Enabled = HasScreen && !duplicate;
-                if (_singleHint != null) _singleHint.Visible = active && single;
 
                 if (_status != null)
                 {
@@ -1749,17 +1756,18 @@ namespace LiveBackground
             browse.Click += delegate { BrowseImageFolder(); };
             page.Controls.Add(browse);
 
-            _imageModeSlideshow = new RadioButton();
-            _imageModeSlideshow.Text = "Slideshow";
-            _imageModeSlideshow.SetBounds(16, 72, 100, 22);
-            _imageModeSlideshow.CheckedChanged += delegate { UpdateImageModeControls(); };
-            page.Controls.Add(_imageModeSlideshow);
-
+            // "One image" leads, matching the Videos tab's "One clip".
             _imageModeSingle = new RadioButton();
             _imageModeSingle.Text = "One image";
-            _imageModeSingle.SetBounds(124, 72, 100, 22);
+            _imageModeSingle.SetBounds(16, 72, 100, 22);
             _imageModeSingle.CheckedChanged += delegate { UpdateImageModeControls(); };
             page.Controls.Add(_imageModeSingle);
+
+            _imageModeSlideshow = new RadioButton();
+            _imageModeSlideshow.Text = "Slideshow";
+            _imageModeSlideshow.SetBounds(124, 72, 100, 22);
+            _imageModeSlideshow.CheckedChanged += delegate { UpdateImageModeControls(); };
+            page.Controls.Add(_imageModeSlideshow);
 
             _imageSingleHint = MakeLabel(page, "Pick one image in the list below", 244, 72, 360);
             _imageSingleHint.ForeColor = SystemColors.GrayText;
@@ -2573,7 +2581,6 @@ namespace LiveBackground
                 UpdateClipHintText();
             }
 
-            if (_singleHint != null) _singleHint.Visible = single;
             _moveUp.Enabled = !single;
             _moveDown.Enabled = !single;
             _sortAz.Enabled = !single;

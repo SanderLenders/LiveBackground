@@ -193,7 +193,7 @@ namespace LiveBackground
                     return;
                 }
                 Directory.CreateDirectory(LoopsDir(appRoot));
-                SaveManifest(CacheIndexPath(appRoot, signature), manifest);
+                JsonStore.SerializeFile(CacheIndexPath(appRoot, signature), manifest);
             }
             catch (Exception ex) { Log.Warn("could not seed the loop cache: " + ex.Message); }
         }
@@ -288,18 +288,38 @@ namespace LiveBackground
             }
         }
 
+        // Cleanup can run while a build is still writing its own temp files: a
+        // fresh ffmpeg render ("loop-….tmp.mp4") or an atomic manifest write
+        // ("….json.tmp"). A final loop is only removed when it is not in use,
+        // and a temp file only once it is old enough that no live build can
+        // still own it.
+        private static readonly TimeSpan TempGrace = TimeSpan.FromHours(1);
+
         private static void Sweep(string dir, HashSet<string> keep)
         {
             foreach (string file in Directory.GetFiles(dir, "loop-*.mp4"))
             {
+                // The name also matches an in-flight ffmpeg render, so leave
+                // the ".tmp.mp4" ones to the age-guarded pass below.
+                if (file.EndsWith(".tmp.mp4", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!keep.Contains(Path.GetFullPath(file))) Util.SafeDelete(file);
             }
             foreach (string file in Directory.GetFiles(dir, "frame-*.jpg"))
             {
                 if (!keep.Contains(Path.GetFullPath(file))) Util.SafeDelete(file);
             }
-            foreach (string file in Directory.GetFiles(dir, "*.tmp.mp4")) Util.SafeDelete(file);
-            foreach (string file in Directory.GetFiles(dir, "*.json.tmp")) Util.SafeDelete(file);
+            DateTime cutoff = DateTime.UtcNow - TempGrace;
+            foreach (string file in Directory.GetFiles(dir, "*.tmp.mp4")) DeleteIfStale(file, cutoff);
+            foreach (string file in Directory.GetFiles(dir, "*.json.tmp")) DeleteIfStale(file, cutoff);
+        }
+
+        private static void DeleteIfStale(string file, DateTime cutoff)
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(file) < cutoff) Util.SafeDelete(file);
+            }
+            catch { }
         }
 
         private static DateTime BuiltTime(MediaManifest manifest)
@@ -647,7 +667,7 @@ namespace LiveBackground
                     }
                     if (!cacheOnly)
                     {
-                        SaveManifest(liveManifestPath ?? ManifestPath(appRoot), cachedManifest);
+                        JsonStore.SerializeFile(liveManifestPath ?? ManifestPath(appRoot), cachedManifest);
                         CleanupCache(appRoot);
                     }
                     result.Success = true;
@@ -827,10 +847,10 @@ namespace LiveBackground
 
             // Remember this result for instant reuse. cacheOnly builds only
             // fill the cache; they must not change what is on screen.
-            SaveManifest(CacheIndexPath(appRoot, signature), manifest);
+            JsonStore.SerializeFile(CacheIndexPath(appRoot, signature), manifest);
             if (!cacheOnly)
             {
-                SaveManifest(liveManifestPath ?? ManifestPath(appRoot), manifest);
+                JsonStore.SerializeFile(liveManifestPath ?? ManifestPath(appRoot), manifest);
                 CleanupCache(appRoot);
             }
 
@@ -858,14 +878,6 @@ namespace LiveBackground
                 return false;
             }
             return true;
-        }
-
-        private static void SaveManifest(string path, MediaManifest manifest)
-        {
-            string temp = path + ".tmp";
-            JsonStore.SerializeFile(temp, manifest);
-            Util.SafeDelete(path);
-            File.Move(temp, path);
         }
 
         private static string BuildInputs(List<string> videos)

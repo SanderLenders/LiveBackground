@@ -1,5 +1,29 @@
 # LiveBackground change list
 
+## 1.8.6
+
+### Housekeeping and display scaling
+
+- **The settings window now scales with the display.** It is laid out in fixed
+  pixels, but the app is per-monitor DPI aware, so on a display that is not at
+  100% (for example 125% or 150%) the text grew while the window stayed the
+  same size, and labels and buttons could look cramped or clipped. The window
+  now scales its layout to match the display.
+- **Cache cleanup no longer touches a build that is still running.** It could
+  delete the temporary file an in-progress render or manifest write was using.
+  Temporary files are now removed only once they are an hour old.
+- **Loop and screen manifests are written atomically**, using the same
+  write-to-temp-then-swap path as the rest of the app, so a crash mid-write can
+  no longer leave a half-written manifest behind.
+- **The single-instance name lives in one place** instead of being repeated.
+
+### Settings window
+
+- **"One clip" now comes before "All clips in this order"**, and "One image"
+  before "Slideshow", so the narrower choice leads on both tabs.
+- **The "Pick one clip in the list below" hint is gone** from the Videos tab and
+  the per-screen tabs; the clip list sits right under the choice.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

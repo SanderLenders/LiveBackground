@@ -17,6 +17,11 @@ namespace LiveBackground
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
 
+        // One name, used both to create the single-instance mutex and to check
+        // whether the wallpaper is already running. Kept in one place so the
+        // two can never drift apart.
+        private const string MutexName = @"Local\LiveBackgroundApp";
+
         private static readonly object Sync = new object();
         private static bool _building;
         // Signature of the build the background worker is currently
@@ -408,7 +413,7 @@ namespace LiveBackground
             }
 
             bool createdNew;
-            using (Mutex mutex = new Mutex(true, @"Local\LiveBackgroundApp", out createdNew))
+            using (Mutex mutex = new Mutex(true, MutexName, out createdNew))
             {
                 if (!createdNew)
                 {
@@ -452,7 +457,7 @@ namespace LiveBackground
 
                 try
                 {
-                    using (Mutex existing = Mutex.OpenExisting(@"Local\LiveBackgroundApp"))
+                    using (Mutex existing = Mutex.OpenExisting(MutexName))
                     {
                         // The wallpaper is already running.
                         return 0;
