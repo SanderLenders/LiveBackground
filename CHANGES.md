@@ -1,5 +1,18 @@
 # LiveBackground change list
 
+## 1.8.3
+
+### Recover fully after an Explorer restart
+
+- **Every screen's video now comes back after Explorer restarts.** Explorer
+  takes all wallpaper windows with it when it restarts. The main player was
+  restarted, but the extra-screen players kept running without a window, so
+  their screens could stay frozen on the static wallpaper (the loop's first
+  frame) until the app was restarted by hand. All players are now rebuilt
+  inside the new desktop.
+- **A customized per-screen desktop fallback is re-shown** after an Explorer
+  restart instead of being assumed still visible.
+
 ## 1.8.2
 
 ### Main-row tab switching

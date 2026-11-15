@@ -749,7 +749,25 @@ namespace LiveBackground
                     {
                         Log.Info("Explorer restarted, restarting the video");
                         _progman = current;
+                        // Explorer took every wallpaper window with it: the main
+                        // player, each screen's player and the fallback image
+                        // layers. The mpv processes survive with no window, so
+                        // the "player exited" watchdog never restarts them and
+                        // the screen would stay blank. Rebuild them all inside
+                        // the new desktop, and drop the fallback flags so a
+                        // customized static image is shown again instead of
+                        // being assumed still visible.
                         if (!_paused && !string.IsNullOrEmpty(_mediaPath)) _player.Start(_progman, _mediaPath);
+                        foreach (ScreenPlayer screen in _screenPlayers)
+                        {
+                            if (screen.Player != null && !_paused &&
+                                !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
+                            {
+                                screen.Player.Start(_progman, screen.MediaPath);
+                            }
+                            screen.FallbackVisible = false;
+                            screen.FallbackImage = "";
+                        }
                         firstPlacementLogged = false;
                     }
                     else if (_progman == IntPtr.Zero)
