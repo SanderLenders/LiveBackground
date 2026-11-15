@@ -29,17 +29,6 @@ function AwaitAction($op) {
 }
 ";
 
-        public static bool TryGetInfo(out string info, out string error)
-        {
-            string script = Header + @"
-$stream = [Windows.System.UserProfile.LockScreen]::GetImageStream()
-if ($null -eq $stream) { Write-Output 'NONE'; exit 3 }
-Write-Output ('OK ' + $stream.Size)
-$stream.Dispose()
-";
-            return Run(script, out info, out error);
-        }
-
         public static bool TryBackup(string destinationBase, out string actualPath, out string error)
         {
             actualPath = "";

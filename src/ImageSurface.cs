@@ -279,9 +279,13 @@ namespace LiveBackground
                 target.Right = _bounds.X + _width;
                 target.Bottom = _bounds.Y + _height;
                 Native.MapWindowPoints(IntPtr.Zero, progman, ref target, 2);
-                Native.SetWindowPos(Handle, IntPtr.Zero, target.Left, target.Top,
-                    target.Right - target.Left, target.Bottom - target.Top,
-                    Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
+                if (!Native.SetWindowPos(Handle, IntPtr.Zero, target.Left, target.Top,
+                        target.Right - target.Left, target.Bottom - target.Top,
+                        Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER))
+                {
+                    Log.Warn("could not size the image layer onto its screen (error " +
+                        System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")");
+                }
                 DesktopHost.PlaceBelowIcons(progman, Handle);
                 _attachedParent = progman;
                 Log.Info("image crossfade layer attached to the desktop");

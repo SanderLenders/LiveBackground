@@ -3,7 +3,7 @@
 ;   ISCC.exe /DSourceDir=dist /DOutputDir=dist\installer installer.iss
 
 #define MyAppName "LiveBackground"
-#define MyAppVersion "1.8.4"
+#define MyAppVersion "1.8.5"
 #define MyAppPublisher "LiveBackground"
 #define MyAppExeName "LiveBackground.exe"
 #define MyAppCliName "LiveBackgroundCli.exe"
@@ -25,7 +25,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-VersionInfoVersion=1.8.4.0
+VersionInfoVersion=1.8.5.0
 VersionInfoDescription={#MyAppName} installer
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}

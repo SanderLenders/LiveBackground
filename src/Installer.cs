@@ -227,13 +227,19 @@ namespace LiveBackground
             RemoveStartup(appRoot, config, log);
             RemoveSettingsShortcut(log);
 
+            // The backup folder is the only copy of what the user had before
+            // the app changed it, so it is kept whenever a restore failed.
+            bool restoredEverything = true;
             if (!string.IsNullOrEmpty(state.LockScreenBackup) && File.Exists(state.LockScreenBackup))
             {
                 string error;
                 if (WinRtLockScreen.TrySet(state.LockScreenBackup, out error))
                     log("lock screen restored");
                 else
+                {
                     log("WARNING: could not restore the lock screen: " + error);
+                    restoredEverything = false;
+                }
             }
             else
             {
@@ -242,14 +248,21 @@ namespace LiveBackground
 
             if (!string.IsNullOrEmpty(state.WallpaperBackup) && File.Exists(state.WallpaperBackup))
             {
-                DesktopHost.SetDesktopWallpaper(state.WallpaperBackup);
-                log("desktop wallpaper restored");
+                if (DesktopHost.SetDesktopWallpaper(state.WallpaperBackup))
+                {
+                    log("desktop wallpaper restored");
+                }
+                else
+                {
+                    log("WARNING: could not restore the desktop wallpaper");
+                    restoredEverything = false;
+                }
             }
 
             if (removeFiles)
             {
                 log("cleaning up " + appRoot);
-                ScheduleFolderDelete(appRoot, config, log);
+                ScheduleFolderDelete(appRoot, config, log, restoredEverything);
             }
 
             log("");
@@ -634,15 +647,18 @@ namespace LiveBackground
             catch { return ""; }
         }
 
-        private static void ScheduleFolderDelete(string appRoot, AppConfig config, Action<string> log)
+        private static void ScheduleFolderDelete(string appRoot, AppConfig config, Action<string> log,
+            bool removeBackups)
         {
             // App-managed data only. The README promises an uninstall keeps
             // the user's videos, pictures and settings, so nothing of theirs
             // is ever deleted here: the folders that may hold their files are
             // removed with "rmdir /q", which only works when they are empty.
+            // The backup folder is skipped when a restore failed, because it is
+            // then the only copy of the user's previous wallpaper or lock screen.
             List<string> wipe = new List<string>();
             wipe.Add(MediaPipeline.CacheDir(appRoot));
-            wipe.Add(BackupDir(appRoot));
+            if (removeBackups) wipe.Add(BackupDir(appRoot));
             wipe.Add(Path.Combine(appRoot, "logs"));
 
             List<string> ifEmpty = new List<string>();
@@ -676,7 +692,10 @@ namespace LiveBackground
                     CreateNoWindow = true
                 };
                 Process.Start(psi);
-                log("removed the app's cache, logs and backups");
+                log(removeBackups
+                    ? "removed the app's cache, logs and backups"
+                    : "removed the app's cache and logs; the backup folder was kept "
+                        + "because the previous lock screen or wallpaper could not be restored");
                 log("kept your videos, pictures and settings in " + appRoot);
                 log("delete that folder yourself if you want a clean slate");
             }

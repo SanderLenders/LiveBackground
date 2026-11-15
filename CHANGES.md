@@ -1,5 +1,30 @@
 # LiveBackground change list
 
+## 1.8.5
+
+### Reliability and clean-up pass
+
+- **An uninstall keeps the backup folder when a restore fails.** If the
+  previous lock screen or desktop wallpaper could not be put back, the copy the
+  app saved is now left in place instead of being deleted, so it is still there
+  to restore by hand.
+- **The settings window only changes the logon task after the settings are
+  saved.** A failed save can no longer leave a startup task the saved settings
+  do not agree with.
+- **A corrupted config is reported.** If config.json cannot be read the app
+  still falls back to defaults, but it now logs when it cannot keep a copy of
+  the unreadable file.
+- **The mpv player can no longer be queried and stopped at the same moment.**
+  The watchdog and the settings window share one lock around the player
+  process, and the still-image layers are guarded the same way, so a save can
+  no longer interrupt the watchdog mid-pass.
+- **Command lines with a trailing backslash are quoted correctly**, so "open
+  folder" and the ffmpeg/mpv calls handle a path such as `C:\My Videos\`.
+- **A timed-out helper process no longer truncates its captured output.**
+- **Placement and wallpaper failures are logged** instead of being silently
+  ignored, and the 32-bit window-style call is used when the app runs 32-bit.
+- **Removed unused helper code** left over from earlier versions.
+
 ## 1.8.4
 
 ### Keep every video in front of the desktop picture

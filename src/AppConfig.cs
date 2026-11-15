@@ -717,8 +717,13 @@ namespace LiveBackground
             {
                 Log.Error("config load failed, using defaults", ex);
                 try { File.Copy(path, path + ".bad", true); }
-                catch { }
-                return new AppConfig();
+                catch (Exception copyEx)
+                {
+                    Log.Warn("could not back up the unreadable config: " + copyEx.Message);
+                }
+                AppConfig fresh = new AppConfig();
+                Paths.ApplyDefaults(fresh);
+                return fresh;
             }
         }
 

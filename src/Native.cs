@@ -53,11 +53,32 @@ namespace LiveBackground
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
 
+        // GetWindowLongPtrW / SetWindowLongPtrW do not exist on 32-bit Windows
+        // (they are macros to the *W 32-bit calls there), so pick the right one
+        // at runtime instead of throwing EntryPointNotFoundException.
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+        private static extern IntPtr GetWindowLong64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-        public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        private static extern IntPtr SetWindowLong64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        public static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
+        {
+            return IntPtr.Size == 8 ? GetWindowLong64(hWnd, nIndex)
+                : new IntPtr(GetWindowLong32(hWnd, nIndex));
+        }
+
+        public static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+        {
+            return IntPtr.Size == 8 ? SetWindowLong64(hWnd, nIndex, dwNewLong)
+                : new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
+        }
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -74,7 +95,7 @@ namespace LiveBackground
         [DllImport("user32.dll")]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 
         [DllImport("user32.dll")]
@@ -133,11 +154,8 @@ namespace LiveBackground
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern int SystemParametersInfo(uint uiAction, uint uiParam, string pvParam, uint fWinIni);
-
-        [DllImport("shell32.dll")]
-        public static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool DestroyIcon(IntPtr hIcon);
@@ -203,13 +221,6 @@ namespace LiveBackground
             return list;
         }
 
-        public static IntPtr FindMpvWindow(IntPtr progman)
-        {
-            return FindMpvWindow(progman, 0);
-        }
-
-        // With one mpv per screen the first window of the class is no longer
-        // enough; match the player's process id instead.
         public static IntPtr FindMpvWindow(IntPtr progman, uint processId)
         {
             foreach (IntPtr h in ChildrenInZOrder(progman))
@@ -257,9 +268,13 @@ namespace LiveBackground
                     target.Right = bounds.Right;
                     target.Bottom = bounds.Bottom;
                     Native.MapWindowPoints(IntPtr.Zero, progman, ref target, 2);
-                    Native.SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
-                        target.Right - target.Left, target.Bottom - target.Top,
-                        Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
+                    if (!Native.SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top,
+                            target.Right - target.Left, target.Bottom - target.Top,
+                            Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER))
+                    {
+                        Log.Warn("could not move a wallpaper window onto its screen (error " +
+                            Marshal.GetLastWin32Error() + ")");
+                    }
                 }
             }
             EnsurePlacement(progman, hwnd);
@@ -290,8 +305,14 @@ namespace LiveBackground
             if (progman == IntPtr.Zero || hwnd == IntPtr.Zero) return false;
             IntPtr icons = FindDesktopIcons(progman);
             IntPtr insertAfter = icons != IntPtr.Zero ? icons : Native.HWND_TOP;
-            return Native.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0,
+            bool ok = Native.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
+            if (!ok)
+            {
+                Log.Warn("could not place the image layer below the icons (error " +
+                    Marshal.GetLastWin32Error() + ")");
+            }
+            return ok;
         }
 
         // Reads how Windows is scaling the desktop wallpaper. The value is used
@@ -382,13 +403,14 @@ namespace LiveBackground
             if (mpvIndex > iconsIndex && !hiddenByLayer) return true;
 
             IntPtr insertAfter = icons != IntPtr.Zero ? icons : Native.HWND_TOP;
-            Native.SetWindowPos(mpvWnd, insertAfter, 0, 0, 0, 0,
+            bool moved = Native.SetWindowPos(mpvWnd, insertAfter, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
 
             List<IntPtr> after = ChildrenInZOrder(progman);
             int nowIndex = after.IndexOf(mpvWnd);
-            Log.Info(string.Format("placed video below the icons (was index {0}, now {1} of {2})",
-                mpvIndex, nowIndex, after.Count));
+            Log.Info(string.Format("placed video below the icons (was index {0}, now {1} of {2}){3}",
+                mpvIndex, nowIndex, after.Count,
+                moved ? "" : " (SetWindowPos failed, error " + Marshal.GetLastWin32Error() + ")"));
             return nowIndex >= 0;
         }
 
@@ -410,17 +432,28 @@ namespace LiveBackground
             return "";
         }
 
-        public static void SetDesktopWallpaper(string path)
+        public static bool SetDesktopWallpaper(string path)
         {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
             // The wallpaper style is deliberately left alone. The crossfade
             // layer reads the user's Windows fit mode instead of changing it.
             try
             {
-                Native.SystemParametersInfo(Native.SPI_SETDESKWALLPAPER, 0, path,
+                int ok = Native.SystemParametersInfo(Native.SPI_SETDESKWALLPAPER, 0, path,
                     Native.SPIF_UPDATEINIFILE | Native.SPIF_SENDCHANGE);
+                if (ok == 0)
+                {
+                    Log.Warn("could not set the desktop wallpaper (error " +
+                        Marshal.GetLastWin32Error() + ")");
+                    return false;
+                }
+                return true;
             }
-            catch (Exception ex) { Log.Warn("could not set desktop wallpaper: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Log.Warn("could not set desktop wallpaper: " + ex.Message);
+                return false;
+            }
         }
     }
 }

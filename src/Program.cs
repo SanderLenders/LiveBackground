@@ -50,6 +50,10 @@ namespace LiveBackground
         private static DateTime _nextImageAt = DateTime.MinValue;
         private static string _currentImage = "";
         private static string _surfaceImage = "";
+        // Guards _imageSurfaces and _screenImages. The watchdog thread builds
+        // and iterates them while the settings UI thread can rebuild them the
+        // moment the user saves, so both sides take this lock.
+        private static readonly object ImageSync = new object();
         private static readonly List<ImageSurface> _imageSurfaces = new List<ImageSurface>();
         // Independent slideshow state for the first two extra screens. Other
         // extra surfaces simply follow the main image. The same surfaces are
@@ -1567,7 +1571,7 @@ namespace LiveBackground
             // Save/apply runs on the settings UI thread while the watchdog is
             // also advancing pictures. Serialize the state transition so one
             // screen never gets two folder watchers at the same time.
-            lock (_screenImages)
+            lock (ImageSync)
             {
                 SyncScreenImageStates();
                 foreach (ScreenImageState state in _screenImages)
@@ -1644,7 +1648,7 @@ namespace LiveBackground
         // whose physical monitor changed.
         private static void SyncScreenImageStates()
         {
-            lock (_screenImages) { SyncScreenImageStatesLocked(); }
+            lock (ImageSync) { SyncScreenImageStatesLocked(); }
         }
 
         private static void SyncScreenImageStatesLocked()
@@ -1706,12 +1710,15 @@ namespace LiveBackground
         private static bool IsIndependentImageIndex(int index)
         {
             if (_config == null) return false;
-            foreach (ScreenImageState state in _screenImages)
+            lock (ImageSync)
             {
-                if (state.ScreenIndex != index) continue;
-                return !_config.ScreenFor(state.Device).ImagesSameAsMain;
+                foreach (ScreenImageState state in _screenImages)
+                {
+                    if (state.ScreenIndex != index) continue;
+                    return !_config.ScreenFor(state.Device).ImagesSameAsMain;
+                }
+                return false;
             }
-            return false;
         }
 
         private static string ScreenLabelForIndex(int index)
@@ -1774,18 +1781,24 @@ namespace LiveBackground
 
         private static void StopExtraImageWatchers()
         {
-            foreach (ScreenImageState state in _screenImages) StopScreenImageWatcher(state);
+            lock (ImageSync)
+            {
+                foreach (ScreenImageState state in _screenImages) StopScreenImageWatcher(state);
+            }
         }
 
         private static void ResetExtraImageStates()
         {
-            foreach (ScreenImageState state in _screenImages)
+            lock (ImageSync)
             {
-                StopScreenImageWatcher(state);
-                state.Active = false;
-                state.ListDirty = false;
-                state.CurrentImage = "";
-                state.SurfaceImage = "";
+                foreach (ScreenImageState state in _screenImages)
+                {
+                    StopScreenImageWatcher(state);
+                    state.Active = false;
+                    state.ListDirty = false;
+                    state.CurrentImage = "";
+                    state.SurfaceImage = "";
+                }
             }
         }
 
@@ -1805,56 +1818,68 @@ namespace LiveBackground
         // slideshow picture covers every monitor.
         private static void StartImageSurfaces(IntPtr progman)
         {
-            if (_screens == null || _screens.Count == 0) _screens = Screens.Enumerate();
-            int wanted = Math.Max(1, _screens.Count);
-            while (_imageSurfaces.Count > wanted)
+            lock (ImageSync)
             {
-                ImageSurface extra = _imageSurfaces[_imageSurfaces.Count - 1];
-                _imageSurfaces.RemoveAt(_imageSurfaces.Count - 1);
-                try { extra.Shutdown(); } catch { }
-            }
-            for (int i = 0; i < wanted; i++)
-            {
-                if (i >= _imageSurfaces.Count) _imageSurfaces.Add(new ImageSurface());
-                ImageSurface surface = _imageSurfaces[i];
-                Rectangle bounds = i < _screens.Count ? _screens[i].Bounds : _screens[0].Bounds;
-                if (!surface.IsStarted)
+                if (_screens == null || _screens.Count == 0) _screens = Screens.Enumerate();
+                int wanted = Math.Max(1, _screens.Count);
+                while (_imageSurfaces.Count > wanted)
                 {
-                    surface.Start(progman, bounds);
-                    foreach (ScreenPlayer player in _screenPlayers) player.FallbackVisible = false;
+                    ImageSurface extra = _imageSurfaces[_imageSurfaces.Count - 1];
+                    _imageSurfaces.RemoveAt(_imageSurfaces.Count - 1);
+                    try { extra.Shutdown(); } catch { }
                 }
-                else if (progman != IntPtr.Zero) surface.Attach(progman);
+                for (int i = 0; i < wanted; i++)
+                {
+                    if (i >= _imageSurfaces.Count) _imageSurfaces.Add(new ImageSurface());
+                    ImageSurface surface = _imageSurfaces[i];
+                    Rectangle bounds = i < _screens.Count ? _screens[i].Bounds : _screens[0].Bounds;
+                    if (!surface.IsStarted)
+                    {
+                        surface.Start(progman, bounds);
+                        foreach (ScreenPlayer player in _screenPlayers) player.FallbackVisible = false;
+                    }
+                    else if (progman != IntPtr.Zero) surface.Attach(progman);
+                }
+                SyncScreenImageStates();
             }
-            SyncScreenImageStates();
         }
 
         private static void ShutdownImageSurfaces()
         {
-            StopExtraImageWatchers();
-            _screenImages.Clear();
-            foreach (ImageSurface surface in _imageSurfaces)
+            lock (ImageSync)
             {
-                try { surface.Shutdown(); } catch { }
+                StopExtraImageWatchers();
+                _screenImages.Clear();
+                foreach (ImageSurface surface in _imageSurfaces)
+                {
+                    try { surface.Shutdown(); } catch { }
+                }
+                _imageSurfaces.Clear();
+                foreach (ScreenPlayer player in _screenPlayers) player.FallbackVisible = false;
             }
-            _imageSurfaces.Clear();
-            foreach (ScreenPlayer player in _screenPlayers) player.FallbackVisible = false;
         }
 
         private static void ImageAttachAll(IntPtr progman)
         {
-            foreach (ImageSurface surface in _imageSurfaces)
+            lock (ImageSync)
             {
-                if (surface.IsStarted) surface.Attach(progman);
+                foreach (ImageSurface surface in _imageSurfaces)
+                {
+                    if (surface.IsStarted) surface.Attach(progman);
+                }
             }
         }
 
         private static void ImageShowMainAndMirrors(string path, double fadeSeconds, bool immediate)
         {
-            for (int i = 0; i < _imageSurfaces.Count; i++)
+            lock (ImageSync)
             {
-                if (IsIndependentImageIndex(i)) continue;
-                ImageSurface surface = _imageSurfaces[i];
-                if (surface.IsStarted) surface.Show(path, fadeSeconds, immediate);
+                for (int i = 0; i < _imageSurfaces.Count; i++)
+                {
+                    if (IsIndependentImageIndex(i)) continue;
+                    ImageSurface surface = _imageSurfaces[i];
+                    if (surface.IsStarted) surface.Show(path, fadeSeconds, immediate);
+                }
             }
         }
 
@@ -1864,70 +1889,73 @@ namespace LiveBackground
         private static void UpdateFallbackSurfaces()
         {
             if (IsImagesMode || _config == null || _screens == null) return;
-            bool any = false;
-            foreach (ScreenPlayer screen in _screenPlayers)
+            lock (ImageSync)
             {
-                if (NeedsFallbackSurface(screen))
-                {
-                    any = true;
-                    break;
-                }
-            }
-            if (!any)
-            {
-                ImageHideAll();
+                bool any = false;
                 foreach (ScreenPlayer screen in _screenPlayers)
                 {
-                    screen.FallbackVisible = false;
-                    screen.FallbackImage = "";
-                }
-                return;
-            }
-            if (_progman == IntPtr.Zero) return;
-            StartImageSurfaces(_progman);
-
-            // The primary and mirroring screens use the native wallpaper.
-            for (int i = 0; i < _imageSurfaces.Count; i++)
-            {
-                bool managed = false;
-                foreach (ScreenPlayer screen in _screenPlayers)
-                {
-                    if (screen.ScreenIndex == i && NeedsFallbackSurface(screen))
+                    if (NeedsFallbackSurface(screen))
                     {
-                        managed = true;
+                        any = true;
                         break;
                     }
                 }
-                if (!managed && _imageSurfaces[i].IsStarted) _imageSurfaces[i].Hide();
-            }
+                if (!any)
+                {
+                    ImageHideAll();
+                    foreach (ScreenPlayer screen in _screenPlayers)
+                    {
+                        screen.FallbackVisible = false;
+                        screen.FallbackImage = "";
+                    }
+                    return;
+                }
+                if (_progman == IntPtr.Zero) return;
+                StartImageSurfaces(_progman);
 
-            foreach (ScreenPlayer screen in _screenPlayers)
-            {
-                if (!NeedsFallbackSurface(screen))
+                // The primary and mirroring screens use the native wallpaper.
+                for (int i = 0; i < _imageSurfaces.Count; i++)
                 {
-                    HideFallbackSurface(screen);
-                    continue;
-                }
-                bool playing = !_paused && screen.Player != null && screen.Player.IsRunning;
-                if (playing || screen.ScreenIndex < 0 || screen.ScreenIndex >= _imageSurfaces.Count)
-                {
-                    HideFallbackSurface(screen);
-                    continue;
+                    bool managed = false;
+                    foreach (ScreenPlayer screen in _screenPlayers)
+                    {
+                        if (screen.ScreenIndex == i && NeedsFallbackSurface(screen))
+                        {
+                            managed = true;
+                            break;
+                        }
+                    }
+                    if (!managed && _imageSurfaces[i].IsStarted) _imageSurfaces[i].Hide();
                 }
 
-                AppConfig own = _config.ScreenConfig(_config.ScreenFor(screen.Device));
-                string path = DesktopHost.WallpaperFor(_appRoot, own, screen.FramePath);
-                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                foreach (ScreenPlayer screen in _screenPlayers)
                 {
-                    HideFallbackSurface(screen);
-                    continue;
-                }
-                if (!screen.FallbackVisible ||
-                    !string.Equals(path, screen.FallbackImage, StringComparison.OrdinalIgnoreCase))
-                {
-                    _imageSurfaces[screen.ScreenIndex].Show(path, 0, true);
-                    screen.FallbackImage = path;
-                    screen.FallbackVisible = true;
+                    if (!NeedsFallbackSurface(screen))
+                    {
+                        HideFallbackSurface(screen);
+                        continue;
+                    }
+                    bool playing = !_paused && screen.Player != null && screen.Player.IsRunning;
+                    if (playing || screen.ScreenIndex < 0 || screen.ScreenIndex >= _imageSurfaces.Count)
+                    {
+                        HideFallbackSurface(screen);
+                        continue;
+                    }
+
+                    AppConfig own = _config.ScreenConfig(_config.ScreenFor(screen.Device));
+                    string path = DesktopHost.WallpaperFor(_appRoot, own, screen.FramePath);
+                    if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                    {
+                        HideFallbackSurface(screen);
+                        continue;
+                    }
+                    if (!screen.FallbackVisible ||
+                        !string.Equals(path, screen.FallbackImage, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _imageSurfaces[screen.ScreenIndex].Show(path, 0, true);
+                        screen.FallbackImage = path;
+                        screen.FallbackVisible = true;
+                    }
                 }
             }
         }
@@ -1943,27 +1971,36 @@ namespace LiveBackground
         private static void HideFallbackSurface(ScreenPlayer screen)
         {
             if (screen == null) return;
-            if (screen.FallbackVisible && screen.ScreenIndex >= 0 && screen.ScreenIndex < _imageSurfaces.Count)
+            lock (ImageSync)
             {
-                _imageSurfaces[screen.ScreenIndex].Hide();
+                if (screen.FallbackVisible && screen.ScreenIndex >= 0 && screen.ScreenIndex < _imageSurfaces.Count)
+                {
+                    _imageSurfaces[screen.ScreenIndex].Hide();
+                }
+                screen.FallbackVisible = false;
+                screen.FallbackImage = "";
             }
-            screen.FallbackVisible = false;
-            screen.FallbackImage = "";
         }
 
         private static void ImageEnsureVisibleAll()
         {
-            foreach (ImageSurface surface in _imageSurfaces)
+            lock (ImageSync)
             {
-                if (surface.IsStarted) surface.EnsureVisible();
+                foreach (ImageSurface surface in _imageSurfaces)
+                {
+                    if (surface.IsStarted) surface.EnsureVisible();
+                }
             }
         }
 
         private static void ImageHideAll()
         {
-            foreach (ImageSurface surface in _imageSurfaces)
+            lock (ImageSync)
             {
-                if (surface.IsStarted) surface.Hide();
+                foreach (ImageSurface surface in _imageSurfaces)
+                {
+                    if (surface.IsStarted) surface.Hide();
+                }
             }
         }
 

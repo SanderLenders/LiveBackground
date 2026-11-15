@@ -10,15 +10,6 @@ using System.Text;
 namespace LiveBackground
 {
     [DataContract]
-    public class MediaEntry
-    {
-        [DataMember(Name = "name")] public string Name;
-        [DataMember(Name = "size")] public long Size;
-        [DataMember(Name = "modified")] public long ModifiedUtcTicks;
-        [DataMember(Name = "duration")] public double Duration;
-    }
-
-    [DataContract]
     public class MediaManifest
     {
         [DataMember(Name = "version")] public int Version = 1;
@@ -33,17 +24,12 @@ namespace LiveBackground
         [DataMember(Name = "builtUtc")] public string BuiltUtc;
         [DataMember(Name = "loopFile")] public string LoopFile;
         [DataMember(Name = "frameFile")] public string FrameFile;
-        [DataMember(Name = "entries")] public MediaEntry[] Entries;
     }
 
     [DataContract]
     internal class ProbeStream
     {
-        [DataMember(Name = "width")] public int Width;
-        [DataMember(Name = "height")] public int Height;
-        [DataMember(Name = "avg_frame_rate")] public string AvgFrameRate;
         [DataMember(Name = "duration")] public string Duration;
-        [DataMember(Name = "codec_type")] public string CodecType;
     }
 
     [DataContract]
@@ -838,18 +824,6 @@ namespace LiveBackground
             manifest.BuiltUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             manifest.LoopFile = Path.Combine("loops", Path.GetFileName(loop));
             manifest.FrameFile = haveFrame ? Path.Combine("loops", Path.GetFileName(frame)) : "";
-            manifest.Entries = new MediaEntry[videos.Count];
-            for (int i = 0; i < videos.Count; i++)
-            {
-                FileInfo info = new FileInfo(videos[i]);
-                manifest.Entries[i] = new MediaEntry
-                {
-                    Name = Path.GetFileName(videos[i]),
-                    Size = info.Length,
-                    ModifiedUtcTicks = info.LastWriteTimeUtc.Ticks,
-                    Duration = durations[i]
-                };
-            }
 
             // Remember this result for instant reuse. cacheOnly builds only
             // fill the cache; they must not change what is on screen.
@@ -952,7 +926,7 @@ namespace LiveBackground
             duration = 0;
             error = "";
             string args = string.Format(
-                "-v error -select_streams v:0 -show_entries stream=width,height,avg_frame_rate,duration,codec_type " +
+                "-v error -select_streams v:0 -show_entries stream=duration " +
                 "-show_entries format=duration -of json {0}", Util.Quote(video));
             ProcessResult result = ProcessRunner.Run(ffprobe, args, null, 60000);
             if (result.ExitCode != 0)

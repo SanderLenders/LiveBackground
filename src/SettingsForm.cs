@@ -3738,6 +3738,20 @@ namespace LiveBackground
             AppConfig updated = CollectConfig();
             if (updated == null) return;
 
+            try
+            {
+                ConfigStore.Save(_appRoot, updated);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not save the settings: " + ex.Message,
+                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Only touch the startup task once the settings are safely on disk;
+            // a failed save must not leave a logon task the config does not
+            // agree with.
             bool startupChanged = _startWithWindows.Checked != IsStartupEnabled(updated.TaskName);
             if (startupChanged)
             {
@@ -3752,17 +3766,6 @@ namespace LiveBackground
                 {
                     Installer.RemoveStartup(_appRoot, updated, log);
                 }
-            }
-
-            try
-            {
-                ConfigStore.Save(_appRoot, updated);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Could not save the settings: " + ex.Message,
-                    "LiveBackground", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
             }
 
             Program.ApplyConfig(updated);

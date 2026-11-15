@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Security.Principal;
 using System.Text;
@@ -23,21 +21,40 @@ namespace LiveBackground
             return Path.GetFullPath(expanded);
         }
 
+        // Windows command-line quoting. A backslash that precedes a quote has to
+        // be doubled, and a run of backslashes before the closing quote must be
+        // doubled too, otherwise the closing quote is escaped away. This is what
+        // CommandLineToArgvW (and every program that uses it) expects.
         public static string Quote(string value)
         {
-            if (value == null) value = "";
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
-        }
-
-        public static bool IsAdmin()
-        {
-            try
+            if (string.IsNullOrEmpty(value)) return "\"\"";
+            StringBuilder sb = new StringBuilder(value.Length + 2);
+            sb.Append('"');
+            int backslashes = 0;
+            foreach (char c in value)
             {
-                WindowsIdentity identity = WindowsIdentity.GetCurrent();
-                WindowsPrincipal principal = new WindowsPrincipal(identity);
-                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+                if (c == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    sb.Append('\\', backslashes * 2 + 1);
+                    sb.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+                if (backslashes > 0)
+                {
+                    sb.Append('\\', backslashes);
+                    backslashes = 0;
+                }
+                sb.Append(c);
             }
-            catch { return false; }
+            sb.Append('\\', backslashes * 2);
+            sb.Append('"');
+            return sb.ToString();
         }
 
         public static string CurrentUser()
@@ -46,41 +63,9 @@ namespace LiveBackground
             catch { return Environment.UserDomainName + "\\" + Environment.UserName; }
         }
 
-        public static string FormatDuration(double seconds)
-        {
-            if (seconds < 0) seconds = 0;
-            int total = (int)Math.Round(seconds);
-            return string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}", total / 60, total % 60);
-        }
-
-        public static void CopyDirectory(string source, string destination, Action<string> progress)
-        {
-            if (!Directory.Exists(source)) return;
-            Directory.CreateDirectory(destination);
-            foreach (string file in Directory.GetFiles(source))
-            {
-                string target = Path.Combine(destination, Path.GetFileName(file));
-                if (progress != null) progress("copy " + Path.GetFileName(file));
-                File.Copy(file, target, true);
-            }
-            foreach (string dir in Directory.GetDirectories(source))
-            {
-                CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)), progress);
-            }
-        }
-
         public static void SafeDelete(string path)
         {
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }
-            catch { }
-        }
-
-        public static void SafeKill(Process process)
-        {
-            try
-            {
-                if (process != null && !process.HasExited) process.Kill();
-            }
             catch { }
         }
 

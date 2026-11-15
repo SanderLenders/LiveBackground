@@ -93,15 +93,6 @@ namespace LiveBackground
             return sb.ToString();
         }
 
-        // The picker in the settings window names screens by this text, so the
-        // UI and the log always agree on "Screen 1" and "Screen 2".
-        public static string Label(ScreenInfo screen)
-        {
-            if (screen == null) return "";
-            return "Screen " + (screen.Index + 1) + " (" + screen.Bounds.Width + "x" +
-                screen.Bounds.Height + ")";
-        }
-
         // Windows "Duplicate these displays" drives two targets from one
         // desktop monitor, so EnumDisplayMonitors reports a single screen.
         // The display config still lists both active paths, which is the

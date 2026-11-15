@@ -10,6 +10,10 @@ namespace LiveBackground
         private readonly string _appRoot;
         private readonly AppConfig _config;
         private readonly string _logName;
+        // The watchdog thread and the settings UI thread both touch the player,
+        // so every field below is read and written under this lock. Without it a
+        // "is it running?" check can race a Stop that disposes the process.
+        private readonly object _sync = new object();
         private Process _process;
         private IntPtr _window;
         private DateTime _lastStart = DateTime.MinValue;
@@ -28,10 +32,10 @@ namespace LiveBackground
             _logName = string.IsNullOrEmpty(logName) ? "mpv.log" : logName;
         }
 
-        public Process Process { get { return _process; } }
-        public IntPtr Window { get { return _window; } set { _window = value; } }
-        public bool IsRunning { get { return _process != null && !_process.HasExited; } }
-        public DateTime StartedUtc { get { return _lastStart; } }
+        public Process Process { get { lock (_sync) { return _process; } } }
+        public IntPtr Window { get { lock (_sync) { return _window; } } set { lock (_sync) { _window = value; } } }
+        public bool IsRunning { get { lock (_sync) { return _process != null && !_process.HasExited; } } }
+        public DateTime StartedUtc { get { lock (_sync) { return _lastStart; } } }
 
         public string MpvExe
         {
@@ -89,30 +93,39 @@ namespace LiveBackground
                 string.IsNullOrEmpty(_config.ExtraMpvArgs) ? "" : " " + _config.ExtraMpvArgs);
 
             Log.Info("starting mpv: " + args);
-            _process = ProcessRunner.StartDetached(MpvExe, args, Path.GetDirectoryName(MpvExe));
-            _window = IntPtr.Zero;
-            _lastStart = DateTime.UtcNow;
-            return _process != null;
+            Process started = ProcessRunner.StartDetached(MpvExe, args, Path.GetDirectoryName(MpvExe));
+            lock (_sync)
+            {
+                _process = started;
+                _window = IntPtr.Zero;
+                _lastStart = DateTime.UtcNow;
+            }
+            return started != null;
         }
 
         public void Stop()
         {
-            if (_process == null) return;
+            Process process;
+            lock (_sync)
+            {
+                process = _process;
+                _process = null;
+                _window = IntPtr.Zero;
+            }
+            if (process == null) return;
             try
             {
-                if (!_process.HasExited)
+                if (!process.HasExited)
                 {
-                    Log.Info("stopping mpv, pid " + _process.Id);
-                    _process.Kill();
-                    _process.WaitForExit(5000);
+                    Log.Info("stopping mpv, pid " + process.Id);
+                    process.Kill();
+                    process.WaitForExit(5000);
                 }
             }
             catch (Exception ex) { Log.Warn("could not stop mpv: " + ex.Message); }
             finally
             {
-                try { _process.Dispose(); } catch { }
-                _process = null;
-                _window = IntPtr.Zero;
+                try { process.Dispose(); } catch { }
             }
         }
 
@@ -123,7 +136,7 @@ namespace LiveBackground
 
         public bool StartedRecently(int seconds)
         {
-            return (DateTime.UtcNow - _lastStart).TotalSeconds < seconds;
+            lock (_sync) { return (DateTime.UtcNow - _lastStart).TotalSeconds < seconds; }
         }
     }
 }
