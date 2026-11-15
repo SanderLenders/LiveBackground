@@ -370,7 +370,16 @@ namespace LiveBackground
             // correct. Insisting on the single slot directly under the icons
             // made the players push each other back and forth on every poll,
             // which churned the z-order and flooded the log.
-            if (mpvIndex > iconsIndex) return true;
+            //
+            // It must still stay in front of the wallpaper layer that paints
+            // the desktop picture. Re-placing another player can push a video
+            // window down behind that layer, which hides it completely: the
+            // screen then shows the frozen desktop picture instead of the
+            // video, while this check used to call the placement correct.
+            IntPtr layer = FindWallpaperLayer(progman);
+            int layerIndex = layer != IntPtr.Zero ? kids.IndexOf(layer) : -1;
+            bool hiddenByLayer = layerIndex > iconsIndex && mpvIndex > layerIndex;
+            if (mpvIndex > iconsIndex && !hiddenByLayer) return true;
 
             IntPtr insertAfter = icons != IntPtr.Zero ? icons : Native.HWND_TOP;
             Native.SetWindowPos(mpvWnd, insertAfter, 0, 0, 0, 0,

@@ -1,5 +1,21 @@
 # LiveBackground change list
 
+## 1.8.4
+
+### Keep every video in front of the desktop picture
+
+- **A screen can no longer be left showing the frozen desktop picture.** The
+  video window sits just behind the desktop icons and in front of the layer
+  that paints the desktop picture. Re-placing one screen's player could push
+  another screen's video window down behind that layer, which hid it
+  completely: the screen showed the static desktop picture instead of the
+  video. The placement check only compared the video against the desktop
+  icons, so it called the broken order correct and never repaired it.
+- **The check now also fails when the video has slipped behind the desktop
+  picture layer**, so the app moves it back within half a second. This is the
+  same self-check the app already runs for every player, so it recovers on its
+  own without a restart.
+
 ## 1.8.3
 
 ### Recover fully after an Explorer restart
