@@ -34,7 +34,7 @@ namespace LiveBackground
                 // Fall back to a plain copy when a Replace is not possible,
                 // for example on some network shares.
                 File.Copy(temp, path, true);
-                try { File.Delete(temp); } catch { }
+                try { File.Delete(temp); } catch { /* best-effort: the temp file is best removed, but the write already succeeded */ }
             }
         }
 

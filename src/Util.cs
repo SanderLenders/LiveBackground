@@ -66,7 +66,7 @@ namespace LiveBackground
         public static void SafeDelete(string path)
         {
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }
-            catch { }
+            catch { /* best-effort delete; a locked file is left for later */ }
         }
 
         public static string DetectImageExtension(string path)
@@ -83,7 +83,7 @@ namespace LiveBackground
                     if (read >= 3 && header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46) return ".gif";
                 }
             }
-            catch { }
+            catch { /* best-effort header read; an unknown file reads as .img */ }
             return ".img";
         }
     }

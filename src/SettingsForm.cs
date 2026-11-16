@@ -772,7 +772,7 @@ namespace LiveBackground
 
             bool hasSecond = screens.Count >= 2;
             bool duplicate = false;
-            try { duplicate = Screens.IsDuplicate(screens); } catch { }
+            try { duplicate = Screens.IsDuplicate(screens); } catch { /* best-effort: an unknown layout counts as not duplicated */ }
             string signature = Screens.Signature(screens) + "|dup=" + duplicate;
 
             _lastScreenSignature = signature;
@@ -1449,7 +1449,7 @@ namespace LiveBackground
                             ApplyDurations(durations);
                         }));
                     }
-                    catch { }
+                    catch { /* best-effort: the form may have closed while probing */ }
                 });
                 thread.IsBackground = true;
                 thread.Name = "livebackground-probe" + _number;
@@ -2428,7 +2428,7 @@ namespace LiveBackground
                 startup = StartupTask.Exists(_config.TaskName) ||
                     File.Exists(Shortcut.StartupShortcutPath(_config.TaskName));
             }
-            catch { }
+            catch { /* best-effort: a missing shortcut reads as not installed */ }
             _startWithWindows.Checked = startup;
 
             // The per-screen settings are loaded into the "Multi Monitor"
@@ -3670,7 +3670,7 @@ namespace LiveBackground
                         ApplyDurations(durations);
                     }));
                 }
-                catch { }
+                catch { /* best-effort: the form may have closed while probing */ }
             });
             thread.IsBackground = true;
             thread.Name = "livebackground-probe";

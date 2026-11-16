@@ -36,7 +36,7 @@ function AwaitAction($op) {
             string temp = destinationBase + ".bin";
             Util.SafeDelete(temp);
             string dir = Path.GetDirectoryName(temp);
-            if (!string.IsNullOrEmpty(dir)) { try { Directory.CreateDirectory(dir); } catch { } }
+            if (!string.IsNullOrEmpty(dir)) { try { Directory.CreateDirectory(dir); } catch { /* best-effort: the folder is created if missing */ } }
 
             string script = Header + @"
 $stream = [Windows.System.UserProfile.LockScreen]::GetImageStream()

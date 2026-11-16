@@ -183,7 +183,7 @@ namespace LiveBackground
             }
             if (_invoker != null)
             {
-                try { _invoker.Dispose(); } catch { }
+                try { _invoker.Dispose(); } catch { /* best-effort dispose on shutdown */ }
             }
             ExitThread();
         }
@@ -218,7 +218,7 @@ namespace LiveBackground
                     _invoker.BeginInvoke(callback, new object[] { null });
                     return;
                 }
-                catch { }
+                catch { /* best-effort: fall back to a direct call below */ }
             }
             callback(null);
         }

@@ -126,7 +126,7 @@ namespace LiveBackground
             }
             if (thread != null)
             {
-                try { thread.Join(4000); } catch { }
+                try { thread.Join(4000); } catch { /* best-effort: the poll thread stops on its own */ }
             }
         }
 
@@ -262,7 +262,7 @@ namespace LiveBackground
                     // Explorer was restarted and took the old child window with
                     // it. WinForms still thinks the handle is alive, so rebuild
                     // it before reparenting.
-                    try { RecreateHandle(); } catch { }
+                    try { RecreateHandle(); } catch { /* best-effort handle rebuild before reparenting */ }
                     _attachedParent = IntPtr.Zero;
                     _visible = false;
                 }
@@ -340,8 +340,8 @@ namespace LiveBackground
 
             public void DisposeSurface()
             {
-                try { _pollTimer.Stop(); } catch { }
-                try { _fadeTimer.Stop(); } catch { }
+                try { _pollTimer.Stop(); } catch { /* best-effort: the timer may already be disposed */ }
+                try { _fadeTimer.Stop(); } catch { /* best-effort: the timer may already be disposed */ }
                 StopFade();
                 DisposeBitmap(ref _current);
                 DisposeBitmap(ref _next);
@@ -484,7 +484,7 @@ namespace LiveBackground
                         }
                     }
                 }
-                catch { }
+                catch { /* best-effort EXIF read; a photo without EXIF shows unrotated */ }
 
                 Bitmap copy = new Bitmap(source);
                 if (rotation != RotateFlipType.RotateNoneFlipNone) copy.RotateFlip(rotation);
@@ -531,7 +531,7 @@ namespace LiveBackground
             private static void DisposeBitmap(ref Bitmap bitmap)
             {
                 if (bitmap == null) return;
-                try { bitmap.Dispose(); } catch { }
+                try { bitmap.Dispose(); } catch { /* best-effort dispose; GDI+ may already have released it */ }
                 bitmap = null;
             }
         }

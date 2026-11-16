@@ -209,9 +209,9 @@ namespace LiveBackground
         {
             Log.Info("exit requested from the tray");
             try { File.WriteAllText(Installer.QuitFlag(_appRoot), "quit"); }
-            catch { }
+            catch { /* best-effort; the stop flag below is the fallback */ }
             try { File.WriteAllText(Installer.StopFlag(_appRoot), "stop"); }
-            catch { }
+            catch { /* best-effort; the process is exiting anyway */ }
             Ui.Stop();
         }
 
@@ -305,7 +305,7 @@ namespace LiveBackground
                         string.Equals(signatureNow, _buildingSignature, StringComparison.Ordinal);
                 }
             }
-            catch { }
+            catch { /* best-effort: an unreadable folder forces a rebuild */ }
             if (!sameBuildRunning) _buildGeneration++;
             _nextCheck = DateTime.UtcNow;
             _prefetchDone = false;
@@ -370,7 +370,7 @@ namespace LiveBackground
         public static int Main(string[] args)
         {
             _processStartUtc = DateTime.UtcNow;
-            try { _processStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime(); } catch { }
+            try { _processStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime(); } catch { /* best-effort: fall back to the time we started */ }
 
             string programRoot = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             Paths.Init(programRoot);
@@ -397,15 +397,15 @@ namespace LiveBackground
             if (settingsRequested)
             {
                 try { File.WriteAllText(Installer.SettingsFlag(_appRoot), "open"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
             }
 
             if (HasArg(args, "--stop"))
             {
                 try { File.WriteAllText(Installer.QuitFlag(_appRoot), "quit"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
                 try { File.WriteAllText(Installer.StopFlag(_appRoot), "stop"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
                 Log.Info("stop requested");
                 return 0;
             }
@@ -415,7 +415,7 @@ namespace LiveBackground
             if (HasArg(args, "--pause"))
             {
                 try { File.WriteAllText(Installer.PauseFlag(_appRoot), "pause"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
                 Log.Info("pause requested");
                 return 0;
             }
@@ -423,7 +423,7 @@ namespace LiveBackground
             if (HasArg(args, "--resume"))
             {
                 try { File.WriteAllText(Installer.ResumeFlag(_appRoot), "resume"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
                 Log.Info("resume requested");
                 return 0;
             }
@@ -431,7 +431,7 @@ namespace LiveBackground
             if (HasArg(args, "--rebuild"))
             {
                 try { File.WriteAllText(Installer.RebuildFlag(_appRoot), "rebuild"); }
-                catch { }
+                catch { /* best-effort: the running instance may already be gone */ }
                 Log.Info("rebuild requested");
                 return 0;
             }
@@ -462,7 +462,7 @@ namespace LiveBackground
                     }
                     ShutdownImageSurfaces();
                     Ui.Stop();
-                    try { mutex.ReleaseMutex(); } catch { }
+                    try { mutex.ReleaseMutex(); } catch { /* best-effort: the mutex is released on exit regardless */ }
                 }
             }
         }
@@ -1075,7 +1075,7 @@ namespace LiveBackground
                                 job.Signature = MediaPipeline.Signature(
                                     Util.ResolvePath(_appRoot, own.VideoFolder), own);
                             }
-                            catch { }
+                            catch { /* best-effort: a screen whose folder cannot be read keeps its loop */ }
                             screenJobs.Add(job);
                         }
 
@@ -1231,7 +1231,7 @@ namespace LiveBackground
                     mainSignature = MediaPipeline.Signature(
                         Util.ResolvePath(_appRoot, _config.VideoFolder), _config);
                 }
-                catch { }
+                catch { /* best-effort: an unreadable folder skips the cache check */ }
             }
             if (screens == null) screens = new List<ScreenJob>();
 
@@ -1343,7 +1343,7 @@ namespace LiveBackground
                 onBattery = System.Windows.Forms.SystemInformation.PowerStatus.PowerLineStatus ==
                     System.Windows.Forms.PowerLineStatus.Offline;
             }
-            catch { }
+            catch { /* best-effort: treat an unknown power state as online */ }
             if (onBattery)
             {
                 _prefetchDone = false;
@@ -1808,7 +1808,7 @@ namespace LiveBackground
                 state.Watcher.EnableRaisingEvents = false;
                 state.Watcher.Dispose();
             }
-            catch { }
+            catch { /* best-effort dispose on teardown */ }
             state.Watcher = null;
             state.WatchedFolder = "";
         }
@@ -1860,7 +1860,7 @@ namespace LiveBackground
                 {
                     ImageSurface extra = _imageSurfaces[_imageSurfaces.Count - 1];
                     _imageSurfaces.RemoveAt(_imageSurfaces.Count - 1);
-                    try { extra.Shutdown(); } catch { }
+                    try { extra.Shutdown(); } catch { /* best-effort shutdown of a removed surface */ }
                 }
                 for (int i = 0; i < wanted; i++)
                 {
@@ -1886,7 +1886,7 @@ namespace LiveBackground
                 _screenImages.Clear();
                 foreach (ImageSurface surface in _imageSurfaces)
                 {
-                    try { surface.Shutdown(); } catch { }
+                    try { surface.Shutdown(); } catch { /* best-effort shutdown on teardown */ }
                 }
                 _imageSurfaces.Clear();
                 foreach (ScreenPlayer player in _screenPlayers) player.FallbackVisible = false;
@@ -2115,7 +2115,7 @@ namespace LiveBackground
                 if (keep) continue;
                 if (existing.Player != null)
                 {
-                    try { existing.Player.Stop(); } catch { }
+                    try { existing.Player.Stop(); } catch { /* best-effort stop of a retired player */ }
                 }
                 next.RemoveAt(i);
             }
@@ -2257,7 +2257,7 @@ namespace LiveBackground
                 Process process = player.Process;
                 if (process != null && !process.HasExited) return (uint)process.Id;
             }
-            catch { }
+            catch { /* best-effort: an unknown process counts as not running */ }
             return 0;
         }
 
@@ -2372,7 +2372,7 @@ namespace LiveBackground
                     _imageWatcher.EnableRaisingEvents = false;
                     _imageWatcher.Dispose();
                 }
-                catch { }
+                catch { /* best-effort dispose on teardown */ }
                 _imageWatcher = null;
             }
             _watchedImageFolder = "";
@@ -2438,7 +2438,7 @@ namespace LiveBackground
                     _watcher.EnableRaisingEvents = false;
                     _watcher.Dispose();
                 }
-                catch { }
+                catch { /* best-effort dispose on teardown */ }
                 _watcher = null;
             }
             _watchedFolder = "";

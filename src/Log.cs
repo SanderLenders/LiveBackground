@@ -33,7 +33,7 @@ namespace LiveBackground
                         Rotate();
                     }
                 }
-                catch { }
+                catch { /* best-effort: logging must never fail startup */ }
                 OpenWriter();
             }
         }
@@ -74,7 +74,7 @@ namespace LiveBackground
                     // keeps its own file position, so without this seek a
                     // longer-lived writer would overwrite a newer process's
                     // lines instead of appending after them.
-                    try { _writer.BaseStream.Seek(0, SeekOrigin.End); } catch { }
+                    try { _writer.BaseStream.Seek(0, SeekOrigin.End); } catch { /* best-effort: if the seek fails the writer still appends */ }
 
                     _writer.Write(line);
                     _written += line.Length;
@@ -107,7 +107,7 @@ namespace LiveBackground
         private static void CloseWriter()
         {
             if (_writer == null) return;
-            try { _writer.Dispose(); } catch { }
+            try { _writer.Dispose(); } catch { /* best-effort dispose on shutdown */ }
             _writer = null;
         }
 
@@ -122,7 +122,7 @@ namespace LiveBackground
                 File.Move(_logPath, old);
                 _written = 0;
             }
-            catch { }
+            catch { /* best-effort: if the move fails the log keeps growing */ }
         }
     }
 }

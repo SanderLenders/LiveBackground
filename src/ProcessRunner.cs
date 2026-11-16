@@ -99,14 +99,14 @@ namespace LiveBackground
                 if (!exited)
                 {
                     result.TimedOut = true;
-                    try { process.Kill(); } catch { }
-                    try { process.WaitForExit(3000); } catch { }
+                    try { process.Kill(); } catch { /* best-effort: the process may have already exited */ }
+                    try { process.WaitForExit(3000); } catch { /* best-effort: give it a moment to die */ }
                 }
                 else
                 {
                     // The parameterless wait lets the asynchronous output
                     // readers drain, so the captured text is not truncated.
-                    try { process.WaitForExit(); } catch { }
+                    try { process.WaitForExit(); } catch { /* best-effort: drain the output readers */ }
                 }
 
                 result.ExitCode = process.HasExited ? process.ExitCode : -1;
@@ -154,13 +154,13 @@ namespace LiveBackground
                 {
                     if (e.Data == null) return;
                     stdout.Append(e.Data);
-                    if (onLine != null) { try { onLine(e.Data); } catch { } }
+                    if (onLine != null) { try { onLine(e.Data); } catch { /* best-effort: a throwing line callback must not kill the reader */ } }
                 };
                 process.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
                     if (e.Data == null) return;
                     stderr.Append(e.Data);
-                    if (onLine != null) { try { onLine(e.Data); } catch { } }
+                    if (onLine != null) { try { onLine(e.Data); } catch { /* best-effort: a throwing line callback must not kill the reader */ } }
                 };
 
                 try { process.Start(); }
@@ -173,7 +173,7 @@ namespace LiveBackground
 
                 if (priority != ProcessPriorityClass.Normal)
                 {
-                    try { process.PriorityClass = priority; } catch { }
+                    try { process.PriorityClass = priority; } catch { /* best-effort: priority is a hint, not required */ }
                 }
 
                 process.BeginOutputReadLine();
@@ -190,7 +190,7 @@ namespace LiveBackground
                     if (cancelled != null && cancelled())
                     {
                         result.Cancelled = true;
-                        try { process.Kill(); } catch { }
+                        try { process.Kill(); } catch { /* best-effort: the process may have already exited */ }
                         break;
                     }
 
@@ -201,7 +201,7 @@ namespace LiveBackground
                         if (remaining <= 0)
                         {
                             result.TimedOut = true;
-                            try { process.Kill(); } catch { }
+                            try { process.Kill(); } catch { /* best-effort: the process may have already exited */ }
                             break;
                         }
                         if (remaining < slice) slice = remaining;
@@ -211,12 +211,12 @@ namespace LiveBackground
 
                 if (result.Cancelled || result.TimedOut)
                 {
-                    try { process.WaitForExit(3000); } catch { }
+                    try { process.WaitForExit(3000); } catch { /* best-effort: give it a moment to die */ }
                 }
                 else
                 {
                     // Flush the asynchronous output readers before reading them.
-                    try { process.WaitForExit(); } catch { }
+                    try { process.WaitForExit(); } catch { /* best-effort: drain the output readers */ }
                 }
 
                 result.ExitCode = process.HasExited ? process.ExitCode : -1;

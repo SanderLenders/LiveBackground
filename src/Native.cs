@@ -243,8 +243,8 @@ namespace LiveBackground
             {
                 if (Native.SetProcessDpiAwarenessContext(new IntPtr(-4))) return;
             }
-            catch { }
-            try { Native.SetProcessDPIAware(); } catch { }
+            catch { /* best-effort: fall through to the older DPI API below */ }
+            try { Native.SetProcessDPIAware(); } catch { /* best-effort: DPI awareness is a nicety, not required */ }
         }
 
         // Sizes and moves a wallpaper window onto one physical monitor. The

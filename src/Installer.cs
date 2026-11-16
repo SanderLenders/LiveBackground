@@ -325,7 +325,7 @@ namespace LiveBackground
                     {
                         System.Threading.Thread.Sleep(900);
                         bool exited = false;
-                        try { exited = process.HasExited; } catch { }
+                        try { exited = process.HasExited; } catch { /* best-effort; a process that cannot be queried counts as running */ }
                         if (!exited)
                         {
                             log("wallpaper started (pid " + process.Id + ")");
@@ -350,7 +350,7 @@ namespace LiveBackground
         {
             // Keep the scheduled watchdog from bringing the app back while an
             // installer or the user is deliberately stopping it.
-            try { File.WriteAllText(QuitFlag(appRoot), "quit"); } catch { }
+            try { File.WriteAllText(QuitFlag(appRoot), "quit"); } catch { /* best-effort; the stop flag below is the fallback */ }
 
             bool found = false;
             foreach (Process process in FindProcesses(AppExe(appRoot)))
@@ -367,7 +367,7 @@ namespace LiveBackground
             if (!found)
             {
                 // Fallback for a locked-down process list: use the stop flag.
-                try { File.WriteAllText(StopFlag(appRoot), "stop"); } catch { }
+                try { File.WriteAllText(StopFlag(appRoot), "stop"); } catch { /* best-effort; the process kill below is the fallback */ }
                 if (wait) System.Threading.Thread.Sleep(1500);
             }
 
@@ -377,7 +377,7 @@ namespace LiveBackground
             foreach (Process process in FindProcesses(mpv))
             {
                 try { process.Kill(); log("stopped orphan mpv (pid " + process.Id + ")"); }
-                catch { }
+                catch { /* best-effort; the process may have already exited */ }
             }
             Util.SafeDelete(StopFlag(appRoot));
         }

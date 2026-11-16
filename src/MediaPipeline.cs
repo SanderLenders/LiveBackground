@@ -220,7 +220,7 @@ namespace LiveBackground
                     {
                         MediaManifest entry = null;
                         try { entry = JsonStore.DeserializeFile<MediaManifest>(index); }
-                        catch { }
+                        catch { /* best-effort: a corrupt cache entry counts as missing */ }
                         if (entry == null || string.IsNullOrEmpty(entry.LoopFile) ||
                             !File.Exists(Path.Combine(cache, entry.LoopFile)))
                         {
@@ -319,7 +319,7 @@ namespace LiveBackground
             {
                 if (File.GetLastWriteTimeUtc(file) < cutoff) Util.SafeDelete(file);
             }
-            catch { }
+            catch { /* best-effort: a file that cannot be deleted is left for later */ }
         }
 
         private static DateTime BuiltTime(MediaManifest manifest)
@@ -561,7 +561,7 @@ namespace LiveBackground
                         MediaManifest manifest = JsonStore.DeserializeFile<MediaManifest>(file);
                         if (manifest != null) list.Add(manifest);
                     }
-                    catch { }
+                    catch { /* best-effort: a manifest that cannot be read is skipped */ }
                 }
             }
             catch (Exception ex) { Log.Warn("could not read the screen manifests: " + ex.Message); }

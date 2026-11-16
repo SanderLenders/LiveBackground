@@ -73,7 +73,7 @@ namespace LiveBackground
             }
 
             string logDir = Path.GetDirectoryName(LogPath);
-            try { Directory.CreateDirectory(logDir); } catch { }
+            try { Directory.CreateDirectory(logDir); } catch { /* best-effort: the log directory is optional */ }
 
             // mpv writes a verbose log and only truncates it when it starts.
             // Keep one previous run instead of letting the file grow forever;
@@ -88,7 +88,7 @@ namespace LiveBackground
                     File.Move(LogPath, old);
                 }
             }
-            catch { }
+            catch { /* best-effort: a log that cannot be rotated keeps appending */ }
 
             // Read the settings once from a single snapshot, so a settings apply
             // during start-up cannot mix two config objects into one command.
@@ -139,7 +139,7 @@ namespace LiveBackground
             catch (Exception ex) { Log.Warn("could not stop mpv: " + ex.Message); }
             finally
             {
-                try { process.Dispose(); } catch { }
+                try { process.Dispose(); } catch { /* best-effort dispose; the process is already stopped */ }
             }
         }
 
