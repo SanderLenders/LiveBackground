@@ -1427,10 +1427,15 @@ namespace LiveBackground
             if (_config.Playlist != null && _config.Playlist.Count > 0) return;
             List<string> videos = MediaPipeline.ScanVideos(folder);
             if (videos.Count == 0) return;
+            // Build a fresh list and publish it in one write, the same way the
+            // settings apply swaps in a whole config, so a reader never sees a
+            // half-built playlist.
+            List<PlaylistEntry> seeded = new List<PlaylistEntry>();
             foreach (string file in videos)
             {
-                _config.Playlist.Add(new PlaylistEntry(Path.GetFileName(file), true));
+                seeded.Add(new PlaylistEntry(Path.GetFileName(file), true));
             }
+            _config.Playlist = seeded;
             try
             {
                 ConfigStore.Save(_appRoot, _config);
