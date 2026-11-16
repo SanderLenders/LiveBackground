@@ -73,8 +73,11 @@ namespace LiveBackground
 
         // Display layout. _screens[0] is the primary screen and _screens[1] and
         // _screens[2] the optional extra ones; the list is refreshed when
-        // Windows reports a change.
-        private static List<ScreenInfo> _screens = new List<ScreenInfo>();
+        // Windows reports a change. The list is only ever replaced (never
+        // mutated) after Screens.Enumerate returns it, so a reader that reads
+        // the field once always sees a complete layout. volatile makes the
+        // replacement visible to the watchdog and UI threads promptly.
+        private static volatile List<ScreenInfo> _screens = new List<ScreenInfo>();
         private static string _screensSignature = "";
         private static DateTime _nextScreenCheck = DateTime.MinValue;
         private static bool _layoutChanged;
@@ -83,8 +86,10 @@ namespace LiveBackground
         // One player per extra screen, at most two (the second and third
         // monitors). Each is remembered by monitor device name, so its settings
         // survive replugging and reordering. _screensDirty is set by a settings
-        // save that touched any screen.
-        private static readonly List<ScreenPlayer> _screenPlayers = new List<ScreenPlayer>();
+        // save that touched any screen. The list is copy-on-write: the watchdog
+        // builds a new list and swaps it in, so a UI thread iterating the old
+        // one can never hit a "collection was modified" exception.
+        private static volatile List<ScreenPlayer> _screenPlayers = new List<ScreenPlayer>();
         private static bool _screensDirty;
 
         // One extra screen's player and the state the watchdog needs: which
@@ -2089,10 +2094,15 @@ namespace LiveBackground
                 }
             }
 
+            // Copy-on-write: build the new list and publish it in one write at
+            // the end, so a reader iterating the previous list always keeps a
+            // stable snapshot.
+            List<ScreenPlayer> next = new List<ScreenPlayer>(_screenPlayers);
+
             // Retire the players whose monitor is gone.
-            for (int i = _screenPlayers.Count - 1; i >= 0; i--)
+            for (int i = next.Count - 1; i >= 0; i--)
             {
-                ScreenPlayer existing = _screenPlayers[i];
+                ScreenPlayer existing = next[i];
                 bool keep = false;
                 foreach (ScreenInfo screen in extras)
                 {
@@ -2107,7 +2117,7 @@ namespace LiveBackground
                 {
                     try { existing.Player.Stop(); } catch { }
                 }
-                _screenPlayers.RemoveAt(i);
+                next.RemoveAt(i);
             }
 
             // Add a player for each new monitor and refresh the ones kept.
@@ -2115,7 +2125,7 @@ namespace LiveBackground
             foreach (ScreenInfo screen in extras)
             {
                 ScreenPlayer player = null;
-                foreach (ScreenPlayer existing in _screenPlayers)
+                foreach (ScreenPlayer existing in next)
                 {
                     if (string.Equals(existing.Device, screen.Device, StringComparison.OrdinalIgnoreCase))
                     {
@@ -2128,7 +2138,7 @@ namespace LiveBackground
                     player = new ScreenPlayer();
                     player.Device = screen.Device ?? "";
                     player.Player = new MpvPlayer(_appRoot, _config, ScreenLogName(player.Device));
-                    _screenPlayers.Add(player);
+                    next.Add(player);
                 }
                 player.Number = number;
                 player.ScreenIndex = screen.Index;
@@ -2140,6 +2150,8 @@ namespace LiveBackground
                 }
                 number++;
             }
+
+            _screenPlayers = next;
         }
 
         // Points one screen's player at the right loop: the main one when it
