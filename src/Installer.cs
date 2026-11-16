@@ -751,8 +751,16 @@ namespace LiveBackground
             wipe.Add(Path.Combine(appRoot, "logs"));
 
             List<string> ifEmpty = new List<string>();
-            ifEmpty.Add(Util.ResolvePath(appRoot, config.VideoFolder));
-            ifEmpty.Add(Util.ResolvePath(appRoot, config.ImageFolder));
+            // Only ever offer to remove a folder that lives inside our own
+            // folder. The user may have pointed the video or image folder at,
+            // say, their own Videos library; "rmdir /q" only removes an empty
+            // directory, but an empty directory of theirs is still theirs.
+            foreach (string folder in new string[] {
+                Util.ResolvePath(appRoot, config.VideoFolder),
+                Util.ResolvePath(appRoot, config.ImageFolder) })
+            {
+                if (IsInside(appRoot, folder)) ifEmpty.Add(folder);
+            }
             if (!Paths.IsPortable) ifEmpty.Add(appRoot);
 
             // Small marker files can go right now; only the directories need
@@ -773,7 +781,11 @@ namespace LiveBackground
                 foreach (string dir in ifEmpty) text.Append("rmdir /q \"" + dir + "\"\r\n");
                 text.Append("del /q \"%~f0\"\r\n");
 
-                string cmd = Path.Combine(Path.GetTempPath(), "livebackground-cleanup.cmd");
+                // A unique name so another local process cannot pre-create or
+                // swap the file between the write and the run. The script
+                // deletes itself at the end.
+                string cmd = Path.Combine(Path.GetTempPath(),
+                    "livebackground-cleanup-" + Guid.NewGuid().ToString("N") + ".cmd");
                 File.WriteAllText(cmd, text.ToString());
                 ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c \"" + cmd + "\"")
                 {
@@ -789,6 +801,21 @@ namespace LiveBackground
                 log("delete that folder yourself if you want a clean slate");
             }
             catch (Exception ex) { Log.Warn("could not schedule folder removal: " + ex.Message); }
+        }
+
+        // True when path is a descendant of root (not root itself). Used to
+        // decide which folders an uninstall may offer to remove, so a folder
+        // the user pointed at outside our own tree is never touched.
+        private static bool IsInside(string root, string path)
+        {
+            if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(path)) return false;
+            string r;
+            string p;
+            try { r = Path.GetFullPath(root); p = Path.GetFullPath(path); }
+            catch { return false; }
+            if (r.Length == 0) return false;
+            if (r[r.Length - 1] != Path.DirectorySeparatorChar) r += Path.DirectorySeparatorChar;
+            return p.StartsWith(r, StringComparison.OrdinalIgnoreCase);
         }
     }
 

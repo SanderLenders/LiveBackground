@@ -80,10 +80,13 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}";
 
 [UninstallRun]
 ; Runs the full uninstall command: stops the wallpaper, removes the logon
-; and watchdog tasks, and restores the previous desktop wallpaper and lock
-; screen (as the README promises). Runs elevated, which is fine for all three
-; steps; the lock-screen WinRT call was verified to work elevated.
-Filename: "{app}\{#MyAppCliName}"; Parameters: "uninstall"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallLiveBackground"
+; and watchdog tasks, restores the previous desktop wallpaper and lock screen
+; (as the README promises), and removes the app-managed cache and logs.
+; --remove never touches the user's videos, pictures or settings, and the
+; backup folder is kept automatically when a restore did not succeed.
+; Runs elevated, which is fine for all these steps; the lock-screen WinRT
+; call was verified to work elevated.
+Filename: "{app}\{#MyAppCliName}"; Parameters: "uninstall --remove"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallLiveBackground"
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;

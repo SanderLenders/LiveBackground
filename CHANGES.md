@@ -52,6 +52,26 @@
   shortcut (off by default). A taskbar pin is deliberately not offered, because
   Windows 11 blocks installers from pinning to the taskbar.
 
+### Reliability and safety pass (stage 1)
+
+- **Two writers can no longer corrupt a saved file.** Config, manifests and
+  install state are written by several parts of the app; each write now goes to
+  its own uniquely named temporary file, and writes are serialized, so two saves
+  landing at the same moment can never publish a half-written or wrong file.
+- **An uninstall only ever removes folders inside its own folder.** If you
+  pointed the video or picture folder at a location of your own, an uninstall
+  will no longer offer to remove that (empty) folder. The app's own folders are
+  still cleaned up as before.
+- **A corrupt settings file is now reported and repaired.** If `config.json`
+  cannot be read, the app saves a copy as `config.json.bad`, tells you with a
+  tray notification, and writes fresh defaults in its place instead of failing
+  to load it again on every start.
+- **The settings window uses the app icon** in Alt-Tab and the taskbar, instead
+  of the generic Windows form icon.
+- **Uninstalling removes the app's cache and logs** (but never your videos,
+  pictures or settings); a backup is kept automatically if a restore did not
+  succeed.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

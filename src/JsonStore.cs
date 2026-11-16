@@ -8,6 +8,13 @@ namespace LiveBackground
 {
     public static class JsonStore
     {
+        // Serializes every write in this process. Saves are rare (a settings
+        // apply, a startup save, a build result) so a single lock costs nothing,
+        // and it removes the one remaining race: two writers of the same file
+        // swapping their temp files into the same destination at once, where the
+        // loser's Replace/Move/Copy fails even though the temp names differ.
+        private static readonly object WriteSync = new object();
+
         public static void SerializeFile<T>(string path, T value)
         {
             string dir = Path.GetDirectoryName(path);
@@ -16,25 +23,40 @@ namespace LiveBackground
 
             // Write to a temporary file and swap it in, so a crash or power
             // cut halfway through never leaves a half-written config behind.
-            // (A truncated file would otherwise load as defaults.)
-            string temp = path + ".tmp";
-            using (FileStream fs = File.Create(temp))
-            using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(fs, new UTF8Encoding(false), false, true))
+            // (A truncated file would otherwise load as defaults.) The temp
+            // name is unique per call: two writers of the same file (a settings
+            // save and a startup save, or a build thread and a manifest write)
+            // must never share one temp file, or one would truncate the other's
+            // and the "atomic" swap could publish the wrong bytes.
+            string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            lock (WriteSync)
             {
-                serializer.WriteObject(writer, value);
-                writer.Flush();
-            }
-            try
-            {
-                if (File.Exists(path)) File.Replace(temp, path, null);
-                else File.Move(temp, path);
-            }
-            catch
-            {
-                // Fall back to a plain copy when a Replace is not possible,
-                // for example on some network shares.
-                File.Copy(temp, path, true);
-                try { File.Delete(temp); } catch { /* best-effort: the temp file is best removed, but the write already succeeded */ }
+                try
+                {
+                    using (FileStream fs = File.Create(temp))
+                    using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(fs, new UTF8Encoding(false), false, true))
+                    {
+                        serializer.WriteObject(writer, value);
+                        writer.Flush();
+                    }
+                    try
+                    {
+                        if (File.Exists(path)) File.Replace(temp, path, null);
+                        else File.Move(temp, path);
+                    }
+                    catch
+                    {
+                        // Fall back to a plain copy when a Replace is not possible,
+                        // for example on some network shares.
+                        File.Copy(temp, path, true);
+                    }
+                }
+                finally
+                {
+                    // Replace/Move consume the temp file; a failed write leaves it.
+                    try { if (File.Exists(temp)) File.Delete(temp); }
+                    catch { /* best-effort: a stray temp file is harmless and swept later */ }
+                }
             }
         }
 

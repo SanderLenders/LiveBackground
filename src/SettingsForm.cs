@@ -180,6 +180,10 @@ namespace LiveBackground
             AutoScaleMode = AutoScaleMode.Dpi;
 
             Text = "LiveBackground settings";
+            // Match the tray and shortcut icon; otherwise Alt-Tab and the
+            // taskbar show the generic WinForms icon.
+            try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+            catch { /* best-effort: the default form icon is fine if this fails */ }
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = true;

@@ -700,8 +700,15 @@ namespace LiveBackground
             return Path.Combine(appRoot, "config.json");
         }
 
+        // Set when the last Load() had to fall back to defaults because the
+        // config file could not be read. The GUI shows it once as a tray
+        // balloon, so a non-technical user is told rather than silently losing
+        // their settings. The CLI ignores it.
+        public static string LoadWarning { get; private set; }
+
         public static AppConfig Load(string appRoot)
         {
+            LoadWarning = null;
             string path = PathFor(appRoot);
             if (!File.Exists(path))
             {
@@ -725,8 +732,20 @@ namespace LiveBackground
                 {
                     Log.Warn("could not back up the unreadable config: " + copyEx.Message);
                 }
+                LoadWarning = "Your settings could not be read, so the defaults were loaded. " +
+                    "A copy of the old file was saved as config.json.bad.";
                 AppConfig fresh = new AppConfig();
                 Paths.ApplyDefaults(fresh);
+                // Replace the unreadable file with valid defaults. Without this
+                // every future start would fail the same way and warn again, and
+                // the user's "fixed" settings could never be saved over a file
+                // that always fails to parse. The .bad copy above keeps the old
+                // contents for inspection.
+                try { Save(appRoot, fresh); }
+                catch (Exception saveEx)
+                {
+                    Log.Warn("could not replace the unreadable config: " + saveEx.Message);
+                }
                 return fresh;
             }
         }

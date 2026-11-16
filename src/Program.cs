@@ -534,6 +534,15 @@ namespace LiveBackground
 
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
             _config = ConfigStore.LoadOrCreate(_appRoot);
+            // A config that could not be read silently resets everything the
+            // user configured; say so once instead of letting them think the
+            // app forgot their settings. Ui.Notify holds the message until the
+            // tray thread is ready.
+            if (!string.IsNullOrEmpty(ConfigStore.LoadWarning))
+            {
+                Log.Warn("config warning: " + ConfigStore.LoadWarning);
+                Ui.Notify("LiveBackground", ConfigStore.LoadWarning);
+            }
             _screens = Screens.Enumerate();
             _screensSignature = Screens.Signature(_screens);
             Log.Info("displays: " + DescribeScreens(_screens));

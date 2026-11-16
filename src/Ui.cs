@@ -296,6 +296,8 @@ namespace LiveBackground
         private static string _pendingProgressTitle;
         private static double _pendingProgressFraction;
         private static string _pendingProgressStatus;
+        private static string _pendingNotifyTitle;
+        private static string _pendingNotifyText;
 
         public static void Start(string appRoot)
         {
@@ -337,9 +339,21 @@ namespace LiveBackground
                 _pendingProgressFraction = 0;
                 _pendingProgressStatus = null;
             }
-            if (string.IsNullOrEmpty(title)) return;
-            tray.BuildProgressStart(title);
-            if (!string.IsNullOrEmpty(status)) tray.BuildProgressUpdate(fraction, status);
+            if (!string.IsNullOrEmpty(title))
+            {
+                tray.BuildProgressStart(title);
+                if (!string.IsNullOrEmpty(status)) tray.BuildProgressUpdate(fraction, status);
+            }
+            string notifyTitle;
+            string notifyText;
+            lock (ProgressSync)
+            {
+                notifyTitle = _pendingNotifyTitle;
+                notifyText = _pendingNotifyText;
+                _pendingNotifyTitle = null;
+                _pendingNotifyText = null;
+            }
+            if (!string.IsNullOrEmpty(notifyTitle)) tray.Notify(notifyTitle, notifyText);
         }
 
         public static bool ShowSettings()
@@ -359,7 +373,10 @@ namespace LiveBackground
         public static void Notify(string title, string text)
         {
             TrayApp tray = _tray;
-            if (tray != null) tray.Notify(title, text);
+            if (tray != null) { tray.Notify(title, text); return; }
+            // The tray thread may not have finished starting yet; hold the
+            // message and replay it in TrayReady.
+            lock (ProgressSync) { _pendingNotifyTitle = title; _pendingNotifyText = text; }
         }
 
         public static void BuildProgressStart(string title)

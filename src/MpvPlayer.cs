@@ -100,10 +100,10 @@ namespace LiveBackground
                 "--stop-screensaver=" + (config.ScreensaverActive ? "no" : "yes") +
                 " --cache=no --priority=abovenormal " +
                 "--demuxer-lavf-analyzeduration=0 --demuxer-lavf-probesize=32768 " +
-                "--log-file={1} \"{2}\"{3}",
+                "--log-file={1} {2}{3}",
                 progman.ToInt64(),
                 Util.Quote(LogPath),
-                mediaPath,
+                Util.Quote(mediaPath),
                 string.IsNullOrEmpty(config.ExtraMpvArgs) ? "" : " " + config.ExtraMpvArgs);
 
             Log.Info("starting mpv: " + args);
