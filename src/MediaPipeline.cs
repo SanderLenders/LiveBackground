@@ -26,6 +26,10 @@ namespace LiveBackground
         [DataMember(Name = "frameFile")] public string FrameFile;
     }
 
+    // These DTOs are filled in by the JSON serializer through reflection, so
+    // the compiler cannot see the assignments. Silence the "never assigned"
+    // warning for them.
+#pragma warning disable 0649
     [DataContract]
     internal class ProbeStream
     {
@@ -44,6 +48,7 @@ namespace LiveBackground
         [DataMember(Name = "streams")] public ProbeStream[] Streams;
         [DataMember(Name = "format")] public ProbeFormat Format;
     }
+#pragma warning restore 0649
 
     public class BuildResult
     {
