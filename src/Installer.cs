@@ -605,6 +605,7 @@ namespace LiveBackground
                 return;
             }
 
+            bool allCopied = true;
             foreach (string sample in samples)
             {
                 try
@@ -616,7 +617,19 @@ namespace LiveBackground
                     File.Copy(sample, target, true);
                     log((existed ? "updated bundled picture: " : "added bundled picture: ") + name);
                 }
-                catch (Exception ex) { log("WARNING: could not copy the bundled picture: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    allCopied = false;
+                    log("WARNING: could not copy the bundled picture: " + ex.Message);
+                }
+            }
+            // Only remember the shipped set once every picture is in place, so a
+            // failed copy is retried on the next start instead of being written
+            // off until the bundled set changes again.
+            if (!allCopied)
+            {
+                log("WARNING: some bundled pictures could not be copied; retrying on the next start");
+                return;
             }
             state.BundledImagesSignature = signature.ToString();
             state.Save(appRoot);
@@ -632,15 +645,40 @@ namespace LiveBackground
                 using (FileStream sa = File.OpenRead(a))
                 using (FileStream sb = File.OpenRead(b))
                 {
-                    int ba;
-                    while ((ba = sa.ReadByte()) != -1)
+                    // Compare in blocks instead of one byte at a time. These are
+                    // full-size wallpaper JPEGs, so a per-byte read is needlessly
+                    // slow. A short read is filled to a full block before the
+                    // compare, so the two streams can never drift out of step.
+                    byte[] left = new byte[64 * 1024];
+                    byte[] right = new byte[64 * 1024];
+                    while (true)
                     {
-                        if (ba != sb.ReadByte()) return false;
+                        int got = ReadBlock(sa, left);
+                        int gotOther = ReadBlock(sb, right);
+                        if (got != gotOther) return false;
+                        if (got == 0) return true;
+                        for (int i = 0; i < got; i++)
+                        {
+                            if (left[i] != right[i]) return false;
+                        }
                     }
                 }
-                return true;
             }
             catch { return false; }
+        }
+
+        // Reads up to buffer.Length bytes, looping until the buffer is full or
+        // the stream ends, so a short read never misaligns a comparison.
+        private static int ReadBlock(FileStream stream, byte[] buffer)
+        {
+            int total = 0;
+            while (total < buffer.Length)
+            {
+                int read = stream.Read(buffer, total, buffer.Length - total);
+                if (read <= 0) break;
+                total += read;
+            }
+            return total;
         }
 
         private static void BackupCurrentWallpaper(string appRoot, InstallState state, Action<string> log)
