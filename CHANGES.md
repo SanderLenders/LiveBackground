@@ -42,6 +42,16 @@
   "Galaxy Image.jpg" is replaced rather than left beside the new one. Pictures
   you added yourself are never touched.
 
+### Icon and installer
+
+- **The app has a new icon.** A monitor mark, with a transparent background,
+  replaces the old picture on the exe, the tray, the shortcuts and the setup
+  program.
+- **The installer lets you choose your shortcuts.** Two checkboxes under
+  "Additional icons" create a Start Menu shortcut (on by default) and a desktop
+  shortcut (off by default). A taskbar pin is deliberately not offered, because
+  Windows 11 blocks installers from pinning to the taskbar.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass
