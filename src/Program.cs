@@ -90,7 +90,11 @@ namespace LiveBackground
         // builds a new list and swaps it in, so a UI thread iterating the old
         // one can never hit a "collection was modified" exception.
         private static volatile List<ScreenPlayer> _screenPlayers = new List<ScreenPlayer>();
-        private static bool _screensDirty;
+        // volatile for the same reason as _screens and _screenPlayers: it is
+        // written on the UI thread (a settings save) and read/cleared by the
+        // watchdog, and it must not be observed before the _config swap that
+        // goes with it.
+        private static volatile bool _screensDirty;
 
         // One extra screen's player and the state the watchdog needs: which
         // monitor it belongs to, which loop it should show, and whether its

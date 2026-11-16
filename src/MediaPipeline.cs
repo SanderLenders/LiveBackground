@@ -521,10 +521,22 @@ namespace LiveBackground
             }
             foreach (string file in ResolveClips(folder, config))
             {
-                FileInfo info = new FileInfo(file);
+                // The clip can vanish between the folder scan above and this
+                // read (a delete, or an antivirus quarantine). Skip it rather
+                // than throwing: the changed file set also changes the
+                // signature, so a rebuild is still triggered.
+                long length;
+                DateTime writtenUtc;
+                try
+                {
+                    FileInfo info = new FileInfo(file);
+                    length = info.Length;
+                    writtenUtc = info.LastWriteTimeUtc;
+                }
+                catch { continue; }
                 sb.Append(Path.GetFileName(file)).Append(':')
-                  .Append(info.Length).Append(':')
-                  .Append(info.LastWriteTimeUtc.Ticks).Append(';');
+                  .Append(length).Append(':')
+                  .Append(writtenUtc.Ticks).Append(';');
             }
             using (SHA256 sha = SHA256.Create())
             {
