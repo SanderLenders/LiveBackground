@@ -1041,6 +1041,7 @@ namespace LiveBackground
             {
                 if (_videoPane != null) _videoPane.Visible = !images;
                 if (Images != null && Images.Panel != null) Images.Panel.Visible = images;
+                if (Images != null) Images.UpdateSameLabel();
                 UpdateControls();
             }
 
@@ -2711,6 +2712,10 @@ namespace LiveBackground
             _imageMoveDown.Enabled = !single;
             _imageSortAz.Enabled = !single;
             if (_imageShuffle != null) _imageShuffle.Enabled = !single;
+            // The per-screen mirror switch names what the main screen shows, so
+            // keep its noun in step with this choice.
+            if (_slot2 != null && _slot2.Images != null) _slot2.Images.UpdateSameLabel();
+            if (_slot3 != null && _slot3.Images != null) _slot3.Images.UpdateSameLabel();
         }
 
         private void ImageItemCheck(object sender, ItemCheckEventArgs e)

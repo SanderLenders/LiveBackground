@@ -529,6 +529,11 @@ namespace LiveBackground
                 try { Installer.FirstRun(_appRoot, _config, Log.Info); }
                 catch (Exception ex) { Log.Warn("first-run setup failed: " + ex.Message); }
             }
+            // Bring the bundled pictures up to date when they changed in an
+            // update, so an upgraded library gets the new set instead of
+            // keeping the picture that shipped before it.
+            try { Installer.SyncBundledImages(_appRoot, _config, InstallState.Load(_appRoot), Log.Info); }
+            catch (Exception ex) { Log.Warn("could not sync the bundled pictures: " + ex.Message); }
             SeedPlaylistIfNeeded(folder);
 
             // Read the manifest once and use it for the frame, the loop and the

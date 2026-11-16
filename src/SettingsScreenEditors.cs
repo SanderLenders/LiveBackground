@@ -506,7 +506,9 @@ namespace LiveBackground
                 Panel = new Panel();
 
                 _same = new CheckBox();
-                _same.Text = "Use the same images as the main screen";
+                // The noun follows the main screen's Images mode; UpdateSameLabel
+                // refreshes it when that mode or the wallpaper pill changes.
+                _same.Text = "Use the same image as the main screen";
                 _same.SetBounds(12, 12, 420, 24);
                 _same.CheckedChanged += delegate { UpdateControls(); };
                 Panel.Controls.Add(_same);
@@ -522,16 +524,18 @@ namespace LiveBackground
                 browse.Click += delegate { BrowseFolder(); };
                 Panel.Controls.Add(browse);
 
-                _modeSlideshow = new RadioButton();
-                _modeSlideshow.Text = "Slideshow";
-                _modeSlideshow.SetBounds(12, 102, 100, 22);
-                _modeSlideshow.CheckedChanged += delegate { UpdateModeControls(); };
-                Panel.Controls.Add(_modeSlideshow);
+                // "One image" leads here too, matching the main Images tab and
+                // both Videos panes: the narrower choice sits on the left.
                 _modeSingle = new RadioButton();
                 _modeSingle.Text = "One image";
-                _modeSingle.SetBounds(120, 102, 100, 22);
+                _modeSingle.SetBounds(12, 102, 100, 22);
                 _modeSingle.CheckedChanged += delegate { UpdateModeControls(); };
                 Panel.Controls.Add(_modeSingle);
+                _modeSlideshow = new RadioButton();
+                _modeSlideshow.Text = "Slideshow";
+                _modeSlideshow.SetBounds(120, 102, 100, 22);
+                _modeSlideshow.CheckedChanged += delegate { UpdateModeControls(); };
+                Panel.Controls.Add(_modeSlideshow);
 
                 _list = new ListView();
                 _list.SetBounds(12, 130, 572, 108);
@@ -704,6 +708,18 @@ namespace LiveBackground
                 _moveDown.Enabled = own && slideshow;
                 _sortAz.Enabled = own && slideshow;
                 _shuffle.Enabled = own && slideshow;
+            }
+
+            // "Use the same image/images as the main screen": the noun follows
+            // the main Images tab, so it reads right whether the main screen is
+            // showing one picture or a slideshow.
+            public void UpdateSameLabel()
+            {
+                if (_same == null) return;
+                bool slideshow = _form._imageModeSlideshow != null && _form._imageModeSlideshow.Checked;
+                _same.Text = slideshow
+                    ? "Use the same images as the main screen"
+                    : "Use the same image as the main screen";
             }
 
             private void UpdateModeControls()

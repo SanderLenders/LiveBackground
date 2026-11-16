@@ -18,6 +18,7 @@ namespace LiveBackground
         [DataMember(Name = "lockScreenBackup")] public string LockScreenBackup;
         [DataMember(Name = "usedTask")] public bool UsedTask;
         [DataMember(Name = "seededVideos")] public bool SeededVideos;
+        [DataMember(Name = "bundledImages")] public string BundledImagesSignature;
 
         public static string PathFor(string appRoot) { return Path.Combine(appRoot, "install-state.json"); }
 
@@ -145,7 +146,7 @@ namespace LiveBackground
             string imageFolder = Util.ResolvePath(appRoot, config.ImageFolder);
             log("image folder: " + imageFolder);
             Directory.CreateDirectory(imageFolder);
-            SeedImages(appRoot, imageFolder, log);
+            SyncBundledImages(appRoot, config, state, log);
 
             // Save what was on screen before the app changes anything.
             if (string.IsNullOrEmpty(state.WallpaperBackup) || !File.Exists(state.WallpaperBackup))
@@ -568,28 +569,78 @@ namespace LiveBackground
             state.SeededVideos = true;
         }
 
-        // Same idea as SeedVideos: a fresh install starts with the bundled
-        // picture in the image folder, and only when that folder is empty,
-        // so it never touches a library the user has filled already.
-        private static void SeedImages(string appRoot, string imageFolder, Action<string> log)
+        // The bundled pictures are the app's starting set. A fresh library gets
+        // them all; after an update that changes them, a picture that shipped
+        // earlier is brought up to date instead of lingering beside the new
+        // one. Pictures the user added under other names are never touched.
+        //
+        // This runs only when the shipped set actually changed (a signature of
+        // the bundled file names and sizes is kept in the install state), so a
+        // picture the user replaces by hand afterwards stays put.
+        public static void SyncBundledImages(string appRoot, AppConfig config,
+            InstallState state, Action<string> log)
         {
-            if (MediaPipeline.ScanImages(imageFolder).Count > 0) return;
             string bundled = BundledImageDir(appRoot);
             if (!Directory.Exists(bundled)) return;
 
             List<string> samples = MediaPipeline.ScanImages(bundled);
             if (samples.Count == 0) return;
 
+            StringBuilder signature = new StringBuilder();
+            foreach (string sample in samples)
+            {
+                FileInfo info = new FileInfo(sample);
+                signature.Append(info.Name).Append(':').Append(info.Length).Append(';');
+            }
+            if (string.Equals(signature.ToString(), state.BundledImagesSignature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string imageFolder = Util.ResolvePath(appRoot, config.ImageFolder);
+            try { Directory.CreateDirectory(imageFolder); }
+            catch (Exception ex)
+            {
+                log("WARNING: could not create the image folder: " + ex.Message);
+                return;
+            }
+
             foreach (string sample in samples)
             {
                 try
                 {
-                    string target = Path.Combine(imageFolder, Path.GetFileName(sample));
-                    File.Copy(sample, target, false);
-                    log("added sample image: " + Path.GetFileName(sample));
+                    string name = Path.GetFileName(sample);
+                    string target = Path.Combine(imageFolder, name);
+                    if (File.Exists(target) && SameContent(sample, target)) continue;
+                    bool existed = File.Exists(target);
+                    File.Copy(sample, target, true);
+                    log((existed ? "updated bundled picture: " : "added bundled picture: ") + name);
                 }
-                catch (Exception ex) { log("WARNING: could not copy sample image: " + ex.Message); }
+                catch (Exception ex) { log("WARNING: could not copy the bundled picture: " + ex.Message); }
             }
+            state.BundledImagesSignature = signature.ToString();
+            state.Save(appRoot);
+        }
+
+        private static bool SameContent(string a, string b)
+        {
+            try
+            {
+                FileInfo fa = new FileInfo(a);
+                FileInfo fb = new FileInfo(b);
+                if (fa.Length != fb.Length) return false;
+                using (FileStream sa = File.OpenRead(a))
+                using (FileStream sb = File.OpenRead(b))
+                {
+                    int ba;
+                    while ((ba = sa.ReadByte()) != -1)
+                    {
+                        if (ba != sb.ReadByte()) return false;
+                    }
+                }
+                return true;
+            }
+            catch { return false; }
         }
 
         private static void BackupCurrentWallpaper(string appRoot, InstallState state, Action<string> log)

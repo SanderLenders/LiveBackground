@@ -29,7 +29,8 @@ Install
    logon.
 4. When the installer finishes, LiveBackground starts and builds its first loop
    in the background. It starts on the bundled "Galaxy HD Clip.mp4"; the bundled
-   "Galaxy Image.jpg" is waiting in your image folder.
+   "Galaxy Image.jpg" and "Universe Clouds.jpg" are waiting in your image
+   folder.
 
 The installer places the program in:
     C:\Program Files\LiveBackground
@@ -158,8 +159,10 @@ changes what is currently on your desktop.
 If every clip is unticked, the app falls back to playing every clip in the
 folder in filename order, so an empty playlist is never a black desktop.
 
-The first time the app runs it adds the bundled clips and picture to the
+The first time the app runs it adds the bundled clips and pictures to the
 folders. After that, the folders are yours: add, replace or delete videos.
+The bundled pictures are refreshed if an update ships new ones; pictures you
+add yourself are never touched.
 
 If Windows says a video is in use, click "Stop video" in the Videos tab first.
 That stops the player and releases the file; "Start video" brings the wallpaper
@@ -204,10 +207,10 @@ screen" to choose its own folder, playlist or single clip; its loop is rendered
 once and cached. Rebuild now is available whenever that screen is attached.
 
 In Images mode, each extra screen likewise mirrors the main picture or
-slideshow by default. Turn off "Use the same images as the main screen" to give
-it an independent image folder, one image or slideshow, interval, picture
-crossfade and Shuffle setting. Each independent slideshow has its own folder
-watcher and timer.
+slideshow by default. Turn off "Use the same image as the main screen" (it says
+"images" while the main screen is a slideshow) to give it an independent image
+folder, one image or slideshow, interval, picture crossfade and Shuffle
+setting. Each independent slideshow has its own folder watcher and timer.
 
 Playback contains 2nd Screen and 3rd Screen crossfade tabs for independent
 video loops. They are greyed out while the corresponding screen mirrors the
@@ -250,7 +253,8 @@ New pictures start ticked, so a picture you add joins the slideshow straight
 away. Pictures you untick are remembered and skipped.
 
 The slideshow interval is chosen on the Slideshow tab with a preset slider
-(5, 10, 15, 20, 30 or 60 seconds). Tick "Custom" to enter any number of seconds
+(5, 10, 15, 20, 30 or 60 seconds); it starts at 10 seconds. Tick "Custom" to
+enter any number of seconds
 from 1 to 86400. The "Crossfade" slider controls picture transitions: 0 = off
 (instant), 1 to 5 seconds in 1-second steps. Tick "Allow half-second steps" for
 0.5-second steps. The crossfade is drawn below the icons and only runs while a
@@ -356,7 +360,7 @@ Useful fields:
     imageMode          "single" or "slideshow"
     imageSingle        file name used when imageMode is "single"
     imagePlaylist      ordered list of {name, enabled} entries for images
-    imageIntervalSeconds  seconds between slideshow pictures (default 5)
+    imageIntervalSeconds  seconds between slideshow pictures (default 10)
     imageCrossfadeSeconds picture crossfade, 0 = off, 0.5 to 5 (default 2)
     imageFineCrossfadeSteps true to allow 0.5-second steps for pictures
     imageShuffle       true to pick a random picture each time
@@ -499,7 +503,7 @@ Third-party software
 --------------------
 This folder bundles mpv and FFmpeg. Both are free software under the GNU GPL.
 See THIRD-PARTY.txt and assets\licenses\ for versions, licenses and source
-links. The bundled clips and picture are not part of the software.
+links. The bundled clips and pictures are not part of the software.
 
 
 Known limitations

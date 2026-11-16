@@ -20,9 +20,27 @@
 ### Settings window
 
 - **"One clip" now comes before "All clips in this order"**, and "One image"
-  before "Slideshow", so the narrower choice leads on both tabs.
+  before "Slideshow", so the narrower choice leads on every tab and per-screen
+  pane, including the 2nd and 3rd Screen sub-tabs.
 - **The "Pick one clip in the list below" hint is gone** from the Videos tab and
   the per-screen tabs; the clip list sits right under the choice.
+- **The per-screen mirror switch now names what it mirrors.** On the Multi
+  Monitor tab it reads "Use the same image as the main screen", or "Use the
+  same images…" while the main screen is a slideshow, matching the Videos side.
+- **A new slideshow starts at 10 seconds per picture**, with the 2-second
+  picture crossfade it already had. The video crossfade on the Playback tab is
+  unchanged at 3 seconds. Only a fresh install (or a screen with no saved
+  slideshow settings) picks up the new default; a slideshow you already set up
+  keeps its own interval.
+
+### Bundled pictures
+
+- **The bundled picture is now two pictures, and they are the standard.**
+  "Galaxy Image.jpg" and "Universe Clouds.jpg" ship in the installer. A fresh
+  install seeds both and starts on "Galaxy Image.jpg" in One-image mode. An
+  upgraded library is brought up to date the next time it runs, so the earlier
+  "Galaxy Image.jpg" is replaced rather than left beside the new one. Pictures
+  you added yourself are never touched.
 
 ## 1.8.5
 

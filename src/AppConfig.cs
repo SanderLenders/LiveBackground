@@ -45,7 +45,9 @@ namespace LiveBackground
         [DataMember(Name = "imageMode")] public string ImageMode = "single";
         [DataMember(Name = "imageSingle")] public string ImageSingle = "Galaxy Image.jpg";
         [DataMember(Name = "imagePlaylist")] public List<PlaylistEntry> ImagePlaylist = new List<PlaylistEntry>();
-        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 5;
+        // A screen that has not customized its slideshow uses the same
+        // defaults as the main screen: 10 s per picture, 2 s crossfade.
+        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 10;
         [DataMember(Name = "imageCrossfadeSeconds")] public double ImageCrossfadeSeconds = 2.0;
         [DataMember(Name = "imageFineCrossfadeSteps")] public bool ImageFineCrossfadeSteps = false;
         [DataMember(Name = "imageShuffle")] public bool ImageShuffle = false;
@@ -71,7 +73,7 @@ namespace LiveBackground
             ImageMode = "single";
             ImageSingle = "Galaxy Image.jpg";
             ImagePlaylist = new List<PlaylistEntry>();
-            ImageIntervalSeconds = 5;
+            ImageIntervalSeconds = 10;
             ImageCrossfadeSeconds = 2.0;
             ImageFineCrossfadeSteps = false;
             ImageShuffle = false;
@@ -128,7 +130,9 @@ namespace LiveBackground
         // Fresh installs start on the bundled standard picture.
         [DataMember(Name = "imageSingle")] public string ImageSingle = "Galaxy Image.jpg";
         [DataMember(Name = "imagePlaylist")] public List<PlaylistEntry> ImagePlaylist = new List<PlaylistEntry>();
-        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 5;
+        // Factory default: a new slideshow changes picture every 10 seconds,
+        // with a 2 s crossfade between pictures.
+        [DataMember(Name = "imageIntervalSeconds")] public int ImageIntervalSeconds = 10;
         [DataMember(Name = "imageCrossfadeSeconds")] public double ImageCrossfadeSeconds = 2.0;
         [DataMember(Name = "imageFineCrossfadeSteps")] public bool ImageFineCrossfadeSteps = false;
         [DataMember(Name = "imageShuffle")] public bool ImageShuffle = false;
@@ -184,7 +188,7 @@ namespace LiveBackground
             ImageMode = "single";
             ImageSingle = "Galaxy Image.jpg";
             ImagePlaylist = new List<PlaylistEntry>();
-            ImageIntervalSeconds = 5;
+            ImageIntervalSeconds = 10;
             ImageCrossfadeSeconds = 2.0;
             ImageFineCrossfadeSteps = false;
             ImageShuffle = false;
@@ -463,7 +467,7 @@ namespace LiveBackground
             }
             if (ImageSingle == null) ImageSingle = "";
             if (ImagePlaylist == null) ImagePlaylist = new List<PlaylistEntry>();
-            if (ImageIntervalSeconds < 1) ImageIntervalSeconds = 5;
+            if (ImageIntervalSeconds < 1) ImageIntervalSeconds = 10;
             if (ImageIntervalSeconds > 86400) ImageIntervalSeconds = 86400;
             // 0 is allowed and means "no crossfade". The desktop image layer
             // only blends during a transition; between pictures it is static.
@@ -636,7 +640,7 @@ namespace LiveBackground
                 screen.ImageMode = string.Equals(screen.ImageMode, "slideshow",
                     StringComparison.OrdinalIgnoreCase) ? "slideshow" : "single";
                 if (screen.ImageSingle == null) screen.ImageSingle = "";
-                if (screen.ImageIntervalSeconds < 1) screen.ImageIntervalSeconds = 5;
+                if (screen.ImageIntervalSeconds < 1) screen.ImageIntervalSeconds = 10;
                 if (screen.ImageIntervalSeconds > 86400) screen.ImageIntervalSeconds = 86400;
                 if (double.IsNaN(screen.ImageCrossfadeSeconds) || screen.ImageCrossfadeSeconds < 0)
                 {

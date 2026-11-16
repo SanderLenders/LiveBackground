@@ -49,7 +49,8 @@ provided at no more than the cost of distribution.
 Files   : videos\Galaxy HD Clip.mp4
           videos\Fokuz Recordings Clip.mp4
           images\wallpapers\Galaxy Image.jpg
-The clips and the picture were supplied by the user of this package. They are
+          images\wallpapers\Universe Clouds.jpg
+The clips and the pictures were supplied by the user of this package. They are
 not part of the LiveBackground software and are not covered by the GPL.
 Replace or delete them as you like.
 

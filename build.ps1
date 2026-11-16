@@ -169,7 +169,6 @@ Copy-Tree $MpvSource (Join-Path $OutDir 'mpv')
 Write-Step 'Copying ffmpeg'
 if (-not $FfmpegSource) {
     $candidates = @(
-        (Join-Path $env:LOCALAPPDATA 'Temp\opencode\ffmpeg\extracted\ffmpeg-9.0.2-essentials_build\bin'),
         (Join-Path $OutDir 'tools\ffmpeg'),
         (Join-Path $env:LOCALAPPDATA 'LiveBackground\tools\ffmpeg')
     )
@@ -226,23 +225,31 @@ if (Test-Path $superseded) {
     Write-Host '  removed superseded Galaxy-hd_1920_1080_30fps.mp4'
 }
 
-Write-Step 'Copying the bundled image'
-# A fresh install seeds this picture into the user's image folder and starts
-# on it in One-image mode.
-New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'images\wallpapers') | Out-Null
-$bundledImageSources = @(
-    (Join-Path $root 'dist\images\wallpapers\Galaxy Image.jpg'),
-    (Join-Path $OutDir 'images\wallpapers\Galaxy Image.jpg')
-)
-$bundledImageSource = $null
-foreach ($candidate in $bundledImageSources) {
-    if (Test-Path $candidate) { $bundledImageSource = $candidate; break }
-}
-if ($bundledImageSource) {
-    Copy-Item $bundledImageSource (Join-Path $OutDir 'images\wallpapers') -Force
-    Write-Host '  Galaxy Image.jpg'
+Write-Step 'Copying the bundled images'
+# A fresh install seeds these pictures into the user's image folder and starts
+# on the first one in One-image mode. Every picture in dist\images\wallpapers
+# ships; drop files in there to change what a new install starts with.
+$imageSourceDir = Join-Path $root 'dist\images\wallpapers'
+$imageTargetDir = Join-Path $OutDir 'images\wallpapers'
+New-Item -ItemType Directory -Force -Path $imageTargetDir | Out-Null
+if (Test-Path $imageSourceDir) {
+    $bundledImages = @(Get-ChildItem -Path $imageSourceDir -File |
+        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|bmp|gif|webp)$' })
+    if ($bundledImages.Count -gt 0) {
+        foreach ($image in $bundledImages) {
+            $target = Join-Path $imageTargetDir $image.Name
+            # When OutDir is dist itself the source and target are the same
+            # file, so there is nothing to copy.
+            if (-not [string]::Equals($target, $image.FullName, [StringComparison]::OrdinalIgnoreCase)) {
+                Copy-Item $image.FullName $target -Force
+            }
+            Write-Host ("  " + $image.Name)
+        }
+    } else {
+        Write-Warning ("  no bundled images found in " + $imageSourceDir)
+    }
 } else {
-    Write-Warning '  missing bundled image: Galaxy Image.jpg'
+    Write-Warning ("  missing bundled image folder: " + $imageSourceDir)
 }
 
 Write-Step 'Copying documentation and scripts'
