@@ -12,7 +12,7 @@ namespace LiveBackground
     public static class Program
     {
         private static string _appRoot;
-        private static AppConfig _config;
+        private static volatile AppConfig _config;
         private static MpvPlayer _player;
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
@@ -210,9 +210,9 @@ namespace LiveBackground
             Ui.Stop();
         }
 
-        // Called by the settings window after it saves config.json. The live
-        // config object is mutated in place so the player keeps a valid
-        // reference, then a rebuild is forced.
+        // Called by the settings window after it saves config.json. A fresh
+        // config object is published in one atomic swap and every player is
+        // re-pointed at it, then a rebuild is forced.
         public static void ApplyConfig(AppConfig updated)
         {
             if (updated == null || _config == null) return;
@@ -227,9 +227,16 @@ namespace LiveBackground
             // Any change to a screen's own settings (mirroring, folder, mode or
             // clip) is noticed here, so the players are re-pointed and any
             // needed loop rebuilt in the watchdog. The token covers all screens
-            // at once; comparing it before and after CopyFrom catches them.
+            // at once; comparing it before and after the swap catches them.
             string screensBefore = ScreensToken(_config);
-            _config.CopyFrom(updated);
+            // Publish a brand-new config object in a single atomic reference
+            // write instead of copying into the live one field by field. The
+            // watchdog reads _config without a lock, so it must never observe a
+            // half-applied update; with a swap it always sees either the old
+            // config or the new one, never a mix of the two.
+            AppConfig fresh = updated.Clone();
+            _config = fresh;
+            ReconfigurePlayers(fresh);
             if (!string.Equals(screensBefore, ScreensToken(_config), StringComparison.Ordinal))
             {
                 _screensDirty = true;
@@ -341,6 +348,18 @@ namespace LiveBackground
             UpdateFallbackSurfaces();
 
             Ui.RefreshMenu();
+        }
+
+        // A settings apply swaps in a new config object, so every long-lived
+        // holder of the old reference is re-pointed at the new one. The players
+        // are the only such holders; the settings window works on its own clone.
+        private static void ReconfigurePlayers(AppConfig config)
+        {
+            if (_player != null) _player.Reconfigure(config);
+            foreach (ScreenPlayer screen in _screenPlayers)
+            {
+                if (screen.Player != null) screen.Player.Reconfigure(config);
+            }
         }
 
         public static int Main(string[] args)

@@ -8,7 +8,11 @@ namespace LiveBackground
     public class MpvPlayer
     {
         private readonly string _appRoot;
-        private readonly AppConfig _config;
+        // The live config is replaced (not mutated) whenever settings are
+        // applied, so this is re-pointed by Reconfigure. A reference read is
+        // atomic and the published object is never mutated again, so reading it
+        // needs no lock.
+        private volatile AppConfig _config;
         private readonly string _logName;
         // The watchdog thread and the settings UI thread both touch the player,
         // so every field below is read and written under this lock. Without it a
@@ -40,6 +44,13 @@ namespace LiveBackground
         public string MpvExe
         {
             get { return Paths.Tool(_config.MpvPath); }
+        }
+
+        // Called after a settings apply swaps in a new config object, so the
+        // player keeps using the current settings.
+        public void Reconfigure(AppConfig config)
+        {
+            if (config != null) _config = config;
         }
 
         public string LogPath
@@ -79,18 +90,21 @@ namespace LiveBackground
             }
             catch { }
 
+            // Read the settings once from a single snapshot, so a settings apply
+            // during start-up cannot mix two config objects into one command.
+            AppConfig config = _config;
             string args = string.Format(
                 "--wid={0} --loop-file=inf --no-config --load-scripts=no --media-controls=no --no-audio " +
                 "--no-osc --no-osd-bar --no-input-default-bindings --no-border --hwdec=auto --panscan=1.0 " +
                 "--force-window=yes --terminal=no --no-resume-playback --sub-auto=no --audio-file-auto=no " +
-                "--stop-screensaver=" + (_config.ScreensaverActive ? "no" : "yes") +
+                "--stop-screensaver=" + (config.ScreensaverActive ? "no" : "yes") +
                 " --cache=no --priority=abovenormal " +
                 "--demuxer-lavf-analyzeduration=0 --demuxer-lavf-probesize=32768 " +
                 "--log-file={1} \"{2}\"{3}",
                 progman.ToInt64(),
                 Util.Quote(LogPath),
                 mediaPath,
-                string.IsNullOrEmpty(_config.ExtraMpvArgs) ? "" : " " + _config.ExtraMpvArgs);
+                string.IsNullOrEmpty(config.ExtraMpvArgs) ? "" : " " + config.ExtraMpvArgs);
 
             Log.Info("starting mpv: " + args);
             Process started = ProcessRunner.StartDetached(MpvExe, args, Path.GetDirectoryName(MpvExe));

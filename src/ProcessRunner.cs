@@ -22,6 +22,27 @@ namespace LiveBackground
 
     public static class ProcessRunner
     {
+        // The stdout/stderr callbacks run on thread-pool threads and can still
+        // be appending when the caller's thread reads the captured text - most
+        // visibly on the cancel/timeout path, where the readers are not drained
+        // before the process is killed. A plain StringBuilder is not safe for
+        // that concurrent use, so every append and read goes through this lock.
+        private sealed class OutputBuffer
+        {
+            private readonly object _sync = new object();
+            private readonly StringBuilder _text = new StringBuilder();
+
+            public void Append(string line)
+            {
+                lock (_sync) { _text.AppendLine(line); }
+            }
+
+            public string Text
+            {
+                get { lock (_sync) { return _text.ToString(); } }
+            }
+        }
+
         public static ProcessResult Run(string exe, string arguments, string workingDirectory, int timeoutMs)
         {
             ProcessResult result = new ProcessResult();
@@ -43,18 +64,18 @@ namespace LiveBackground
             };
             if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
 
-            StringBuilder stdout = new StringBuilder();
-            StringBuilder stderr = new StringBuilder();
+            OutputBuffer stdout = new OutputBuffer();
+            OutputBuffer stderr = new OutputBuffer();
             using (Process process = new Process())
             {
                 process.StartInfo = psi;
                 process.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
-                    if (e.Data != null) stdout.AppendLine(e.Data);
+                    if (e.Data != null) stdout.Append(e.Data);
                 };
                 process.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
-                    if (e.Data != null) stderr.AppendLine(e.Data);
+                    if (e.Data != null) stderr.Append(e.Data);
                 };
 
                 try
@@ -89,8 +110,8 @@ namespace LiveBackground
                 }
 
                 result.ExitCode = process.HasExited ? process.ExitCode : -1;
-                result.StandardOutput = stdout.ToString();
-                result.StandardError = stderr.ToString();
+                result.StandardOutput = stdout.Text;
+                result.StandardError = stderr.Text;
             }
             return result;
         }
@@ -124,21 +145,21 @@ namespace LiveBackground
             };
             if (!string.IsNullOrEmpty(workingDirectory)) psi.WorkingDirectory = workingDirectory;
 
-            StringBuilder stdout = new StringBuilder();
-            StringBuilder stderr = new StringBuilder();
+            OutputBuffer stdout = new OutputBuffer();
+            OutputBuffer stderr = new OutputBuffer();
             using (Process process = new Process())
             {
                 process.StartInfo = psi;
                 process.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
                     if (e.Data == null) return;
-                    stdout.AppendLine(e.Data);
+                    stdout.Append(e.Data);
                     if (onLine != null) { try { onLine(e.Data); } catch { } }
                 };
                 process.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e)
                 {
                     if (e.Data == null) return;
-                    stderr.AppendLine(e.Data);
+                    stderr.Append(e.Data);
                     if (onLine != null) { try { onLine(e.Data); } catch { } }
                 };
 
@@ -199,8 +220,8 @@ namespace LiveBackground
                 }
 
                 result.ExitCode = process.HasExited ? process.ExitCode : -1;
-                result.StandardOutput = stdout.ToString();
-                result.StandardError = stderr.ToString();
+                result.StandardOutput = stdout.Text;
+                result.StandardError = stderr.Text;
             }
             return result;
         }
