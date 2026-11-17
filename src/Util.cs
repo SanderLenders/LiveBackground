@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Principal;
 using System.Text;
+using System.Threading;
 
 namespace LiveBackground
 {
@@ -76,6 +78,25 @@ namespace LiveBackground
                 }
             }
             catch { return false; }
+        }
+
+        // The app and its text are English by design, so pin the user-interface
+        // culture to English as well. This only affects the language of the
+        // messages the .NET Framework itself produces (for example the text of
+        // an exception we show after our own English sentence); all number and
+        // date formatting already uses the invariant culture. Called at the top
+        // of both entry points, before any other thread starts, so every thread
+        // inherits it. Windows' own dialogs and button labels are drawn by the
+        // operating system and are not affected by this.
+        public static void UseEnglishUiCulture()
+        {
+            try
+            {
+                CultureInfo english = CultureInfo.GetCultureInfo("en-US");
+                Thread.CurrentThread.CurrentUICulture = english;
+                CultureInfo.DefaultThreadCurrentUICulture = english;
+            }
+            catch { /* best-effort: fall back to the system language */ }
         }
 
         public static void SafeDelete(string path)

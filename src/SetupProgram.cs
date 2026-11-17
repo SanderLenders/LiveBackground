@@ -12,6 +12,7 @@ namespace LiveBackground
 
         public static int Main(string[] args)
         {
+            Util.UseEnglishUiCulture();
             string programRoot = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             Paths.Init(programRoot);
             _appRoot = Paths.DataRoot;

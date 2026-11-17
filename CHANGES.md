@@ -71,6 +71,9 @@
   only with no language dialog, and an update removes the old Dutch shortcut.
   The app itself was already English. The logon task check no longer reads
   Windows' own (localized) error text, so it behaves the same on any language.
+  The app also pins its user-interface language to English, so the handful of
+  messages Windows itself produces (for example the text of an error the app
+  shows after its own English sentence) come out in English too.
 
 ### Reliability and safety pass (stage 1)
 

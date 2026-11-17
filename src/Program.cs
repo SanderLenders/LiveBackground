@@ -476,6 +476,7 @@ namespace LiveBackground
 
         public static int Main(string[] args)
         {
+            Util.UseEnglishUiCulture();
             _processStartUtc = DateTime.UtcNow;
             try { _processStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime(); } catch { /* best-effort: fall back to the time we started */ }
 
