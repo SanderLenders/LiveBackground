@@ -308,6 +308,18 @@ namespace LiveBackground
                 {
                     Application.EnableVisualStyles();
                     Application.SetCompatibleTextRenderingDefault(false);
+
+                    // An unexpected exception in a menu or settings event
+                    // handler would otherwise reach the default WinForms crash
+                    // dialog. Log it and tell the user, the way the rest of the
+                    // app reports trouble, and keep the tray running.
+                    Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+                    Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e)
+                    {
+                        Log.Error("unhandled error in the user interface", e.Exception);
+                        Notify("LiveBackground", "Something went wrong. The details were saved to the log.");
+                    };
+
                     TrayApp tray = new TrayApp(appRoot);
                     TrayReady(tray);
                     Application.Run(tray);

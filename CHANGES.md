@@ -115,6 +115,17 @@
   happened. Changing the settings, resuming, or pressing "Rebuild now" starts a
   fresh set of attempts.
 
+### Code health pass
+
+- **The settings window reports an unexpected error instead of crashing.** If a
+  menu or settings action hits an unexpected error, the app now logs it and shows
+  a short notification, the same way the rest of the app reports trouble, rather
+  than the default Windows crash dialog.
+- **Internal cleanups.** Removed three pieces of dead code (an unused field, an
+  unused method and an unused path helper), reused a single natural-sort comparer
+  instead of allocating a new one per comparison, and closed the process handles
+  the installer opened while checking for a running copy.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

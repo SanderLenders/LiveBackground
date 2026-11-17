@@ -1313,7 +1313,7 @@ namespace LiveBackground
                 for (int i = 0; i < count; i++) order[i] = i;
                 Array.Sort(order, delegate(int a, int b)
                 {
-                    return new NaturalComparer().Compare(ClipList.Items[a].Text, ClipList.Items[b].Text);
+                    return NaturalComparer.Instance.Compare(ClipList.Items[a].Text, ClipList.Items[b].Text);
                 });
                 ApplyOrder(order, -1);
             }
@@ -2849,7 +2849,7 @@ namespace LiveBackground
             for (int i = 0; i < count; i++) order[i] = i;
             Array.Sort(order, delegate(int a, int b)
             {
-                return new NaturalComparer().Compare(_imageList.Items[a].Text, _imageList.Items[b].Text);
+                return NaturalComparer.Instance.Compare(_imageList.Items[a].Text, _imageList.Items[b].Text);
             });
             ApplyImageOrder(order, -1);
         }
@@ -3405,7 +3405,7 @@ namespace LiveBackground
             for (int i = 0; i < count; i++) order[i] = i;
             Array.Sort(order, delegate(int a, int b)
             {
-                return new NaturalComparer().Compare(_clipList.Items[a].Text, _clipList.Items[b].Text);
+                return NaturalComparer.Instance.Compare(_clipList.Items[a].Text, _clipList.Items[b].Text);
             });
             ApplyOrder(order, -1);
         }

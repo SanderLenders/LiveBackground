@@ -105,6 +105,10 @@ namespace LiveBackground
 
     public class NaturalComparer : IComparer<string>
     {
+        // The comparer holds no state, so one shared instance replaces the
+        // fresh allocation that the sort delegates used to make per comparison.
+        public static readonly NaturalComparer Instance = new NaturalComparer();
+
         public int Compare(string x, string y)
         {
             if (x == null) return y == null ? 0 : -1;

@@ -367,7 +367,7 @@ namespace LiveBackground
 
             videos.Sort(delegate(string a, string b)
             {
-                return new NaturalComparer().Compare(Path.GetFileName(a), Path.GetFileName(b));
+                return NaturalComparer.Instance.Compare(Path.GetFileName(a), Path.GetFileName(b));
             });
             return videos;
         }
@@ -405,7 +405,7 @@ namespace LiveBackground
 
             images.Sort(delegate(string a, string b)
             {
-                return new NaturalComparer().Compare(Path.GetFileName(a), Path.GetFileName(b));
+                return NaturalComparer.Instance.Compare(Path.GetFileName(a), Path.GetFileName(b));
             });
             return images;
         }

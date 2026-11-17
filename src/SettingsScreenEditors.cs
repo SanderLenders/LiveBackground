@@ -828,7 +828,7 @@ namespace LiveBackground
                 for (int i = 0; i < order.Length; i++) order[i] = i;
                 Array.Sort(order, delegate(int a, int b)
                 {
-                    return new NaturalComparer().Compare(_list.Items[a].Text, _list.Items[b].Text);
+                    return NaturalComparer.Instance.Compare(_list.Items[a].Text, _list.Items[b].Text);
                 });
                 ApplyOrder(order, -1);
             }

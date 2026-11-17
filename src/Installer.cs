@@ -362,6 +362,7 @@ namespace LiveBackground
                     process.Kill();
                 }
                 catch (Exception ex) { log("WARNING: could not stop pid " + process.Id + ": " + ex.Message); }
+                finally { process.Dispose(); }
             }
 
             if (!found)
@@ -396,18 +397,33 @@ namespace LiveBackground
                     if (log != null) log("stopped orphan mpv (pid " + process.Id + ")");
                 }
                 catch { /* best-effort; the process may have already exited */ }
+                finally { process.Dispose(); }
             }
             return killed;
         }
 
         public static bool IsAppRunning(string appRoot)
         {
-            return FindProcesses(AppExe(appRoot)).Count > 0;
+            List<Process> processes = FindProcesses(AppExe(appRoot));
+            try { return processes.Count > 0; }
+            finally { DisposeAll(processes); }
         }
 
         public static bool IsMpvRunning(string appRoot)
         {
-            return FindProcesses(Paths.Tool(AppConfigDefaults.DefaultMpvPath)).Count > 0;
+            List<Process> processes = FindProcesses(Paths.Tool(AppConfigDefaults.DefaultMpvPath));
+            try { return processes.Count > 0; }
+            finally { DisposeAll(processes); }
+        }
+
+        // Closes the handles FindProcesses opened on the matching processes;
+        // the callers only need the answer, not the handles.
+        private static void DisposeAll(List<Process> processes)
+        {
+            foreach (Process process in processes)
+            {
+                try { process.Dispose(); } catch { /* best-effort dispose; the finalizer reclaims it anyway */ }
+            }
         }
 
         public static List<Process> FindProcesses(string exePath)

@@ -33,7 +33,6 @@ namespace LiveBackground
         private bool _requestImmediate;
         private bool _requestHide;
         private bool _wantVisible;
-        private int _requestVersion;
 
         public bool IsStarted { get { return _started; } }
 
@@ -75,7 +74,6 @@ namespace LiveBackground
             lock (_sync)
             {
                 _progman = progman;
-                _requestVersion++;
             }
         }
 
@@ -89,7 +87,6 @@ namespace LiveBackground
                 _requestImmediate = immediate;
                 _requestHide = false;
                 _wantVisible = true;
-                _requestVersion++;
             }
         }
 
@@ -99,7 +96,6 @@ namespace LiveBackground
             {
                 if (!_started || _shutdown || _wantVisible) return;
                 _wantVisible = true;
-                _requestVersion++;
             }
         }
 
@@ -110,7 +106,6 @@ namespace LiveBackground
                 if (!_wantVisible) return;
                 _wantVisible = false;
                 _requestHide = true;
-                _requestVersion++;
             }
         }
 
@@ -121,7 +116,6 @@ namespace LiveBackground
             {
                 if (_shutdown) return;
                 _shutdown = true;
-                _requestVersion++;
                 thread = _thread;
             }
             if (thread != null)

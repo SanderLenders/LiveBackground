@@ -42,11 +42,6 @@ namespace LiveBackground
             return Util.ResolvePath(ProgramRoot, relative);
         }
 
-        public static string Data(string relative)
-        {
-            return Util.ResolvePath(DataRoot, relative);
-        }
-
         public static bool IsPortable
         {
             get

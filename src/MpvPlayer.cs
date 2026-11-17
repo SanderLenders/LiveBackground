@@ -143,11 +143,6 @@ namespace LiveBackground
             }
         }
 
-        public bool Restart(IntPtr progman, string mediaPath)
-        {
-            return Start(progman, mediaPath);
-        }
-
         public bool StartedRecently(int seconds)
         {
             lock (_sync) { return (DateTime.UtcNow - _lastStart).TotalSeconds < seconds; }
