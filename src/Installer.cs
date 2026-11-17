@@ -373,13 +373,31 @@ namespace LiveBackground
 
             // The launcher normally stops its own mpv, but make sure no orphan
             // instance of our bundled mpv keeps painting over the desktop.
+            KillOrphanMpv(log);
+            Util.SafeDelete(StopFlag(appRoot));
+        }
+
+        // Kills every bundled mpv that is not owned by a running app. The
+        // launcher stops its own player on the way out, but a hard kill (a
+        // crash, Task Manager, a power cut) leaves the mpv painting over the
+        // desktop with no window to close. Startup calls this too, so a stale
+        // player from a previous run never survives into the new one.
+        // Returns the number of players stopped.
+        public static int KillOrphanMpv(Action<string> log)
+        {
+            int killed = 0;
             string mpv = Paths.Tool(AppConfigDefaults.DefaultMpvPath);
             foreach (Process process in FindProcesses(mpv))
             {
-                try { process.Kill(); log("stopped orphan mpv (pid " + process.Id + ")"); }
+                try
+                {
+                    process.Kill();
+                    killed++;
+                    if (log != null) log("stopped orphan mpv (pid " + process.Id + ")");
+                }
                 catch { /* best-effort; the process may have already exited */ }
             }
-            Util.SafeDelete(StopFlag(appRoot));
+            return killed;
         }
 
         public static bool IsAppRunning(string appRoot)

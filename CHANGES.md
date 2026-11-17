@@ -72,6 +72,22 @@
   pictures or settings); a backup is kept automatically if a restore did not
   succeed.
 
+### Reliability and safety pass (stage 2)
+
+- **A killed app can no longer leave a video painting over the desktop.** The
+  wallpaper puts its video player in a Windows job object that the system cleans
+  up when the app exits — even after a crash, a Task Manager kill or a power
+  loss. It also sweeps away any stray player left by an earlier run as it starts.
+- **Rendering no longer risks overflowing the Windows command line.** The filter
+  graph for a loop is passed in a file instead of inline, so a folder with many
+  clips no longer fails with a cryptic ffmpeg error. A folder that genuinely has
+  too many clips now says so clearly.
+- **The video folder is no longer rescanned every ten seconds.** The folder
+  watcher drives updates; the full signature check is now a rare safety net
+  (every ten minutes, or immediately if the watcher reports a problem), and each
+  extra screen's own folder is checked on its own slower poll. This keeps the
+  CPU and disk quiet with a large library.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

@@ -703,6 +703,21 @@ namespace LiveBackground
             if (!File.Exists(ffmpeg)) { result.Message = "ffmpeg not found: " + ffmpeg; return result; }
             if (!File.Exists(ffprobe)) { result.Message = "ffprobe not found: " + ffprobe; return result; }
 
+            // The filter graph is passed in its own file (see below), but the
+            // inputs are still on the command line, which Windows caps at 32767
+            // characters. A folder of very many clips cannot fit; refuse it
+            // with a clear message instead of letting CreateProcess fail
+            // cryptically. Checked before probing so a huge folder fails fast.
+            string inputs = BuildInputs(videos);
+            const int MaxInputLength = 30000;
+            if (inputs.Length > MaxInputLength)
+            {
+                result.Message = "Too many clips (" + videos.Count +
+                    ") to join into one loop; reduce the number of clips in the folder or the playlist.";
+                Log.Error(result.Message);
+                return result;
+            }
+
             List<double> durations = new List<double>();
             List<string> usable = new List<string>();
             foreach (string video in videos)
@@ -787,33 +802,49 @@ namespace LiveBackground
             string frame = Path.Combine(loops, "frame-" + shortSignature + "-" + stamp + ".jpg");
             Util.SafeDelete(temp);
 
+            // The filter graph grows with the number of clips (three chains per
+            // clip plus an xfade each), so passing it inline could overflow the
+            // Windows command line. It goes in its own file instead, read with
+            // the "-/option file" form. (-filter_complex_script, the older
+            // spelling, was removed in ffmpeg 9.)
+            string filterFile = Path.Combine(loops, baseName + ".filter.txt");
+            File.WriteAllText(filterFile, filter);
+
             string args = string.Format(
-                "-hide_banner -y -nostats -progress pipe:1 {0} -filter_complex {1} -map [out] -an -c:v libx264 -preset {2} -crf {3} " +
+                "-hide_banner -y -nostats -progress pipe:1 {0} -/filter_complex {1} -map [out] -an -c:v libx264 -preset {2} -crf {3} " +
                 "-pix_fmt yuv420p -movflags +faststart -r {4} {5}",
-                BuildInputs(videos),
-                Util.Quote(filter),
+                inputs,
+                Util.Quote(filterFile),
                 config.Preset,
                 config.Crf,
                 config.Fps,
                 Util.Quote(temp));
 
             Log.Info("ffmpeg " + args);
-            ProcessResult render = ProcessRunner.RunWithLineCallback(ffmpeg, args, loops, 6 * 60 * 60 * 1000,
-                delegate(string line)
-                {
-                    if (progress != null && total > 0)
+            ProcessResult render;
+            try
+            {
+                render = ProcessRunner.RunWithLineCallback(ffmpeg, args, loops, 6 * 60 * 60 * 1000,
+                    delegate(string line)
                     {
-                        double seconds;
-                        if (TryParseFfmpegTime(line, out seconds))
+                        if (progress != null && total > 0)
                         {
-                            double fraction = seconds / total;
-                            if (fraction < 0) fraction = 0;
-                            if (fraction > 1) fraction = 1;
-                            progress(fraction);
+                            double seconds;
+                            if (TryParseFfmpegTime(line, out seconds))
+                            {
+                                double fraction = seconds / total;
+                                if (fraction < 0) fraction = 0;
+                                if (fraction > 1) fraction = 1;
+                                progress(fraction);
+                            }
                         }
-                    }
-                }, cancelled,
-                cacheOnly ? ProcessPriorityClass.BelowNormal : ProcessPriorityClass.Normal);
+                    }, cancelled,
+                    cacheOnly ? ProcessPriorityClass.BelowNormal : ProcessPriorityClass.Normal);
+            }
+            finally
+            {
+                Util.SafeDelete(filterFile);
+            }
 
             if (render.Cancelled)
             {

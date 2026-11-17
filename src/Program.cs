@@ -30,6 +30,15 @@ namespace LiveBackground
         private static string _buildingSignature;
         private static bool _dirty;
         private static DateTime _nextCheck = DateTime.MinValue;
+        // The main video folder is watched, so its periodic signature scan is
+        // only a safety net for a missed event. Screen folders are not watched,
+        // so they get their own slower poll. Both start due (MinValue) so the
+        // first pass validates like before.
+        private static DateTime _nextSafetyScan = DateTime.MinValue;
+        private static DateTime _nextScreenScan = DateTime.MinValue;
+        // Kept open for the life of the process: the job kills every child
+        // (mpv, ffmpeg) when its last handle closes, i.e. when we exit.
+        private static IntPtr _jobHandle = IntPtr.Zero;
         private static BuildResult _pendingBuild;
         // True while the running background worker also builds the main loop.
         // Its result is what finishes the progress card, so a screen result
@@ -521,6 +530,17 @@ namespace LiveBackground
             DesktopHost.EnablePerMonitorDpi();
 
             Log.Info("=== LiveBackground starting ===");
+            // Own every process we start: a job that kills its children when
+            // this process exits, even on a hard kill, so an mpv can never be
+            // left painting over the desktop. Best-effort; if the OS refuses we
+            // carry on and rely on the startup reap below.
+            _jobHandle = Native.CreateKillOnCloseJob();
+            if (_jobHandle != IntPtr.Zero) Log.Info("child-process job created (mpv is reaped even on a hard kill)");
+            else Log.Warn("child-process job unavailable; orphans are only reaped at startup");
+            // A previous run that was killed hard can leave its mpv behind.
+            // Reap it before we start our own, so only one video is ever shown.
+            int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
+            if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
             // Prepare loops for the other clips only after the wallpaper is up,
             // so the prefetch never competes with logon.
             _prefetchAfter = DateTime.UtcNow.AddSeconds(60);
@@ -965,6 +985,7 @@ namespace LiveBackground
                     // A settings save may have changed one or more screens.
                     // Re-point each player at the loop its settings now ask for
                     // and restart it; a needed rebuild is picked up below.
+                    bool screensChanged = _screensDirty;
                     if (_screensDirty)
                     {
                         _screensDirty = false;
@@ -1019,8 +1040,17 @@ namespace LiveBackground
                                 if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                             }
                         }
-                        else
+                        else if (_watcher == null || DateTime.UtcNow >= _nextSafetyScan)
                         {
+                            // The folder watcher is authoritative: any change
+                            // sets _dirty and is handled above. This branch is
+                            // only the safety net for a missed event (a network
+                            // share, a watcher buffer overflow, or a folder
+                            // swapped under the same path), so it walks the
+                            // folder every ten minutes instead of every ten
+                            // seconds. With no watcher at all it keeps the
+                            // frequent check, since nothing else would notice.
+                            _nextSafetyScan = DateTime.UtcNow.AddMinutes(10);
                             MediaManifest check;
                             if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                         }
@@ -1028,6 +1058,11 @@ namespace LiveBackground
                         // Each screen with its own loop that is missing or stale
                         // becomes a job. The settings are snapshotted here so a
                         // later save cannot make the encode write the wrong loop.
+                        // Screen folders are not watched, so they are checked on
+                        // their own slower poll; a settings change, or a screen
+                        // that already wants a build, is handled right away.
+                        bool scanScreens = screensChanged || DateTime.UtcNow >= _nextScreenScan;
+                        if (scanScreens) _nextScreenScan = DateTime.UtcNow.AddSeconds(60);
                         List<ScreenJob> screenJobs = new List<ScreenJob>();
                         foreach (ScreenPlayer screen in _screenPlayers)
                         {
@@ -1046,7 +1081,7 @@ namespace LiveBackground
                                 buildScreen = true;
                                 forceScreen = true;
                             }
-                            else
+                            else if (scanScreens)
                             {
                                 AppConfig screenConfig = _config.ScreenConfig(settings);
                                 MediaManifest check;

@@ -159,6 +159,107 @@ namespace LiveBackground
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool DestroyIcon(IntPtr hIcon);
+
+        // ---- job object: own the lifetime of the child processes ----
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        public const int JobObjectExtendedLimitInformation = 9;
+        public const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetInformationJobObject(IntPtr hJob, int jobObjectInfoClass,
+            IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        // Creates a job whose children are killed when its last handle closes,
+        // and puts this process in it. Every process the wallpaper starts after
+        // this (the bundled mpv, ffmpeg) is therefore reaped by the OS when the
+        // wallpaper exits, even on a hard kill. Returns the job handle, which
+        // the caller must keep open for the life of the process (closing it
+        // would kill us); IntPtr.Zero when the OS refuses, in which case the
+        // caller simply carries on without it.
+        public static IntPtr CreateKillOnCloseJob()
+        {
+            IntPtr job = IntPtr.Zero;
+            IntPtr info = IntPtr.Zero;
+            try
+            {
+                job = CreateJobObject(IntPtr.Zero, null);
+                if (job == IntPtr.Zero) return IntPtr.Zero;
+
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+                limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                int length = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+                info = Marshal.AllocHGlobal(length);
+                Marshal.StructureToPtr(limits, info, false);
+                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, info, (uint)length))
+                {
+                    CloseHandle(job);
+                    return IntPtr.Zero;
+                }
+                if (!AssignProcessToJobObject(job, GetCurrentProcess()))
+                {
+                    CloseHandle(job);
+                    return IntPtr.Zero;
+                }
+                return job;
+            }
+            catch
+            {
+                if (job != IntPtr.Zero) { try { CloseHandle(job); } catch { /* best-effort */ } }
+                return IntPtr.Zero;
+            }
+            finally
+            {
+                if (info != IntPtr.Zero) Marshal.FreeHGlobal(info);
+            }
+        }
     }
 
     public enum WallpaperFit
