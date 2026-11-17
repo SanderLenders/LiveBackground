@@ -11,141 +11,63 @@ namespace LiveBackground
 {
     public static partial class Program
     {
-        private static void StartImageWatcher(string folder)
-        {
-            StopImageWatcher();
-            try
-            {
-                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
-                FileSystemWatcher watcher = new FileSystemWatcher(folder);
-                watcher.IncludeSubdirectories = false;
-                watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size;
-                watcher.EnableRaisingEvents = true;
-
-                FileSystemEventHandler changed = delegate(object sender, FileSystemEventArgs e)
-                {
-                    if (!MediaPipeline.IsImage(e.FullPath)) return;
-                    lock (ImageSync)
-                    {
-                        _imageListDirty = true;
-                        _nextImageAt = DateTime.UtcNow;
-                    }
-                    Log.Info("image folder changed: " + e.ChangeType + " " + Path.GetFileName(e.FullPath));
-                };
-                RenamedEventHandler renamed = delegate(object sender, RenamedEventArgs e)
-                {
-                    if (!MediaPipeline.IsImage(e.FullPath) && !MediaPipeline.IsImage(e.OldFullPath)) return;
-                    lock (ImageSync)
-                    {
-                        _imageListDirty = true;
-                        _nextImageAt = DateTime.UtcNow;
-                    }
-                    Log.Info("image folder renamed: " + Path.GetFileName(e.OldFullPath) + " -> " + Path.GetFileName(e.FullPath));
-                };
-
-                watcher.Created += changed;
-                watcher.Changed += changed;
-                watcher.Deleted += changed;
-                watcher.Renamed += renamed;
-                watcher.Error += delegate(object sender, ErrorEventArgs e)
-                {
-                    lock (ImageSync)
-                    {
-                        _imageListDirty = true;
-                        _nextImageAt = DateTime.UtcNow;
-                    }
-                    Log.Warn("image folder watcher error: " + e.GetException().Message);
-                };
-                Log.Info("watching images in " + folder);
-                _imageWatcher = watcher;
-                _watchedImageFolder = folder;
-            }
-            catch (Exception ex)
-            {
-                Log.Warn("could not watch the image folder: " + ex.Message);
-                _watchedImageFolder = folder;
-            }
-        }
-
-        private static void StopImageWatcher()
-        {
-            if (_imageWatcher != null)
-            {
-                try
-                {
-                    _imageWatcher.EnableRaisingEvents = false;
-                    _imageWatcher.Dispose();
-                }
-                catch { /* best-effort dispose on teardown */ }
-                _imageWatcher = null;
-            }
-            _watchedImageFolder = "";
-        }
+        // ---------------------------------------------------------------
+        // Folder watchers
+        //
+        // The video folder and the image folder each used to carry their own
+        // hand-written FileSystemWatcher block; FolderWatcher now owns the
+        // watcher itself. These wrappers keep the app's state changes and the
+        // log wording exactly as they were, and remember the watched folder so
+        // the watch loop can tell when the settings point somewhere new.
+        // ---------------------------------------------------------------
 
         private static void StartWatcher(string folder)
         {
-            StopWatcher();
-            try
-            {
-                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
-                FileSystemWatcher watcher = new FileSystemWatcher(folder);
-                watcher.IncludeSubdirectories = false;
-                watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size;
-                watcher.EnableRaisingEvents = true;
-
-                FileSystemEventHandler changed = delegate(object sender, FileSystemEventArgs e)
-                {
-                    if (!MediaPipeline.IsVideo(e.FullPath)) return;
-                    _dirty = true;
-                    _lastWatcherEvent = DateTime.UtcNow;
-                    _prefetchDone = false;
-                    _prefetchAfter = DateTime.UtcNow.AddSeconds(30);
-                    Log.Info("video folder changed: " + e.ChangeType + " " + Path.GetFileName(e.FullPath));
-                };
-                RenamedEventHandler renamed = delegate(object sender, RenamedEventArgs e)
-                {
-                    if (!MediaPipeline.IsVideo(e.FullPath) && !MediaPipeline.IsVideo(e.OldFullPath)) return;
-                    _dirty = true;
-                    _lastWatcherEvent = DateTime.UtcNow;
-                    _prefetchDone = false;
-                    _prefetchAfter = DateTime.UtcNow.AddSeconds(30);
-                    Log.Info("video folder renamed: " + Path.GetFileName(e.OldFullPath) + " -> " + Path.GetFileName(e.FullPath));
-                };
-
-                watcher.Created += changed;
-                watcher.Changed += changed;
-                watcher.Deleted += changed;
-                watcher.Renamed += renamed;
-                watcher.Error += delegate(object sender, ErrorEventArgs e)
-                {
-                    _dirty = true;
-                    _lastWatcherEvent = DateTime.UtcNow;
-                    Log.Warn("video folder watcher error: " + e.GetException().Message);
-                };
-                Log.Info("watching " + folder);
-                _watcher = watcher;
-                _watchedFolder = folder;
-            }
-            catch (Exception ex)
-            {
-                Log.Warn("could not watch the video folder: " + ex.Message);
-                _watchedFolder = folder;
-            }
+            _videoWatcher.Start(folder);
+            Log.Info("watching " + folder);
         }
 
-        private static void StopWatcher()
+        private static void StartImageWatcher(string folder)
         {
-            if (_watcher != null)
-            {
-                try
-                {
-                    _watcher.EnableRaisingEvents = false;
-                    _watcher.Dispose();
-                }
-                catch { /* best-effort dispose on teardown */ }
-                _watcher = null;
-            }
-            _watchedFolder = "";
+            _imageWatcher.Start(folder);
+            Log.Info("watching images in " + folder);
         }
+
+        // A video appeared, changed, vanished or moved: rebuild after a short
+        // settling delay, and give the prefetch a fresh 30-second window.
+        private static void OnVideoFolderChanged()
+        {
+            _dirty = true;
+            _lastWatcherEvent = DateTime.UtcNow;
+            _prefetchDone = false;
+            _prefetchAfter = DateTime.UtcNow.AddSeconds(30);
+        }
+
+        // A watcher error is treated as a change, so the folder is re-scanned.
+        private static void OnVideoFolderError()
+        {
+            _dirty = true;
+            _lastWatcherEvent = DateTime.UtcNow;
+        }
+
+        // A picture appeared, changed, vanished or moved: re-read the list on
+        // the next slideshow tick. A watcher error does the same.
+        private static void OnImageFolderChanged()
+        {
+            lock (ImageSync)
+            {
+                _imageListDirty = true;
+                _nextImageAt = DateTime.UtcNow;
+            }
+        }
+
+        // The folder the video watcher is on, or "" when there is none.
+        private static string WatchedVideoFolder { get { return _videoWatcher.Folder; } }
+
+        // The folder the image watcher is on, or "" when there is none.
+        private static string WatchedImageFolder { get { return _imageWatcher.Folder; } }
+
+        // True while the video folder is actually being watched.
+        private static bool VideoWatcherActive { get { return _videoWatcher.IsActive; } }
     }
 }

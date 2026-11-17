@@ -45,6 +45,11 @@
   passes `CultureInfo.InvariantCulture` explicitly, so log lines, cache
   signatures and installer messages read the same on every machine instead of
   following the user's regional settings. The code analysis backlog is empty.
+- **The two folder watchers now share one small, tested class.** The video
+  folder and the image folder used to carry almost identical hand-written
+  `FileSystemWatcher` blocks; a `FolderWatcher` now owns the watcher and reports
+  changes through callbacks, so the app's state changes and the log wording are
+  exactly as before while the start/stop behaviour is covered by unit tests.
 
 ### Settings window
 

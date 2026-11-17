@@ -55,10 +55,15 @@ namespace LiveBackground
         private static volatile bool _restartPlayer;
         private static bool _prefetchDone;
         private static DateTime _prefetchAfter = DateTime.MaxValue;
-        private static FileSystemWatcher _watcher;
-        private static string _watchedFolder = "";
-        private static FileSystemWatcher _imageWatcher;
-        private static string _watchedImageFolder = "";
+        // The video folder and the image folder are each watched by a
+        // FolderWatcher. The two instances live for the life of the process and
+        // report their changes back into the app's state through these
+        // handlers, so the callbacks read exactly as the old hand-written
+        // watchers did.
+        private static readonly FolderWatcher _videoWatcher = new FolderWatcher(
+            "video folder", MediaPipeline.IsVideo, OnVideoFolderChanged, OnVideoFolderError);
+        private static readonly FolderWatcher _imageWatcher = new FolderWatcher(
+            "image folder", MediaPipeline.IsImage, OnImageFolderChanged, OnImageFolderChanged);
         private static bool _imageListDirty;
         private static bool _imageActive;
         private static DateTime _nextImageAt = DateTime.MinValue;
@@ -363,7 +368,7 @@ namespace LiveBackground
                 // it disposes the old one, and that must not happen while a
                 // callback that is waiting on ImageSync could still be in flight.
                 string imageFolder = Util.ResolvePath(_appRoot, _config.ImageFolder);
-                if (!string.Equals(imageFolder, _watchedImageFolder, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(imageFolder, WatchedImageFolder, StringComparison.OrdinalIgnoreCase))
                 {
                     StartImageWatcher(imageFolder);
                 }

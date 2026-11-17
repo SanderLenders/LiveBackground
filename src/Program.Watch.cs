@@ -361,7 +361,7 @@ namespace LiveBackground
 
                     // Follow the video folder if it was changed in the settings.
                     string activeFolder = Util.ResolvePath(_appRoot, _config.VideoFolder);
-                    if (!string.Equals(activeFolder, _watchedFolder, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(activeFolder, WatchedVideoFolder, StringComparison.OrdinalIgnoreCase))
                     {
                         StartWatcher(activeFolder);
                         _forceBuild = true;
@@ -397,7 +397,7 @@ namespace LiveBackground
                                 if (!MediaPipeline.IsCacheValid(_appRoot, _config, out check)) buildMain = true;
                             }
                         }
-                        else if (_watcher == null || DateTime.UtcNow >= _nextSafetyScan)
+                        else if (!VideoWatcherActive || DateTime.UtcNow >= _nextSafetyScan)
                         {
                             // The folder watcher is authoritative: any change
                             // sets _dirty and is handled above. This branch is
