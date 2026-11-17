@@ -46,14 +46,20 @@ CloseApplications=yes
 RestartApplications=no
 AllowNoIcons=yes
 ShowLanguageDialog=auto
+; Ignore the task choices stored by a previous install. Without this, the
+; "checkedonce" history (and, on an upgrade, the saved empty task set) can
+; leave the startup and Start Menu checkboxes unchecked. With it, the [Tasks]
+; defaults below are always the starting point: autostart and Start Menu on,
+; desktop off.
+UsePreviousTasks=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "dutch"; MessagesFile: "compiler:Languages\Dutch.isl"
 
 [Tasks]
-Name: "autostart"; Description: "Start LiveBackground when I sign in"; GroupDescription: "Startup:"; Flags: checkedonce
-Name: "startmenuicon"; Description: "Create a Start Menu shortcut"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
+Name: "autostart"; Description: "Start LiveBackground when I sign in"; GroupDescription: "Startup:"
+Name: "startmenuicon"; Description: "Create a Start Menu shortcut"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]

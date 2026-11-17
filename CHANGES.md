@@ -51,6 +51,10 @@
   "Additional icons" create a Start Menu shortcut (on by default) and a desktop
   shortcut (off by default). A taskbar pin is deliberately not offered, because
   Windows 11 blocks installers from pinning to the taskbar.
+- **"Start LiveBackground when I sign in" is ticked by default again.** On an
+  update over an existing copy the box used to come up empty, because the
+  installer reused the previous (empty) choice. The installer now always starts
+  from its own defaults, so the startup box is filled.
 
 ### Reliability and safety pass (stage 1)
 
