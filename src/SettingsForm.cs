@@ -133,7 +133,7 @@ namespace LiveBackground
 
         private readonly List<string> _clipPaths = new List<string>();
         private readonly List<double> _clipDurations = new List<double>();
-        private int[] _rowToEffective = new int[0];
+        private int[] _rowToEffective = Array.Empty<int>();
         private List<double> _effectiveDurations = new List<double>();
         private bool _loading;
         // In "Single clip" mode the list checkboxes act like radio buttons, so the
@@ -865,7 +865,7 @@ namespace LiveBackground
             RefreshScreenState();
         }
 
-        private void OpenDisplaySettings()
+        private static void OpenDisplaySettings()
         {
             try
             {
@@ -3439,7 +3439,7 @@ namespace LiveBackground
             _clipPaths.Clear();
             _clipDurations.Clear();
             _effectiveDurations = new List<double>();
-            _rowToEffective = new int[0];
+            _rowToEffective = Array.Empty<int>();
 
             string folder = Util.ResolvePath(_appRoot, _folderBox.Text);
             List<string> all = MediaPipeline.ScanVideos(folder);

@@ -32,13 +32,14 @@
          project compiles on a machine without the targeting pack installed. -->
     <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
 
-    <!-- Roslyn analysers: reported as warnings, never as build errors, so this
-         never blocks the shipping build. -->
+    <!-- Roslyn analysers, reported as build errors so a new issue cannot slip
+         in. This never blocks the shipping build: build.ps1 compiles with csc
+         and does not use this project. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 

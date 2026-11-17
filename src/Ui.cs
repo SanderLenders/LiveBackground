@@ -196,7 +196,7 @@ namespace LiveBackground
             RefreshMenu();
         }
 
-        private void OpenFolder(string folder)
+        private static void OpenFolder(string folder)
         {
             try
             {

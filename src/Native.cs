@@ -236,7 +236,7 @@ namespace LiveBackground
 
                 JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
                 limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                int length = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+                int length = Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
                 info = Marshal.AllocHGlobal(length);
                 Marshal.StructureToPtr(limits, info, false);
                 if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, info, (uint)length))

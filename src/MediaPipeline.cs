@@ -31,19 +31,19 @@ namespace LiveBackground
     // warning for them.
 #pragma warning disable 0649
     [DataContract]
-    internal class ProbeStream
+    internal sealed class ProbeStream
     {
         [DataMember(Name = "duration")] public string Duration;
     }
 
     [DataContract]
-    internal class ProbeFormat
+    internal sealed class ProbeFormat
     {
         [DataMember(Name = "duration")] public string Duration;
     }
 
     [DataContract]
-    internal class ProbeResult
+    internal sealed class ProbeResult
     {
         [DataMember(Name = "streams")] public ProbeStream[] Streams;
         [DataMember(Name = "format")] public ProbeFormat Format;

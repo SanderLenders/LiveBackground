@@ -34,11 +34,10 @@ dotnet_diagnostic.CA1838.severity = none
 dotnet_diagnostic.CA1806.severity = none
 dotnet_diagnostic.CA1001.severity = none
 
-# Style-only suggestions that do not apply to the hand-written WinForms layout.
-dotnet_diagnostic.CA1822.severity = none
-dotnet_diagnostic.CA1825.severity = none
-dotnet_diagnostic.CA1852.severity = none
-dotnet_diagnostic.CA2263.severity = none
+# CA1822 / CA1825 / CA1852 / CA2263 (mark members static, avoid zero-length
+# arrays, seal internal types, prefer the generic overload) are left at their
+# default severity: the codebase is now clean of all four, so a new occurrence
+# is a real warning rather than noise.
 
 # CA1304 / CA1305 (specify IFormatProvider) are left at their default severity
 # on purpose: the code now passes CultureInfo.InvariantCulture everywhere it

@@ -41,7 +41,7 @@ namespace LiveBackground
                     delegate(IntPtr monitor, IntPtr hdc, IntPtr rect, IntPtr data)
                     {
                         Native.MONITORINFOEX info = new Native.MONITORINFOEX();
-                        info.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.MONITORINFOEX));
+                        info.cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFOEX>();
                         if (!Native.GetMonitorInfo(monitor, ref info)) return true;
                         ScreenInfo screen = new ScreenInfo();
                         screen.Device = info.szDevice ?? "";

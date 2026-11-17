@@ -45,6 +45,13 @@
   passes `CultureInfo.InvariantCulture` explicitly, so log lines, cache
   signatures and installer messages read the same on every machine instead of
   following the user's regional settings. The code analysis backlog is empty.
+- **The analyser set was tightened, and it is now enforced.** Four code-quality
+  rules that had been switched off (mark members `static`, avoid zero-length
+  array allocations, seal internal types, prefer the generic `Marshal.SizeOf`
+  overload) are back on, and the handful of sites they flagged were cleaned up.
+  The analyser build now treats warnings as errors, so a new issue fails the
+  build instead of being printed and forgotten. This affects the developer / CI
+  build only; `build.ps1` compiles with `csc` and is unchanged.
 - **The two folder watchers now share one small, tested class.** The video
   folder and the image folder used to carry almost identical hand-written
   `FileSystemWatcher` blocks; a `FolderWatcher` now owns the watcher and reports

@@ -22,7 +22,7 @@ namespace LiveBackground
         // starts from.
         public static int[] IdentityOrder(int count)
         {
-            if (count <= 0) return new int[0];
+            if (count <= 0) return Array.Empty<int>();
             int[] order = new int[count];
             for (int i = 0; i < count; i++) order[i] = i;
             return order;
