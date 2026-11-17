@@ -60,6 +60,11 @@
   permission a plain rewrite is not allowed to touch, so the installer's attempt
   failed and the task was only created later from Settings. The installer now
   retries with a permission prompt when the plain attempt is refused.
+- **An update now asks for permission only once.** That retry prompt appeared as
+  a second UAC request right after the install. The installer now clears the old
+  logon and watchdog tasks while it is already elevated, so the task step can
+  create them fresh without asking again. If the cleanup is ever refused, it
+  falls back to the same prompt as before.
 
 ### Reliability and safety pass (stage 1)
 
