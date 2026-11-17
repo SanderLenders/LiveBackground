@@ -1,3 +1,11 @@
 dist/
 desktop.ini
 Thumbs.db
+
+# Modern .NET tooling (dotnet build / dotnet test) output. The shipping build
+# is build.ps1 and writes elsewhere, so these are purely local artefacts.
+bin/
+obj/
+TestResults/
+*.user
+.vs/

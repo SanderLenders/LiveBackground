@@ -1,0 +1,46 @@
+# EditorConfig, https://editorconfig.org
+#
+# The severities below are the analyser noise filter for this codebase. Every
+# rule that is not listed keeps its default (Recommended) severity, so a
+# genuinely new issue still shows up as a build warning.
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{csproj,props,targets,yml,yaml,json,md}]
+indent_size = 2
+
+[*.cs]
+
+# AppConfig / ScreenSettings / MediaManifest / ScreenInfo are [DataContract]
+# DTOs: the JSON serializer fills their public fields, so public fields are
+# deliberate. The same applies to the small WinForms "slot" holder types.
+dotnet_diagnostic.CA1051.severity = none
+
+# Native.cs mirrors the Win32 names (WS_OVERLAPPEDWINDOW, MONITORINFOEX, ...)
+# on purpose, and its P/Invoke entry points are public so the rest of the
+# assembly can call them.
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1401.severity = none
+dotnet_diagnostic.CA1838.severity = none
+
+# Win32 helpers return values that are intentionally ignored (best-effort
+# calls), and the WinForms slot types are disposed by the form that owns them.
+dotnet_diagnostic.CA1806.severity = none
+dotnet_diagnostic.CA1001.severity = none
+
+# Style-only suggestions that do not apply to the hand-written WinForms layout.
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA1825.severity = none
+dotnet_diagnostic.CA1852.severity = none
+dotnet_diagnostic.CA2263.severity = none
+
+# CA1304 / CA1305 (specify IFormatProvider) are left at their default severity
+# on purpose: they are a real backlog. Most of the call sites sit inside the
+# large methods that are being left untouched for now, so they are reported
+# rather than silenced.

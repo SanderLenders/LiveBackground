@@ -16,6 +16,11 @@
   write-to-temp-then-swap path as the rest of the app, so a crash mid-write can
   no longer leave a half-written manifest behind.
 - **The single-instance name lives in one place** instead of being repeated.
+- **The sources build and test with the modern .NET SDK.** A `dotnet build` /
+  `dotnet test` project, a small unit-test suite and a GitHub Actions workflow
+  now cover the same code. The shipped build is unchanged: `build.ps1` still
+  compiles with the .NET Framework `csc`, and the app still runs on .NET
+  Framework 4.8. See `BUILDING.md`.
 
 ### Settings window
 

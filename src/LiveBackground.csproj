@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Developer / CI build of the shipping application.
+
+    The application that users install is still produced by build.ps1, which
+    invokes csc directly and is untouched by this file. This project exists so
+    the same sources can be built, analysed and unit-tested with the modern
+    .NET tooling (dotnet build / dotnet test). It deliberately targets the same
+    runtime the app ships on (.NET Framework 4.8); nothing here changes the
+    runtime, the installer or the shipped binaries.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>LiveBackground</AssemblyName>
+    <RootNamespace>LiveBackground</RootNamespace>
+
+    <!-- src\*.cs has two entry points (Program.Main for the GUI and
+         SetupProgram.Main for the command-line helper); pick the GUI one. -->
+    <StartupObject>LiveBackground.Program</StartupObject>
+
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+
+    <!-- AssemblyInfo.cs sets the version and identity by hand. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ApplicationIcon>..\assets\LiveBackground.ico</ApplicationIcon>
+
+    <!-- Restore the .NET Framework 4.8 reference assemblies from NuGet so the
+         project compiles on a machine without the targeting pack installed. -->
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+
+    <!-- Roslyn analysers: reported as warnings, never as build errors, so this
+         never blocks the shipping build. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The reference set matches the csc command line in build.ps1. -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

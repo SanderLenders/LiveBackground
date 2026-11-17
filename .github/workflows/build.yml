@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up the .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore LiveBackground.sln
+
+      - name: Build (analysers on)
+        run: dotnet build LiveBackground.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test LiveBackground.sln --configuration Release --no-build --verbosity normal
+
+      # The application users install is still built by build.ps1 with the
+      # framework csc. Compile the same sources the same way here, so a change
+      # that breaks the shipping build is caught even though the full
+      # packaging build (which needs mpv and ffmpeg) does not run in CI.
+      - name: Compile with the shipping csc reference set
+        shell: pwsh
+        run: |
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $out = Join-Path $env:RUNNER_TEMP 'lb-shipping-check.exe'
+          & $csc /nologo /platform:x64 /target:winexe /main:LiveBackground.Program `
+            /r:System.dll /r:System.Core.dll /r:System.Runtime.Serialization.dll `
+            /r:System.Xml.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
+            "/out:$out" src\*.cs
+          if ($LASTEXITCODE -ne 0) { throw "the shipping csc compile failed" }
