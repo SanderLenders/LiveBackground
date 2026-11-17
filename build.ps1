@@ -190,14 +190,12 @@ if (Test-Path (Join-Path $FfmpegSource 'ffprobe.exe')) {
 
 Write-Step 'Copying the bundled videos'
 # The installer ships these two clips; a fresh install seeds them into the
-# user's video folder and starts on "Galaxy HD Clip.mp4" in One-clip mode.
+# user's video folder and starts on "Galaxy HD Clip.mp4" in Single clip mode.
 New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'videos') | Out-Null
 $bundledVideos = @(
     @{ Target = 'Galaxy HD Clip.mp4'; Sources = @(
         $SampleVideo,
-        'C:\Users\sande\OneDrive\Documenten\Background\Galaxy-hd_1920_1080_30fps.mp4',
-        (Join-Path $root 'dist\videos\Galaxy-hd_1920_1080_30fps.mp4'),
-        (Join-Path $root 'videos\Galaxy-hd_1920_1080_30fps.mp4'),
+        (Join-Path $root 'dist\videos\Galaxy HD Clip.mp4'),
         (Join-Path $OutDir 'videos\Galaxy HD Clip.mp4')
     ) },
     @{ Target = 'Fokuz Recordings Clip.mp4'; Sources = @(
