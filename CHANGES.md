@@ -88,6 +88,24 @@
   extra screen's own folder is checked on its own slower poll. This keeps the
   CPU and disk quiet with a large library.
 
+### Reliability and safety pass (stage 3)
+
+- **Saving the settings no longer freezes the window.** The work that follows a
+  save — scanning the video folder and bringing the image layers up — can take a
+  few seconds, so it now runs on its own thread and the settings window closes
+  at once. If you save again while that work is still running, the newest
+  settings replace the pending ones instead of queueing up.
+- **"Start LiveBackground when I sign in" now creates the logon task for you,
+  not for the administrator who approved the prompt.** On a standard account the
+  task used to be registered against whichever account elevated, so the wallpaper
+  would not start at the right sign-in. The signed-in account is now passed to
+  the elevated helper explicitly.
+- **A wallpaper that cannot play, or a loop that cannot be built, no longer
+  retries forever.** Repeated quick player restarts and repeated failed builds
+  now back off and then stop, with a single notification explaining what
+  happened. Changing the settings, resuming, or pressing "Rebuild now" starts a
+  fresh set of attempts.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

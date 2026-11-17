@@ -80,6 +80,26 @@ namespace LiveBackground
         private static bool _cleanupDone;
         private static DateTime _processStartUtc;
 
+        // A settings save applies on its own thread, because the work (folder
+        // signature scans and waiting for the image layers to come up) can
+        // block for seconds and the settings window must not freeze. Only the
+        // newest save is kept: one that arrives while an apply is running
+        // replaces the pending one, so no queue builds up.
+        private static readonly object ApplySync = new object();
+        private static AppConfig _applyQueued;
+        private static bool _applyWorkerRunning;
+
+        // A wallpaper video that will not play, or a loop that will not build,
+        // must not be retried forever. These count consecutive rapid failures
+        // and stop with a single tray notification once the limit is reached.
+        private const int MaxPlayerRestarts = 5;
+        private const int MaxBuildFailures = 3;
+        private static int _playerRestarts;
+        private static DateTime _playerRestartWindow = DateTime.MinValue;
+        private static bool _playerRestartStopped;
+        private static int _buildFailures;
+        private static bool _buildFailureStopped;
+
         // Display layout. _screens[0] is the primary screen and _screens[1] and
         // _screens[2] the optional extra ones; the list is refreshed when
         // Windows reports a change. The list is only ever replaced (never
@@ -121,6 +141,15 @@ namespace LiveBackground
             public bool ForceBuild;
             public string LastMissingLog = "";
             public BuildResult Pending;
+            // Consecutive failed builds for this screen, so a folder that
+            // cannot be rendered is not retried forever.
+            public int Failures;
+            public bool FailureNotified;
+            // Consecutive rapid player restarts for this screen, so a loop it
+            // cannot play is not retried forever.
+            public int Restarts;
+            public DateTime RestartWindow = DateTime.MinValue;
+            public bool RestartStopped;
         }
 
         // One extra screen's independent slideshow. The surface itself stays
@@ -178,6 +207,8 @@ namespace LiveBackground
             {
                 _nextCheck = DateTime.UtcNow;
                 if (IsImagesMode) _nextImageAt = DateTime.UtcNow;
+                // A resume is a deliberate fresh start for the video.
+                ResetRestartBackoff();
             }
             Log.Info(paused ? "paused by the user" : "resumed by the user");
             Ui.RefreshMenu();
@@ -197,6 +228,9 @@ namespace LiveBackground
         {
             _forceBuild = true;
             _nextCheck = DateTime.UtcNow;
+            // An explicit rebuild is a fresh attempt; let a later failure
+            // notify again instead of staying silent from the previous run.
+            ResetBuildFailureBackoff();
             Log.Info("rebuild requested from the tray");
 
             bool building;
@@ -231,9 +265,53 @@ namespace LiveBackground
         // Called by the settings window after it saves config.json. A fresh
         // config object is published in one atomic swap and every player is
         // re-pointed at it, then a rebuild is forced.
+        //
+        // The work can block for seconds (folder signature scans, waiting for
+        // the image layers), so it runs on its own thread and the settings
+        // window can close right away. A save that arrives while an apply is
+        // running replaces the pending one, so the newest settings always win.
         public static void ApplyConfig(AppConfig updated)
         {
             if (updated == null || _config == null) return;
+            lock (ApplySync)
+            {
+                _applyQueued = updated.Clone();
+                if (_applyWorkerRunning) return;
+                _applyWorkerRunning = true;
+            }
+            Thread worker = new Thread(ApplyWorker);
+            worker.IsBackground = true;
+            worker.Name = "livebackground-apply";
+            worker.Start();
+        }
+
+        private static void ApplyWorker()
+        {
+            while (true)
+            {
+                AppConfig next;
+                lock (ApplySync)
+                {
+                    next = _applyQueued;
+                    _applyQueued = null;
+                    if (next == null)
+                    {
+                        _applyWorkerRunning = false;
+                        return;
+                    }
+                }
+                try { ApplyConfigCore(next); }
+                catch (Exception ex) { Log.Error("applying settings failed", ex); }
+            }
+        }
+
+        private static void ApplyConfigCore(AppConfig updated)
+        {
+            if (updated == null || _config == null) return;
+            // New settings are a fresh start: retry a video or a build that
+            // had been given up on earlier.
+            ResetRestartBackoff();
+            ResetBuildFailureBackoff();
             bool wasImages = IsImagesMode;
             // The screen-power option is an mpv argument, so a changed value
             // needs a player restart rather than a new loop.
@@ -366,6 +444,22 @@ namespace LiveBackground
             UpdateFallbackSurfaces();
 
             Ui.RefreshMenu();
+        }
+
+        // A settings change, a resume or a loop that has played for a while
+        // clears the restart backoff so a later failure gets a fresh set of
+        // attempts.
+        private static void ResetRestartBackoff()
+        {
+            _playerRestarts = 0;
+            _playerRestartWindow = DateTime.MinValue;
+            _playerRestartStopped = false;
+        }
+
+        private static void ResetBuildFailureBackoff()
+        {
+            _buildFailures = 0;
+            _buildFailureStopped = false;
         }
 
         // A settings apply swaps in a new config object, so every long-lived
@@ -866,6 +960,10 @@ namespace LiveBackground
                         else if (finished.Success)
                         {
                             Log.Info("rebuild finished: " + finished.Message);
+                            // The loop works now, so a later failure starts
+                            // counting from zero again.
+                            ResetBuildFailureBackoff();
+                            ResetRestartBackoff();
                             _mediaPath = finished.LoopPath;
                             _mainFramePath = finished.FramePath;
                             if (_player.IsRunning) _player.Stop();
@@ -892,9 +990,28 @@ namespace LiveBackground
                         }
                         else
                         {
+                            _buildFailures++;
                             Log.Warn("rebuild failed: " + finished.Message);
                             Ui.BuildProgressFinish(false, "Build failed - see logs\\app.log");
-                            _nextCheck = DateTime.UtcNow.AddSeconds(60);
+                            if (_buildFailures >= MaxBuildFailures)
+                            {
+                                // Stop hammering ffmpeg. "Rebuild now" from the
+                                // tray bypasses this wait, so the user can
+                                // always retry by hand.
+                                if (!_buildFailureStopped)
+                                {
+                                    _buildFailureStopped = true;
+                                    Log.Warn("giving up after " + _buildFailures + " failed builds");
+                                    Ui.Notify("LiveBackground",
+                                        "The wallpaper video could not be built. See logs\\app.log, then press Rebuild now.");
+                                }
+                                _nextCheck = DateTime.UtcNow.AddMinutes(10);
+                            }
+                            else
+                            {
+                                // Back off a little more with each failure.
+                                _nextCheck = DateTime.UtcNow.AddSeconds(60 * _buildFailures);
+                            }
                         }
                     }
 
@@ -921,6 +1038,8 @@ namespace LiveBackground
                         else if (finished2.Success)
                         {
                             Log.Info(ScreenLabel(screen) + " rebuild finished: " + finished2.Message);
+                            screen.Failures = 0;
+                            screen.FailureNotified = false;
                             screen.MediaPath = finished2.LoopPath;
                             screen.FramePath = finished2.FramePath;
                             if (screen.Player != null && !_paused)
@@ -935,8 +1054,22 @@ namespace LiveBackground
                         }
                         else
                         {
+                            screen.Failures++;
                             Log.Warn(ScreenLabel(screen) + " rebuild failed: " + finished2.Message);
-                            _nextCheck = DateTime.UtcNow.AddSeconds(60);
+                            if (screen.Failures >= MaxBuildFailures)
+                            {
+                                if (!screen.FailureNotified)
+                                {
+                                    screen.FailureNotified = true;
+                                    Ui.Notify("LiveBackground", ScreenLabel(screen) +
+                                        ": the wallpaper video could not be built. See logs\\app.log.");
+                                }
+                                _nextCheck = DateTime.UtcNow.AddMinutes(10);
+                            }
+                            else
+                            {
+                                _nextCheck = DateTime.UtcNow.AddSeconds(60 * screen.Failures);
+                            }
                             if (!_buildCardForMain) Ui.BuildProgressFinish(false, "Build failed - see logs\\app.log");
                         }
                     }
@@ -951,6 +1084,9 @@ namespace LiveBackground
                             File.Exists(_mediaPath))
                         {
                             Log.Info("restarting the video");
+                            // A deliberate restart is not a crash, so it gets a
+                            // fresh set of attempts.
+                            ResetRestartBackoff();
                             _player.Start(_progman, _mediaPath);
                             firstPlacementLogged = false;
                         }
@@ -1163,6 +1299,13 @@ namespace LiveBackground
 
                     if (_player.IsRunning)
                     {
+                        // A player that has stayed up for a while is healthy; a
+                        // later failure may try again from a clean slate.
+                        if (_playerRestarts > 0 &&
+                            (DateTime.UtcNow - _player.StartedUtc).TotalSeconds > 20)
+                        {
+                            ResetRestartBackoff();
+                        }
                         bool placed = PlacePlayerOnScreen(_player, 0);
                         if (placed && !firstPlacementLogged)
                         {
@@ -1202,21 +1345,44 @@ namespace LiveBackground
                         {
                             Thread.Sleep(1000);
                         }
-                        else
+                        else if (_resumeFromPause)
                         {
                             // A player stopped by the pause command is not a
-                            // crash; resuming is the expected path.
-                            if (_resumeFromPause)
+                            // crash; resuming is the expected path and gets a
+                            // clean slate.
+                            _resumeFromPause = false;
+                            ResetRestartBackoff();
+                            Log.Info("resuming the wallpaper video");
+                            _player.Start(_progman, _mediaPath);
+                            firstPlacementLogged = false;
+                        }
+                        else if (_playerRestartStopped)
+                        {
+                            // Already gave up on this loop; a settings change,
+                            // a resume or a successful rebuild clears the flag.
+                        }
+                        else
+                        {
+                            // Count restarts that happen close together. A loop
+                            // that kills mpv on every start would otherwise be
+                            // retried forever.
+                            DateTime now = DateTime.UtcNow;
+                            if (now - _playerRestartWindow > TimeSpan.FromMinutes(2)) _playerRestarts = 0;
+                            _playerRestartWindow = now;
+                            _playerRestarts++;
+                            if (_playerRestarts > MaxPlayerRestarts)
                             {
-                                _resumeFromPause = false;
-                                Log.Info("resuming the wallpaper video");
+                                _playerRestartStopped = true;
+                                Log.Warn("mpv keeps exiting; giving up after " + _playerRestarts + " restarts");
+                                Ui.Notify("LiveBackground",
+                                    "The wallpaper video could not play. Pick another clip or check logs\\app.log.");
                             }
                             else
                             {
                                 Log.Warn("mpv is not running, restarting");
+                                _player.Start(_progman, _mediaPath);
+                                firstPlacementLogged = false;
                             }
-                            _player.Start(_progman, _mediaPath);
-                            firstPlacementLogged = false;
                         }
                     }
 
@@ -1227,15 +1393,46 @@ namespace LiveBackground
                         if (screen.Player == null) continue;
                         if (screen.Player.IsRunning)
                         {
+                            // A screen player that has stayed up for a while is
+                            // healthy; a later failure may try again.
+                            if (screen.Restarts > 0 &&
+                                (DateTime.UtcNow - screen.Player.StartedUtc).TotalSeconds > 20)
+                            {
+                                screen.Restarts = 0;
+                                screen.RestartWindow = DateTime.MinValue;
+                                screen.RestartStopped = false;
+                            }
                             PlacePlayerOnScreen(screen.Player, screen.ScreenIndex);
                         }
                         else if (!_building && !_paused && _progman != IntPtr.Zero &&
                             !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
                         {
-                            if (!screen.Player.StartedRecently(5))
+                            if (screen.Player.StartedRecently(5))
                             {
-                                Log.Warn("the " + ScreenLabel(screen) + " player is not running, restarting");
-                                screen.Player.Start(_progman, screen.MediaPath);
+                                // Give a just-started player a moment to appear.
+                            }
+                            else if (screen.RestartStopped)
+                            {
+                                // Already gave up on this screen's loop.
+                            }
+                            else
+                            {
+                                DateTime now = DateTime.UtcNow;
+                                if (now - screen.RestartWindow > TimeSpan.FromMinutes(2)) screen.Restarts = 0;
+                                screen.RestartWindow = now;
+                                screen.Restarts++;
+                                if (screen.Restarts > MaxPlayerRestarts)
+                                {
+                                    screen.RestartStopped = true;
+                                    Log.Warn("the " + ScreenLabel(screen) + " player keeps exiting; giving up");
+                                    Ui.Notify("LiveBackground", ScreenLabel(screen) +
+                                        ": the wallpaper video could not play. Pick another clip or check logs\\app.log.");
+                                }
+                                else
+                                {
+                                    Log.Warn("the " + ScreenLabel(screen) + " player is not running, restarting");
+                                    screen.Player.Start(_progman, screen.MediaPath);
+                                }
                             }
                         }
                     }

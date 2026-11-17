@@ -28,7 +28,7 @@ namespace LiveBackground
                     case "start": return Start();
                     case "stop": return Stop();
                     case "status": return Status();
-                    case "install-task": return InstallTask();
+                    case "install-task": return InstallTask(args);
                     case "remove-task": return RemoveTask();
                     case "set-lockscreen": return SetLockScreen(args);
                     case "restore-lockscreen": return RestoreLockScreen();
@@ -167,14 +167,20 @@ namespace LiveBackground
             return 0;
         }
 
-        private static int InstallTask()
+        private static int InstallTask(string[] args)
         {
+            // The account the logon task should belong to. The installer and
+            // the first launch pass nothing (the current account is right); the
+            // settings window passes the signed-in account explicitly, so a
+            // standard user's task is not registered against the administrator
+            // who approved the elevation prompt.
+            string userId = args != null && args.Length > 1 ? args[1] : null;
             // Do not create config.json here: the wallpaper's first launch does
             // that and also prepares the user library and wallpaper backups.
             AppConfig config = ConfigStore.Load(_appRoot);
             string error;
-            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error);
-            bool watchdog = ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error);
+            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
+            bool watchdog = ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
             if (ok && watchdog)
             {
                 Console.WriteLine("logon and watchdog tasks created: " + config.TaskName);

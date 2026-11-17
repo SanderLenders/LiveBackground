@@ -74,14 +74,28 @@ namespace LiveBackground
 
         public static bool Create(string appRoot, string taskName, string appExe, out string error)
         {
-            return CreateFromXml(taskName, BuildXml(taskName, appExe), out error);
+            return Create(appRoot, taskName, appExe, out error, null);
+        }
+
+        // userId registers the logon task for a specific account instead of
+        // whoever is running this code. The settings window uses it so the task
+        // belongs to the signed-in user, not to the administrator who approved
+        // the elevation prompt.
+        public static bool Create(string appRoot, string taskName, string appExe, out string error, string userId)
+        {
+            return CreateFromXml(taskName, BuildXml(taskName, appExe, userId), out error);
         }
 
         // A second, very small task that checks every few minutes whether the
         // tray app disappeared and starts it again after a crash.
         public static bool CreateWatchdog(string appRoot, string taskName, string appExe, out string error)
         {
-            return CreateFromXml(WatchdogName(taskName), BuildWatchdogXml(WatchdogName(taskName), appExe), out error);
+            return CreateWatchdog(appRoot, taskName, appExe, out error, null);
+        }
+
+        public static bool CreateWatchdog(string appRoot, string taskName, string appExe, out string error, string userId)
+        {
+            return CreateFromXml(WatchdogName(taskName), BuildWatchdogXml(WatchdogName(taskName), appExe, userId), out error);
         }
 
         private static bool CreateFromXml(string taskName, string xml, out string error)
@@ -133,7 +147,12 @@ namespace LiveBackground
             error = "";
             try
             {
-                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(setupExe, "install-task");
+                // The logon task must belong to the person who is signed in,
+                // not to whichever administrator approves the elevation
+                // prompt. Pass that account explicitly so the elevated helper
+                // registers the task for it.
+                string arguments = "install-task " + Util.Quote(Util.CurrentUser());
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(setupExe, arguments);
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";
                 psi.WorkingDirectory = appRoot;
@@ -203,9 +222,9 @@ namespace LiveBackground
             }
         }
 
-        private static string BuildXml(string taskName, string appExe)
+        private static string BuildXml(string taskName, string appExe, string userId)
         {
-            string user = Xml(Util.CurrentUser());
+            string user = Xml(string.IsNullOrEmpty(userId) ? Util.CurrentUser() : userId);
             string command = Xml(appExe);
             return
                 "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + Environment.NewLine +
@@ -255,9 +274,9 @@ namespace LiveBackground
                 "</Task>" + Environment.NewLine;
         }
 
-        private static string BuildWatchdogXml(string taskName, string appExe)
+        private static string BuildWatchdogXml(string taskName, string appExe, string userId)
         {
-            string user = Xml(Util.CurrentUser());
+            string user = Xml(string.IsNullOrEmpty(userId) ? Util.CurrentUser() : userId);
             string command = Xml(appExe);
             return
                 "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + Environment.NewLine +
