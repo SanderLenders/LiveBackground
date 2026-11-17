@@ -19,7 +19,7 @@
 
 ### Settings window
 
-- **"One clip" now comes before "All clips in this order"**, and "One image"
+- **"Single clip" now comes before "All clips in this order"**, and "One image"
   before "Slideshow", so the narrower choice leads on every tab and per-screen
   pane, including the 2nd and 3rd Screen sub-tabs.
 - **The "Pick one clip in the list below" hint is gone** from the Videos tab and
@@ -166,6 +166,18 @@
   (`mpv2.log`), and promised that unticking every clip falls back to playing all
   of them, which is not what the app does (it reports that nothing is selected
   and keeps the current wallpaper).
+
+### Fixes
+
+- **Switching to a different clip now really switches the main screen.**
+  "Rebuild now" and "Save and apply" woke the loop check but never told it to
+  re-evaluate the primary monitor, so only the extra screens changed and the main
+  screen kept playing the previous clip. A settings save now re-checks the main
+  loop the same way a folder change does: a clip that was rendered before swaps in
+  instantly, and a new one is encoded in the background.
+- **"One clip" is now called "Single clip"** on every tab and per-screen pane,
+  and the desktop-wallpaper choice on the per-screen panes reads "First frame of
+  this screen's loop", matching the "Other" tab.
 
 ## 1.8.5
 

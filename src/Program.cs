@@ -423,6 +423,13 @@ namespace LiveBackground
             catch { /* best-effort: an unreadable folder forces a rebuild */ }
             if (!sameBuildRunning) _buildGeneration++;
             _nextCheck = DateTime.UtcNow;
+            // Wake the watchdog's loop check too, exactly like a folder change
+            // does. Without this a settings save only re-checks the extra
+            // screens and the main loop keeps playing the old clip. This is a
+            // non-forced check, so a cached clip swaps in instantly and only an
+            // uncached one is encoded.
+            _dirty = true;
+            _lastWatcherEvent = DateTime.MinValue;
             _prefetchDone = false;
             _prefetchAfter = DateTime.UtcNow.AddSeconds(30);
             CancelPrefetch();

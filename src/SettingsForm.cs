@@ -136,7 +136,7 @@ namespace LiveBackground
         private int[] _rowToEffective = new int[0];
         private List<double> _effectiveDurations = new List<double>();
         private bool _loading;
-        // In "One clip" mode the list checkboxes act like radio buttons, so the
+        // In "Single clip" mode the list checkboxes act like radio buttons, so the
         // form remembers the chosen clip itself instead of a drop-down.
         private string _singleName = "";
         private bool _lastSingleMode;
@@ -474,10 +474,10 @@ namespace LiveBackground
             browse.Click += delegate { BrowseFolder(); };
             page.Controls.Add(browse);
 
-            // "One clip" leads, then the playlist: the narrower choice sits
+            // "Single clip" leads, then the playlist: the narrower choice sits
             // first so the pair reads in the order the eye expects.
             _modeSingle = new RadioButton();
-            _modeSingle.Text = "One clip";
+            _modeSingle.Text = "Single clip";
             _modeSingle.SetBounds(16, 72, 80, 22);
             _modeSingle.CheckedChanged += delegate { UpdateModeControls(); };
             page.Controls.Add(_modeSingle);
@@ -964,9 +964,9 @@ namespace LiveBackground
                 browse.Click += delegate { BrowseFolder(); };
                 _videoPane.Controls.Add(browse);
 
-                // "One clip" leads here too, matching the main Videos tab.
+                // "Single clip" leads here too, matching the main Videos tab.
                 ModeSingle = new RadioButton();
-                ModeSingle.Text = "One clip";
+                ModeSingle.Text = "Single clip";
                 ModeSingle.SetBounds(12, 126, 80, 22);
                 ModeSingle.CheckedChanged += delegate { UpdateModeControls(); };
                 _videoPane.Controls.Add(ModeSingle);
@@ -1170,7 +1170,7 @@ namespace LiveBackground
                 _form.UpdateScreenOptionTabs();
             }
 
-            // Switching between "All clips" and "One clip" reshapes the ticks,
+            // Switching between "All clips" and "Single clip" reshapes the ticks,
             // exactly like the Videos tab.
             private void UpdateModeControls()
             {
@@ -1195,7 +1195,7 @@ namespace LiveBackground
                 UpdateControls();
             }
 
-            // "One clip" mode: the ticks behave like radio buttons.
+            // "Single clip" mode: the ticks behave like radio buttons.
             private void ItemCheck(object sender, ItemCheckEventArgs e)
             {
                 if (_loading || !ModeSingle.Checked) return;
@@ -1761,7 +1761,7 @@ namespace LiveBackground
             browse.Click += delegate { BrowseImageFolder(); };
             page.Controls.Add(browse);
 
-            // "One image" leads, matching the Videos tab's "One clip".
+            // "One image" leads, matching the Videos tab's "Single clip".
             _imageModeSingle = new RadioButton();
             _imageModeSingle.Text = "One image";
             _imageModeSingle.SetBounds(16, 72, 100, 22);
@@ -2035,7 +2035,7 @@ namespace LiveBackground
             page.Controls.Add(_desktopGroup);
 
             _desktopFrame = new RadioButton();
-            _desktopFrame.Text = "First frame of the loop";
+            _desktopFrame.Text = "First frame of this screen's loop";
             _desktopFrame.SetBounds(16, 22, 460, 24);
             _desktopFrame.CheckedChanged += delegate { UpdateDesktopControls(); };
             _desktopGroup.Controls.Add(_desktopFrame);
@@ -2594,7 +2594,7 @@ namespace LiveBackground
             UpdateFadeLabels();
         }
 
-        // "One clip" mode: the checkboxes behave like radio buttons. Checking
+        // "Single clip" mode: the checkboxes behave like radio buttons. Checking
         // one clip clears the others and the checked clip becomes the choice.
         private void ClipItemCheck(object sender, ItemCheckEventArgs e)
         {
@@ -2602,7 +2602,7 @@ namespace LiveBackground
 
             if (e.NewValue != CheckState.Checked)
             {
-                // One clip must stay selected, so a second click on the ticked
+                // Single clip must stay selected, so a second click on the ticked
                 // clip leaves it ticked.
                 e.NewValue = CheckState.Checked;
                 return;
