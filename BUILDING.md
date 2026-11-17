@@ -90,3 +90,9 @@ the full packaging build (which needs mpv and ffmpeg) does not run there.
 
 `.gitattributes` stores every text file with LF, so the sources are byte-identical
 on every machine.
+
+## Manual testing
+
+The unit tests cover the pure logic only. The paths that touch Windows (the
+window and threading model, multi-monitor, DPI, the mpv and ffmpeg lifecycles)
+are checked by hand before a release; `TESTING.md` is the short checklist.
