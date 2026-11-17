@@ -28,6 +28,12 @@
   (`PlaylistState`, with `CrossfadeState` for the picture crossfade). The
   behaviour is unchanged - a clip that has gone missing stays unticked, a
   picture stays ticked - and the shared logic is covered by unit tests.
+- **The large `Program.cs` was split into smaller files by concern.** The single
+  2,757-line file became one core file plus `Program.Watch.cs`,
+  `Program.Images.cs`, `Program.Screens.cs` and `Program.Watchers.cs`, joined as
+  `partial class Program`. It is a pure move - the compiled code is byte-for-byte
+  identical to before, the shipped build is unchanged, and all unit tests still
+  pass.
 
 ### Settings window
 
