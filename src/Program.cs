@@ -217,16 +217,6 @@ namespace LiveBackground
             Ui.RefreshMenu();
         }
 
-        private static bool HasTickedEntry(List<PlaylistEntry> playlist)
-        {
-            if (playlist == null) return false;
-            foreach (PlaylistEntry entry in playlist)
-            {
-                if (entry != null && entry.Enabled) return true;
-            }
-            return false;
-        }
-
         public static void RequestRebuild()
         {
             _forceBuild = true;
@@ -333,7 +323,7 @@ namespace LiveBackground
             // clip) is noticed here, so the players are re-pointed and any
             // needed loop rebuilt in the watchdog. The token covers all screens
             // at once; comparing it before and after the swap catches them.
-            string screensBefore = ScreensToken(_config);
+            string screensBefore = ScreenConfigToken.Compute(_config);
             // Publish a brand-new config object in a single atomic reference
             // write instead of copying into the live one field by field. The
             // watchdog reads _config without a lock, so it must never observe a
@@ -342,7 +332,7 @@ namespace LiveBackground
             AppConfig fresh = updated.Clone();
             _config = fresh;
             ReconfigurePlayers(fresh);
-            if (!string.Equals(screensBefore, ScreensToken(_config), StringComparison.Ordinal))
+            if (!string.Equals(screensBefore, ScreenConfigToken.Compute(_config), StringComparison.Ordinal))
             {
                 _screensDirty = true;
             }
@@ -525,21 +515,21 @@ namespace LiveBackground
             // The logon task also schedules this lightweight check. It only
             // starts the wallpaper when the tray app is missing, so a crash is
             // recovered without ever fighting the single-instance mutex.
-            if (HasArg(args, "--watchdog"))
+            if (CommandLine.HasArg(args, "--watchdog"))
             {
                 return RunWatchdog();
             }
 
             // "LiveBackground.exe --settings" opens the dialog. If another
             // instance is running, the flag file tells it to show the dialog.
-            bool settingsRequested = HasArg(args, "--settings");
+            bool settingsRequested = CommandLine.HasArg(args, "--settings");
             if (settingsRequested)
             {
                 try { File.WriteAllText(Installer.SettingsFlag(_appRoot), "open"); }
                 catch { /* best-effort: the running instance may already be gone */ }
             }
 
-            if (HasArg(args, "--stop"))
+            if (CommandLine.HasArg(args, "--stop"))
             {
                 try { File.WriteAllText(Installer.QuitFlag(_appRoot), "quit"); }
                 catch { /* best-effort: the running instance may already be gone */ }
@@ -551,7 +541,7 @@ namespace LiveBackground
 
             // Scriptable equivalents of the tray menu. Each writes a flag that
             // the running instance picks up within half a second.
-            if (HasArg(args, "--pause"))
+            if (CommandLine.HasArg(args, "--pause"))
             {
                 try { File.WriteAllText(Installer.PauseFlag(_appRoot), "pause"); }
                 catch { /* best-effort: the running instance may already be gone */ }
@@ -559,7 +549,7 @@ namespace LiveBackground
                 return 0;
             }
 
-            if (HasArg(args, "--resume"))
+            if (CommandLine.HasArg(args, "--resume"))
             {
                 try { File.WriteAllText(Installer.ResumeFlag(_appRoot), "resume"); }
                 catch { /* best-effort: the running instance may already be gone */ }
@@ -567,7 +557,7 @@ namespace LiveBackground
                 return 0;
             }
 
-            if (HasArg(args, "--rebuild"))
+            if (CommandLine.HasArg(args, "--rebuild"))
             {
                 try { File.WriteAllText(Installer.RebuildFlag(_appRoot), "rebuild"); }
                 catch { /* best-effort: the running instance may already be gone */ }
@@ -691,7 +681,7 @@ namespace LiveBackground
             }
             _screens = Screens.Enumerate();
             _screensSignature = Screens.Signature(_screens);
-            Log.Info("displays: " + DescribeScreens(_screens));
+            Log.Info("displays: " + ScreenText.DescribeAll(_screens, Screens.IsDuplicate(_screens)));
             // An old config's single second-screen block becomes the settings
             // for the first extra monitor, remembered by its device name from
             // then on.

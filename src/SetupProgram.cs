@@ -59,7 +59,7 @@ namespace LiveBackground
         private static int Install(string[] args)
         {
             Banner("LiveBackground - install");
-            bool createStartup = !HasArg(args, "--no-startup");
+            bool createStartup = !CommandLine.HasArg(args, "--no-startup");
             AppConfig config = ConfigStore.LoadOrCreate(_appRoot);
             int result = Installer.Install(_appRoot, config, createStartup, Console.WriteLine);
             if (result == 0)
@@ -76,7 +76,7 @@ namespace LiveBackground
         private static int Uninstall(string[] args)
         {
             Banner("LiveBackground - uninstall");
-            bool remove = HasArg(args, "--remove") || HasArg(args, "/remove");
+            bool remove = CommandLine.HasArg(args, "--remove") || CommandLine.HasArg(args, "/remove");
             AppConfig config = ConfigStore.LoadOrCreate(_appRoot);
             int result = Installer.Uninstall(_appRoot, config, remove, Console.WriteLine);
             return result;
@@ -303,16 +303,6 @@ namespace LiveBackground
             Console.WriteLine("  " + text);
             Console.WriteLine("==============================================");
             Console.WriteLine();
-        }
-
-        private static bool HasArg(string[] args, string value)
-        {
-            if (args == null) return false;
-            foreach (string arg in args)
-            {
-                if (string.Equals(arg, value, StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
         }
     }
 }

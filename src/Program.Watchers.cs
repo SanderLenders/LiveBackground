@@ -11,14 +11,6 @@ namespace LiveBackground
 {
     public static partial class Program
     {
-        private static int IntervalSeconds()
-        {
-            int seconds = _config == null ? 10 : _config.ImageIntervalSeconds;
-            if (seconds < 1) seconds = 10;
-            if (seconds > 86400) seconds = 86400;
-            return seconds;
-        }
-
         private static void StartImageWatcher(string folder)
         {
             StopImageWatcher();
@@ -154,16 +146,6 @@ namespace LiveBackground
                 _watcher = null;
             }
             _watchedFolder = "";
-        }
-
-        private static bool HasArg(string[] args, string value)
-        {
-            if (args == null) return false;
-            foreach (string arg in args)
-            {
-                if (string.Equals(arg, value, StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
         }
     }
 }

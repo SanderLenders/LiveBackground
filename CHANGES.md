@@ -34,6 +34,13 @@
   `partial class Program`. It is a pure move - the compiled code is byte-for-byte
   identical to before, the shipped build is unchanged, and all unit tests still
   pass.
+- **A handful of small, self-contained helpers moved out of `Program` into their
+  own tested classes.** Command-line matching (`CommandLine.HasArg`, previously
+  duplicated word-for-word in the app and the setup program), the screen names
+  and log file names (`ScreenText`), the picture-slideshow timing limits
+  (`SlideshowTiming`) and the per-screen settings fingerprint
+  (`ScreenConfigToken`) are now separate, window-free classes. The behaviour is
+  unchanged; the moved logic is now covered by unit tests.
 
 ### Settings window
 

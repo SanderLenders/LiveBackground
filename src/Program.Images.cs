@@ -67,7 +67,7 @@ namespace LiveBackground
                     Log.Warn(message);
                     _lastMissingImageLog = message;
                 }
-                _nextImageAt = DateTime.UtcNow.AddSeconds(IntervalSeconds());
+                _nextImageAt = DateTime.UtcNow.AddSeconds(SlideshowTiming.ImageIntervalSeconds(_config));
                 return;
             }
             _lastMissingImageLog = "";
@@ -90,12 +90,12 @@ namespace LiveBackground
             {
                 // The layers fade only for a real slideshow step. Startup and
                 // settings changes swap instantly.
-                ImageShowMainAndMirrors(chosen, advance ? ImageCrossfadeSeconds() : 0, !advance);
+                ImageShowMainAndMirrors(chosen, advance ? SlideshowTiming.ImageCrossfadeSeconds(_config) : 0, !advance);
                 _surfaceImage = chosen;
             }
 
             _currentImage = chosen;
-            _nextImageAt = DateTime.UtcNow.AddSeconds(IntervalSeconds());
+            _nextImageAt = DateTime.UtcNow.AddSeconds(SlideshowTiming.ImageIntervalSeconds(_config));
         }
 
         // Shared by the main screen and every independent extra screen.
@@ -190,7 +190,7 @@ namespace LiveBackground
             List<string> images = MediaPipeline.ResolveImages(folder, config);
             if (images == null || images.Count == 0)
             {
-                string message = "no images for " + ScreenLabelForIndex(state.ScreenIndex) + " in " + folder;
+                string message = "no images for " + ScreenText.LabelForIndex(state.ScreenIndex) + " in " + folder;
                 if (!string.Equals(message, state.LastMissingLog, StringComparison.Ordinal))
                 {
                     Log.Warn(message);
@@ -205,7 +205,7 @@ namespace LiveBackground
             string chosen = ChooseImage(config, images, state.CurrentImage, advance);
             if (!string.Equals(chosen, state.CurrentImage, StringComparison.OrdinalIgnoreCase))
             {
-                Log.Info(ScreenLabelForIndex(state.ScreenIndex) + " image: " + Path.GetFileName(chosen));
+                Log.Info(ScreenText.LabelForIndex(state.ScreenIndex) + " image: " + Path.GetFileName(chosen));
             }
             if (!string.Equals(chosen, state.SurfaceImage, StringComparison.OrdinalIgnoreCase) || !advance)
             {
@@ -299,13 +299,6 @@ namespace LiveBackground
             }
         }
 
-        private static string ScreenLabelForIndex(int index)
-        {
-            if (index == 1) return "second screen";
-            if (index == 2) return "third screen";
-            return "screen " + (index + 1);
-        }
-
         private static void StartScreenImageWatcher(ScreenImageState state, string folder)
         {
             StopScreenImageWatcher(state);
@@ -335,7 +328,7 @@ namespace LiveBackground
                 watcher.EnableRaisingEvents = true;
                 state.Watcher = watcher;
                 state.WatchedFolder = folder;
-                Log.Info("watching " + ScreenLabelForIndex(state.ScreenIndex) + " images in " + folder);
+                Log.Info("watching " + ScreenText.LabelForIndex(state.ScreenIndex) + " images in " + folder);
             }
             catch (Exception ex)
             {
@@ -378,14 +371,6 @@ namespace LiveBackground
                     state.SurfaceImage = "";
                 }
             }
-        }
-
-        private static double ImageCrossfadeSeconds()
-        {
-            double seconds = _config == null ? 2.0 : _config.ImageCrossfadeSeconds;
-            if (double.IsNaN(seconds) || seconds < 0) seconds = 0;
-            if (seconds > 5.0) seconds = 5.0;
-            return seconds;
         }
 
         // ---------------------------------------------------------------

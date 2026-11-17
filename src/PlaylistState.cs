@@ -105,6 +105,17 @@ namespace LiveBackground
             return -1;
         }
 
+        // True when at least one entry is present and ticked.
+        public static bool HasTicked(IEnumerable<PlaylistEntry> playlist)
+        {
+            if (playlist == null) return false;
+            foreach (PlaylistEntry entry in playlist)
+            {
+                if (entry != null && entry.Enabled) return true;
+            }
+            return false;
+        }
+
         // The row to tick in single mode: the remembered name (matched without
         // regard to case), or the first row when that name is gone.
         public static int PreferredIndex(IList<string> names, string preferred)

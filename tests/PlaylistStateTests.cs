@@ -182,5 +182,38 @@ namespace LiveBackground.Tests
             Assert.Equal(new[] { "p0", "" }, PlaylistState.Reorder(paths, new[] { 0, 9 }, ""));
             Assert.Empty(PlaylistState.Reorder(paths, null, ""));
         }
+
+        [Fact]
+        public void HasTicked_is_false_without_a_ticked_entry()
+        {
+            Assert.False(PlaylistState.HasTicked(null));
+            Assert.False(PlaylistState.HasTicked(new List<PlaylistEntry>()));
+            Assert.False(PlaylistState.HasTicked(new List<PlaylistEntry>
+            {
+                new PlaylistEntry("a.mp4", false),
+                new PlaylistEntry("b.mp4", false),
+            }));
+        }
+
+        [Fact]
+        public void HasTicked_is_true_when_any_entry_is_ticked()
+        {
+            Assert.True(PlaylistState.HasTicked(new List<PlaylistEntry>
+            {
+                new PlaylistEntry("a.mp4", false),
+                new PlaylistEntry("b.mp4", true),
+            }));
+        }
+
+        [Fact]
+        public void HasTicked_ignores_null_entries()
+        {
+            Assert.False(PlaylistState.HasTicked(new List<PlaylistEntry> { null }));
+            Assert.True(PlaylistState.HasTicked(new List<PlaylistEntry>
+            {
+                null,
+                new PlaylistEntry("a.mp4", true),
+            }));
+        }
     }
 }

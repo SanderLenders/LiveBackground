@@ -15,20 +15,6 @@ namespace LiveBackground
         // Displays and the extra screens
         // ---------------------------------------------------------------
 
-        private static string DescribeScreens(List<ScreenInfo> screens)
-        {
-            if (screens == null || screens.Count == 0) return "none";
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < screens.Count; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append(screens[i].Describe());
-            }
-            if (screens.Count > 3) sb.Append(" (only the first three are used)");
-            if (Screens.IsDuplicate(screens)) sb.Append(" (Windows is duplicating)");
-            return sb.ToString();
-        }
-
         // Re-enumerates the displays when Windows reports a change. A changed
         // layout moves the players; a changed screen count rebuilds them.
         private static void RefreshScreensIfNeeded()
@@ -47,7 +33,7 @@ namespace LiveBackground
             _screensSignature = signature;
             _layoutChanged = true;
             if (now.Count != before) _screenCountChanged = true;
-            Log.Info("display layout changed: " + DescribeScreens(now));
+            Log.Info("display layout changed: " + ScreenText.DescribeAll(now, Screens.IsDuplicate(now)));
         }
 
         // Creates, keeps or retires one player per extra screen (at most two),
@@ -110,7 +96,7 @@ namespace LiveBackground
                 {
                     player = new ScreenPlayer();
                     player.Device = screen.Device ?? "";
-                    player.Player = new MpvPlayer(_appRoot, _config, ScreenLogName(player.Device));
+                    player.Player = new MpvPlayer(_appRoot, _config, ScreenText.LogName(player.Device));
                     next.Add(player);
                 }
                 player.Number = number;
@@ -169,57 +155,7 @@ namespace LiveBackground
         private static string ScreenLabel(ScreenPlayer screen)
         {
             if (screen == null) return "screen";
-            if (screen.Number == 2) return "second screen";
-            if (screen.Number == 3) return "third screen";
-            return "screen " + screen.Number;
-        }
-
-        // A stable log file name per monitor: "mpv-<device>.log" with anything
-        // that is not a letter or digit turned into an underscore.
-        private static string ScreenLogName(string device)
-        {
-            StringBuilder sb = new StringBuilder("mpv-");
-            if (!string.IsNullOrEmpty(device))
-            {
-                foreach (char c in device)
-                {
-                    sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-                }
-            }
-            sb.Append(".log");
-            return sb.ToString();
-        }
-
-        // A fingerprint of every screen's settings, so a save that changed any
-        // of them can be told apart from a save that did not.
-        private static string ScreensToken(AppConfig config)
-        {
-            if (config == null || config.ExtraScreens == null) return "";
-            StringBuilder sb = new StringBuilder();
-            foreach (ScreenSettings screen in config.ExtraScreens)
-            {
-                if (screen == null) continue;
-                sb.Append(screen.Device ?? "").Append('\u0001')
-                  .Append(screen.SameAsMain ? '1' : '0').Append('\u0001')
-                  .Append(screen.Folder ?? "").Append('\u0001')
-                  .Append(screen.PlaybackMode ?? "").Append('\u0001')
-                  .Append(screen.SingleClip ?? "").Append('\u0001')
-                  .Append(screen.CrossfadeSeconds.HasValue
-                      ? screen.CrossfadeSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                      : "").Append('\u0001')
-                  .Append(screen.FineCrossfadeSteps.HasValue
-                      ? (screen.FineCrossfadeSteps.Value ? '1' : '0') : '-').Append('\u0001');
-                if (screen.Playlist != null)
-                {
-                    foreach (PlaylistEntry entry in screen.Playlist)
-                    {
-                        if (entry == null) continue;
-                        sb.Append(entry.Name).Append(':').Append(entry.Enabled ? '1' : '0').Append(';');
-                    }
-                }
-                sb.Append('\u0002');
-            }
-            return sb.ToString();
+            return ScreenText.LabelForIndex(screen.Number - 1);
         }
 
         private static uint PlayerPid(MpvPlayer player)
@@ -262,7 +198,7 @@ namespace LiveBackground
                 StringComparison.OrdinalIgnoreCase);
             bool hasSelection = singleMode
                 ? !string.IsNullOrEmpty(config.SingleClip)
-                : HasTickedEntry(config.Playlist);
+                : PlaylistState.HasTicked(config.Playlist);
             if (hasSelection)
             {
                 message = (singleMode ? "the selected clip is missing from "
