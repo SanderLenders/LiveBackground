@@ -433,14 +433,14 @@ A rebuild says "ffmpeg failed":
   the usual cause. Remove it from the folder and the app rebuilds without it.
 
 
-Smart App Control and code signing
+Code signing and Smart App Control
 ----------------------------------
-LiveBackground.exe, LiveBackgroundCli.exe and LiveBackgroundSetup.exe are signed
-with a self-signed certificate named "LiveBackground Test". The certificate is
-included next to the app as LiveBackground.cer.
-
-This is NOT a publicly trusted signature. It only tells Windows that the files
-belong together. It does not make the app trusted by Microsoft.
+LiveBackground.exe, LiveBackgroundCli.exe and LiveBackgroundSetup.exe are not
+code-signed at the moment, so Windows shows them as an "unknown publisher". The
+finished app will be signed with a free, publicly trusted code-signing
+certificate for open-source projects; a trusted signature removes the "unknown
+publisher" warning and lets SmartScreen reputation build up over time. Until
+then, the SmartScreen prompt below is expected.
 
 On a normal PC, SmartScreen may show "Windows protected your PC" the first
 time you run the installer:
@@ -453,23 +453,23 @@ its installer can change how it behaves:
 - SAC judges every executable file separately, by exact content. A newly
   built exe gets its own judgment; once a particular file is blocked, running
   it again keeps failing. A rebuild is a new file and gets a new judgment.
-- SAC does not honor self-signed certificates. Adding LiveBackground.cer to
-  your own trusted stores does not unblock a blocked file (tested).
+- SAC does not honor self-signed certificates, and an unsigned file carries no
+  signature to check at all, so neither one can unblock a file SAC has decided
+  to block.
 - SAC shows no "Run anyway" choice; the block is silent. Most PCs have SAC
   off or in evaluation mode, so on other machines the SmartScreen prompt
   above is all you normally see.
 
 If SAC blocks this build, the options are: rebuild the app (new judgment),
-sign with a publicly trusted code-signing certificate, publish through the
+sign it with a publicly trusted code-signing certificate, publish through the
 Microsoft Store, or turn SAC off in Windows Security -> App & browser
 control -> Smart App Control. Turning SAC off is permanent until Windows is
 reinstalled, so weigh that carefully.
 
-For wide distribution, sign all shipped files (including the bundled,
-unsigned mpv.exe and ffmpeg) with a publicly trusted OV code-signing
-certificate, or publish the app through the Microsoft Store. That removes
-the "unknown publisher" warning and lets SmartScreen reputation build over
-time.
+For wide distribution, every shipped file would need a publicly trusted
+signature (including the bundled, third-party mpv.exe and ffmpeg), or the app
+could be published through the Microsoft Store. Either removes the "unknown
+publisher" warning and lets SmartScreen reputation build over time.
 
 This app is not affiliated with Microsoft.
 
