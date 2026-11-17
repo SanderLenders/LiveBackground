@@ -140,6 +140,33 @@
   instead of allocating a new one per comparison, and closed the process handles
   the installer opened while checking for a running copy.
 
+### Independent review pass
+
+- **A clip that cannot be read no longer shifts the rest of the playlist.** When
+  the app probes the clips before rendering, a file it has to skip (unreadable,
+  or shorter than a second) could leave the ffmpeg input list and the filter
+  graph out of step: the loop was then built from the wrong clips, or the whole
+  build failed on the skipped file. The input list is now rebuilt from the clips
+  that actually passed the probe, so one odd file is skipped and the others still
+  play, as the documentation promises.
+- **Unticking "Start when I sign in" on an update now really removes the old
+  logon task.** The cleanup step was tied to the same checkbox that creates the
+  task, so turning the box off also skipped the cleanup and the app kept starting
+  at logon. The cleanup now always runs (and shows its own status line); removing
+  a task that is not there is already harmless.
+- **The picture slideshow has a single owner while settings are applied.** Saving
+  settings runs on its own thread while the watchdog advances the slideshow; both
+  could pick a picture and overwrite each other's choice, and the shared
+  random-number generator behind "shuffle" was used from both threads. The
+  picture state is now guarded by the same lock on both sides.
+- **Temporary filter files are swept from the cache** along with the other
+  leftovers, so a hard kill cannot slowly accumulate them.
+- **The README was corrected** in three places: it said "one or two monitors"
+  although three are supported, named a log file that does not exist
+  (`mpv2.log`), and promised that unticking every clip falls back to playing all
+  of them, which is not what the app does (it reports that nothing is selected
+  and keeps the current wallpaper).
+
 ## 1.8.5
 
 ### Reliability and clean-up pass

@@ -95,7 +95,13 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 ; overwrite one an elevated run created - so an update no longer asks for
 ; permission a second time. If this delete is refused, install-task still falls
 ; back to its own elevation prompt.
-Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; Tasks: autostart
+;
+; Deliberately NOT gated on the autostart task: on an upgrade where the user
+; unticked "Start when I sign in", the old tasks must still be removed or the
+; app would keep starting at logon. Deleting a task that does not exist is
+; already a no-op (StartupTask.Delete treats "not found" as success), so this is
+; safe on a fresh install too.
+Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
 Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Description: "Start LiveBackground now"
 

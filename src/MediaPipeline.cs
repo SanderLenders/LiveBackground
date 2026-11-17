@@ -316,6 +316,9 @@ namespace LiveBackground
             DateTime cutoff = DateTime.UtcNow - TempGrace;
             foreach (string file in Directory.GetFiles(dir, "*.tmp.mp4")) DeleteIfStale(file, cutoff);
             foreach (string file in Directory.GetFiles(dir, "*.json.tmp")) DeleteIfStale(file, cutoff);
+            // The generated filter graph lives in its own file. It is deleted in
+            // the build's finally, so this only catches files left by a hard kill.
+            foreach (string file in Directory.GetFiles(dir, "*.filter.txt")) DeleteIfStale(file, cutoff);
         }
 
         private static void DeleteIfStale(string file, DateTime cutoff)
@@ -766,6 +769,12 @@ namespace LiveBackground
                 return result;
             }
             videos = usable;
+            // The probe loop above may have dropped a clip, and the filter graph
+            // is built from "usable". The -i arguments must come from the same
+            // list: ffmpeg binds [0:v], [1:v], ... to the order of -i, so a stale
+            // pre-probe list would point every index at the wrong input (or at a
+            // clip ffmpeg refuses to open, failing the whole build).
+            inputs = BuildInputs(videos);
             int count = videos.Count;
             double[] d = new double[count];
             for (int i = 0; i < count; i++)

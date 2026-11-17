@@ -15,7 +15,8 @@ What you need
 -------------
 - Windows 11, 64-bit
 - .NET Framework 4.8 (already part of Windows 11)
-- One or two monitors (the main screen plus one extra)
+- Up to three monitors (the main screen plus up to two more; a fourth or
+  later screen mirrors the main one)
 - Video files stored on a local drive
 
 
@@ -39,7 +40,7 @@ It creates your library in:
     %USERPROFILE%\LiveBackground
         Videos\              your clips
         cache\               the rendered seamless loop and its still frame
-        logs\                app.log, setup.log, mpv.log, mpv2.log
+        logs\                app.log, setup.log, mpv.log, mpv-<screen>.log
         images\wallpapers\   your image wallpapers
         images\              custom lock-screen and desktop wallpaper images
         backup\              the wallpaper and lock screen from before the install
@@ -156,8 +157,10 @@ A newly dropped or newly found clip appears in the list unticked, so it stays
 out of the show until you tick it. This is deliberate: dropping a file never
 changes what is currently on your desktop.
 
-If every clip is unticked, the app falls back to playing every clip in the
-folder in filename order, so an empty playlist is never a black desktop.
+If every clip is unticked, there is nothing to play: the app reports "No clips
+are selected in the playlist" and keeps the current wallpaper on screen. Tick
+at least one clip to build a new loop. (The same happens if every ticked clip
+has since been deleted from the folder.)
 
 The first time the app runs it adds the bundled clips and pictures to the
 folders. After that, the folders are yours: add, replace or delete videos.

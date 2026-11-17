@@ -206,7 +206,10 @@ namespace LiveBackground
             else
             {
                 _nextCheck = DateTime.UtcNow;
-                if (IsImagesMode) _nextImageAt = DateTime.UtcNow;
+                if (IsImagesMode)
+                {
+                    lock (ImageSync) { _nextImageAt = DateTime.UtcNow; }
+                }
                 // A resume is a deliberate fresh start for the video.
                 ResetRestartBackoff();
             }
@@ -246,9 +249,15 @@ namespace LiveBackground
         // without waiting for the interval. One-image mode simply reapplies it.
         public static void RequestNextImage()
         {
-            _imageListDirty = false;
-            _nextImageAt = DateTime.UtcNow;
-            _imageActive = true;
+            // Called from the tray and the settings window, so it must take the
+            // same lock the watchdog uses; otherwise it races a slideshow tick
+            // (and the shared System.Random behind ImageShuffle).
+            lock (ImageSync)
+            {
+                _imageListDirty = false;
+                _nextImageAt = DateTime.UtcNow;
+                _imageActive = true;
+            }
             Log.Info("next image requested");
         }
 
@@ -354,17 +363,29 @@ namespace LiveBackground
                 {
                     if (screen.Player != null) screen.Player.Stop();
                 }
-                _imageActive = false;
-                _nextImageAt = DateTime.UtcNow;
+                // This runs on the apply thread while the watchdog advances the
+                // slideshow. Take ImageSync so the whole transition - the flags,
+                // the chosen picture and the fade - is atomic with respect to a
+                // watchdog tick; otherwise both threads could each pick a picture
+                // and clobber each other (and the shared Random).
+                //
+                // The folder watcher is (re)started outside the lock: replacing
+                // it disposes the old one, and that must not happen while a
+                // callback that is waiting on ImageSync could still be in flight.
                 string imageFolder = Util.ResolvePath(_appRoot, _config.ImageFolder);
                 if (!string.Equals(imageFolder, _watchedImageFolder, StringComparison.OrdinalIgnoreCase))
                 {
                     StartImageWatcher(imageFolder);
                 }
-                _imageProgman = Native.FindWindow("Progman", null);
-                StartImageSurfaces(_imageProgman);
-                ApplyImage(false);
-                _imageActive = true;
+                lock (ImageSync)
+                {
+                    _imageActive = false;
+                    _nextImageAt = DateTime.UtcNow;
+                    _imageProgman = Native.FindWindow("Progman", null);
+                    StartImageSurfaces(_imageProgman);
+                    ApplyImage(false);
+                    _imageActive = true;
+                }
                 UpdateExtraImageSlideshow();
                 if (!string.IsNullOrEmpty(_currentImage)) ImageEnsureVisibleAll();
                 Log.Info("settings applied; images mode is active");
@@ -373,11 +394,14 @@ namespace LiveBackground
                 return;
             }
 
-            _imageActive = false;
-            _nextImageAt = DateTime.MinValue;
-            ResetExtraImageStates();
-            ImageHideAll();
-            _surfaceImage = "";
+            lock (ImageSync)
+            {
+                _imageActive = false;
+                _nextImageAt = DateTime.MinValue;
+                ResetExtraImageStates();
+                ImageHideAll();
+                _surfaceImage = "";
+            }
             // Switching back from Images mode has to start the cached loop
             // again; the player was stopped when images mode took over.
             if (screenChanged || wasImages) _restartPlayer = true;
@@ -880,10 +904,13 @@ namespace LiveBackground
                         if (_layoutChanged)
                         {
                             _layoutChanged = false;
-                            ShutdownImageSurfaces();
-                            StartImageSurfaces(_imageProgman);
-                            _surfaceImage = "";
-                            if (!string.IsNullOrEmpty(_currentImage)) ApplyImage(false);
+                            lock (ImageSync)
+                            {
+                                ShutdownImageSurfaces();
+                                StartImageSurfaces(_imageProgman);
+                                _surfaceImage = "";
+                                if (!string.IsNullOrEmpty(_currentImage)) ApplyImage(false);
+                            }
                         }
 
                         if (_paused)
@@ -1732,28 +1759,34 @@ namespace LiveBackground
         {
             if (_paused) return;
 
-            bool apply = false;
-            bool advance = false;
-            if (_imageListDirty)
+            // One owner at a time for the main-screen image state: the apply
+            // thread also drives transitions (see ApplyConfigCore) and the tray
+            // calls RequestNextImage.
+            lock (ImageSync)
             {
-                _imageListDirty = false;
-                apply = true;
-            }
-            else if (!_imageActive)
-            {
-                apply = true;
-            }
-            else if (!string.Equals(_config.ImageMode, "single", StringComparison.OrdinalIgnoreCase) &&
-                DateTime.UtcNow >= _nextImageAt)
-            {
-                apply = true;
-                advance = true;
-            }
+                bool apply = false;
+                bool advance = false;
+                if (_imageListDirty)
+                {
+                    _imageListDirty = false;
+                    apply = true;
+                }
+                else if (!_imageActive)
+                {
+                    apply = true;
+                }
+                else if (!string.Equals(_config.ImageMode, "single", StringComparison.OrdinalIgnoreCase) &&
+                    DateTime.UtcNow >= _nextImageAt)
+                {
+                    apply = true;
+                    advance = true;
+                }
 
-            if (apply)
-            {
-                ApplyImage(advance);
-                _imageActive = true;
+                if (apply)
+                {
+                    ApplyImage(advance);
+                    _imageActive = true;
+                }
             }
             UpdateExtraImageSlideshow();
         }
@@ -2581,15 +2614,21 @@ namespace LiveBackground
                 FileSystemEventHandler changed = delegate(object sender, FileSystemEventArgs e)
                 {
                     if (!MediaPipeline.IsImage(e.FullPath)) return;
-                    _imageListDirty = true;
-                    _nextImageAt = DateTime.UtcNow;
+                    lock (ImageSync)
+                    {
+                        _imageListDirty = true;
+                        _nextImageAt = DateTime.UtcNow;
+                    }
                     Log.Info("image folder changed: " + e.ChangeType + " " + Path.GetFileName(e.FullPath));
                 };
                 RenamedEventHandler renamed = delegate(object sender, RenamedEventArgs e)
                 {
                     if (!MediaPipeline.IsImage(e.FullPath) && !MediaPipeline.IsImage(e.OldFullPath)) return;
-                    _imageListDirty = true;
-                    _nextImageAt = DateTime.UtcNow;
+                    lock (ImageSync)
+                    {
+                        _imageListDirty = true;
+                        _nextImageAt = DateTime.UtcNow;
+                    }
                     Log.Info("image folder renamed: " + Path.GetFileName(e.OldFullPath) + " -> " + Path.GetFileName(e.FullPath));
                 };
 
@@ -2599,8 +2638,11 @@ namespace LiveBackground
                 watcher.Renamed += renamed;
                 watcher.Error += delegate(object sender, ErrorEventArgs e)
                 {
-                    _imageListDirty = true;
-                    _nextImageAt = DateTime.UtcNow;
+                    lock (ImageSync)
+                    {
+                        _imageListDirty = true;
+                        _nextImageAt = DateTime.UtcNow;
+                    }
                     Log.Warn("image folder watcher error: " + e.GetException().Message);
                 };
                 Log.Info("watching images in " + folder);
