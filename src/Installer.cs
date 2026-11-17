@@ -67,7 +67,7 @@ namespace LiveBackground
             MediaManifest manifest;
             if (MediaPipeline.IsCacheValid(appRoot, config, out manifest))
             {
-                log(string.Format("using cached loop ({0:0.0} s)", manifest.OutputDuration));
+                log(string.Format(CultureInfo.InvariantCulture, "using cached loop ({0:0.0} s)", manifest.OutputDuration));
             }
             else
             {

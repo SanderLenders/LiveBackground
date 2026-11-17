@@ -545,7 +545,7 @@ namespace LiveBackground
             {
                 byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
                 StringBuilder hex = new StringBuilder(hash.Length * 2);
-                foreach (byte b in hash) hex.Append(b.ToString("x2"));
+                foreach (byte b in hash) hex.Append(b.ToString("x2", CultureInfo.InvariantCulture));
                 return hex.ToString();
             }
         }
@@ -757,7 +757,7 @@ namespace LiveBackground
                 durations.Add(duration);
                 if (log != null)
                 {
-                    log(string.Format("video: {0} ({1:0.0} s)",
+                    log(string.Format(CultureInfo.InvariantCulture, "video: {0} ({1:0.0} s)",
                         Path.GetFileName(video), duration));
                 }
             }
@@ -793,7 +793,7 @@ namespace LiveBackground
 
             if (log != null)
             {
-                log(string.Format("building loop: {0} video(s), {1:0.0} s, {2}x{3} @ {4} fps",
+                log(string.Format(CultureInfo.InvariantCulture, "building loop: {0} video(s), {1:0.0} s, {2}x{3} @ {4} fps",
                     count, total, config.RenderWidth, config.RenderHeight, config.Fps));
             }
 
@@ -803,7 +803,7 @@ namespace LiveBackground
 
             // Versioned output names mean a rebuild never has to overwrite the
             // file mpv is currently playing.
-            string stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+            string stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
             string shortSignature = signature.Substring(0, 12);
             string baseName = "loop-" + shortSignature + "-" + stamp;
             string temp = Path.Combine(loops, baseName + ".tmp.mp4");
@@ -819,7 +819,7 @@ namespace LiveBackground
             string filterFile = Path.Combine(loops, baseName + ".filter.txt");
             File.WriteAllText(filterFile, filter);
 
-            string args = string.Format(
+            string args = string.Format(CultureInfo.InvariantCulture,
                 "-hide_banner -y -nostats -progress pipe:1 {0} -/filter_complex {1} -map [out] -an -c:v libx264 -preset {2} -crf {3} " +
                 "-pix_fmt yuv420p -movflags +faststart -r {4} {5}",
                 inputs,
@@ -914,7 +914,7 @@ namespace LiveBackground
             result.Success = true;
             result.LoopPath = loop;
             result.FramePath = frame;
-            result.Message = string.Format("loop ready: {0:0.0} s, {1}",
+            result.Message = string.Format(CultureInfo.InvariantCulture, "loop ready: {0:0.0} s, {1}",
                 total, Path.GetFileName(loop));
             Log.Info(result.Message);
             return result;
@@ -926,7 +926,7 @@ namespace LiveBackground
         {
             if (File.Exists(frame)) return true;
             if (!File.Exists(ffmpeg)) return false;
-            string args = string.Format("-hide_banner -y -i {0} -frames:v 1 -q:v 2 {1}",
+            string args = string.Format(CultureInfo.InvariantCulture, "-hide_banner -y -i {0} -frames:v 1 -q:v 2 {1}",
                 Util.Quote(loop), Util.Quote(frame));
             ProcessResult result = ProcessRunner.Run(ffmpeg, args, workingDirectory, 120000);
             if (result.ExitCode != 0 || !File.Exists(frame))
@@ -951,7 +951,7 @@ namespace LiveBackground
         {
             int n = videos.Count;
             StringBuilder sb = new StringBuilder();
-            string chain = string.Format("fps={0},scale={1}:{2}:force_original_aspect_ratio=increase,crop={1}:{2},setsar=1,format=yuv420p",
+            string chain = string.Format(CultureInfo.InvariantCulture, "fps={0},scale={1}:{2}:force_original_aspect_ratio=increase,crop={1}:{2},setsar=1,format=yuv420p",
                 config.Fps, config.RenderWidth, config.RenderHeight);
 
             for (int i = 0; i < n; i++)
@@ -983,9 +983,9 @@ namespace LiveBackground
             StringBuilder order = new StringBuilder();
             for (int i = 0; i < n; i++)
             {
-                order.AppendFormat("[mid{0}][blend{0}]", i);
+                order.AppendFormat(CultureInfo.InvariantCulture, "[mid{0}][blend{0}]", i);
             }
-            order.AppendFormat("concat=n={0}:v=1:a=0[out]", n * 2);
+            order.AppendFormat(CultureInfo.InvariantCulture, "concat=n={0}:v=1:a=0[out]", n * 2);
             sb.Append(order);
             return sb.ToString();
         }
@@ -994,7 +994,7 @@ namespace LiveBackground
         {
             duration = 0;
             error = "";
-            string args = string.Format(
+            string args = string.Format(CultureInfo.InvariantCulture,
                 "-v error -select_streams v:0 -show_entries stream=duration " +
                 "-show_entries format=duration -of json {0}", Util.Quote(video));
             ProcessResult result = ProcessRunner.Run(ffprobe, args, null, 60000);

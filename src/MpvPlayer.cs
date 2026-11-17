@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Diagnostics;
 using System.IO;
 
@@ -93,7 +94,7 @@ namespace LiveBackground
             // Read the settings once from a single snapshot, so a settings apply
             // during start-up cannot mix two config objects into one command.
             AppConfig config = _config;
-            string args = string.Format(
+            string args = string.Format(CultureInfo.InvariantCulture,
                 "--wid={0} --loop-file=inf --no-config --load-scripts=no --media-controls=no --no-audio " +
                 "--no-osc --no-osd-bar --no-input-default-bindings --no-border --hwdec=auto --panscan=1.0 " +
                 "--force-window=yes --terminal=no --no-resume-playback --sub-auto=no --audio-file-auto=no " +

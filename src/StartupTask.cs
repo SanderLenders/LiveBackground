@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 
@@ -19,15 +20,15 @@ namespace LiveBackground
                 if (shellType == null) { error = "WScript.Shell is not available"; return false; }
                 object shell = Activator.CreateInstance(shellType);
                 object link = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
-                    new object[] { shortcutPath });
+                    new object[] { shortcutPath }, CultureInfo.InvariantCulture);
 
                 Type linkType = link.GetType();
-                linkType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, new object[] { targetPath });
-                linkType.InvokeMember("Arguments", BindingFlags.SetProperty, null, link, new object[] { arguments ?? "" });
-                linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link, new object[] { workingDirectory ?? "" });
-                linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link, new object[] { description ?? "" });
-                linkType.InvokeMember("WindowStyle", BindingFlags.SetProperty, null, link, new object[] { 7 });
-                linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
+                linkType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, new object[] { targetPath }, CultureInfo.InvariantCulture);
+                linkType.InvokeMember("Arguments", BindingFlags.SetProperty, null, link, new object[] { arguments ?? "" }, CultureInfo.InvariantCulture);
+                linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link, new object[] { workingDirectory ?? "" }, CultureInfo.InvariantCulture);
+                linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link, new object[] { description ?? "" }, CultureInfo.InvariantCulture);
+                linkType.InvokeMember("WindowStyle", BindingFlags.SetProperty, null, link, new object[] { 7 }, CultureInfo.InvariantCulture);
+                linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null, CultureInfo.InvariantCulture);
                 return true;
             }
             catch (Exception ex)

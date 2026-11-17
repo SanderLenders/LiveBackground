@@ -41,6 +41,10 @@
   (`SlideshowTiming`) and the per-screen settings fingerprint
   (`ScreenConfigToken`) are now separate, window-free classes. The behaviour is
   unchanged; the moved logic is now covered by unit tests.
+- **The build is now warning-free.** Every number and date the app formats now
+  passes `CultureInfo.InvariantCulture` explicitly, so log lines, cache
+  signatures and installer messages read the same on every machine instead of
+  following the user's regional settings. The code analysis backlog is empty.
 
 ### Settings window
 

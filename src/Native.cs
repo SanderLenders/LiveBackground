@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -509,7 +510,7 @@ namespace LiveBackground
 
             List<IntPtr> after = ChildrenInZOrder(progman);
             int nowIndex = after.IndexOf(mpvWnd);
-            Log.Info(string.Format("placed video below the icons (was index {0}, now {1} of {2}){3}",
+            Log.Info(string.Format(CultureInfo.InvariantCulture, "placed video below the icons (was index {0}, now {1} of {2}){3}",
                 mpvIndex, nowIndex, after.Count,
                 moved ? "" : " (SetWindowPos failed, error " + Marshal.GetLastWin32Error() + ")"));
             return nowIndex >= 0;

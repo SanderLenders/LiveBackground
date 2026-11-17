@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -19,7 +20,7 @@ namespace LiveBackground
 
         public string Describe()
         {
-            return string.Format("{0} {1}x{2} at {3},{4}{5}",
+            return string.Format(CultureInfo.InvariantCulture, "{0} {1}x{2} at {3},{4}{5}",
                 string.IsNullOrEmpty(Device) ? "screen" : Device,
                 Bounds.Width, Bounds.Height, Bounds.X, Bounds.Y,
                 Primary ? " (primary)" : "");

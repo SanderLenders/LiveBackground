@@ -41,6 +41,6 @@ dotnet_diagnostic.CA1852.severity = none
 dotnet_diagnostic.CA2263.severity = none
 
 # CA1304 / CA1305 (specify IFormatProvider) are left at their default severity
-# on purpose: they are a real backlog. Most of the call sites sit inside the
-# large methods that are being left untouched for now, so they are reported
-# rather than silenced.
+# on purpose: the code now passes CultureInfo.InvariantCulture everywhere it
+# formats a number or a date, so the build is warning-free and any new call site
+# that forgets it is reported rather than silenced.
