@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -50,6 +51,8 @@ namespace LiveBackground
             Write("ERROR", ex.StackTrace);
         }
 
+        [SuppressMessage("Maintainability", "CA1508:Avoid dead conditional code",
+            Justification = "OpenWriter can leave _writer null when the log file cannot be opened.")]
         private static void Write(string level, string message)
         {
             string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture) + " [" + level + "] " + message + Environment.NewLine;

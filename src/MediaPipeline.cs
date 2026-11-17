@@ -1018,7 +1018,7 @@ namespace LiveBackground
                 {
                     double.TryParse(probe.Format.Duration, NumberStyles.Float, CultureInfo.InvariantCulture, out duration);
                 }
-                if (duration <= 0 && probe.Streams != null)
+                if (duration <= 0)
                 {
                     foreach (ProbeStream stream in probe.Streams)
                     {

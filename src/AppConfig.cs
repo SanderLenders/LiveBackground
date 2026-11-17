@@ -530,12 +530,9 @@ namespace LiveBackground
                 legacy.PlaybackMode = SecondScreenPlaybackMode;
                 legacy.SingleClip = SecondScreenSingleClip;
                 legacy.Playlist = new List<PlaylistEntry>();
-                if (SecondScreenPlaylist != null)
+                foreach (PlaylistEntry entry in SecondScreenPlaylist)
                 {
-                    foreach (PlaylistEntry entry in SecondScreenPlaylist)
-                    {
-                        if (entry != null) legacy.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
-                    }
+                    if (entry != null) legacy.Playlist.Add(new PlaylistEntry(entry.Name, entry.Enabled));
                 }
                 ExtraScreens.Add(legacy);
             }

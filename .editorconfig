@@ -43,3 +43,13 @@ dotnet_diagnostic.CA1001.severity = none
 # on purpose: the code now passes CultureInfo.InvariantCulture everywhere it
 # formats a number or a date, so the build is warning-free and any new call site
 # that forgets it is reported rather than silenced.
+
+# CA1508 (avoid dead conditional code) and CA2000 (dispose objects before losing
+# scope) are not in the default Recommended set, so they are switched on here.
+# CA1508 found two genuinely dead conditions, which were removed. The remaining
+# two findings are false positives and carry a SuppressMessage attribute with a
+# justification: a log guard that OpenWriter can leave null (CA1508), and a
+# bitmap whose ownership moves into a field (CA2000). CA2000 has no real finding
+# today and is kept on as a safety net for new IDisposable code.
+dotnet_diagnostic.CA1508.severity = warning
+dotnet_diagnostic.CA2000.severity = warning

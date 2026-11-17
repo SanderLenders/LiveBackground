@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -299,6 +300,8 @@ namespace LiveBackground
                 _visible = false;
             }
 
+            [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                Justification = "The bitmap is stored in _current or _next and released later by DisposeBitmap.")]
             public void SetImage(string path, double fadeSeconds, bool immediate)
             {
                 Bitmap next;

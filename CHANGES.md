@@ -52,6 +52,12 @@
   The analyser build now treats warnings as errors, so a new issue fails the
   build instead of being printed and forgotten. This affects the developer / CI
   build only; `build.ps1` compiles with `csc` and is unchanged.
+- **Two more code-quality rules are on.** The analyser now also reports dead
+  conditions (`CA1508`) and objects that are not disposed before they go out of
+  scope (`CA2000`). It found two genuinely dead conditions, which were removed;
+  the two false positives it raises carry a documented suppression with a
+  reason. As with the rest of the analyser set, this affects the developer / CI
+  build only.
 - **The two folder watchers now share one small, tested class.** The video
   folder and the image folder used to carry almost identical hand-written
   `FileSystemWatcher` blocks; a `FolderWatcher` now owns the watcher and reports
