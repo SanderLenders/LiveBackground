@@ -63,6 +63,21 @@ namespace LiveBackground
             catch { return Environment.UserDomainName + "\\" + Environment.UserName; }
         }
 
+        // True when this process runs with an administrator token. Used to
+        // decide whether a machine-wide scheduled task can be written directly
+        // or needs an elevation prompt first.
+        public static bool IsElevated()
+        {
+            try
+            {
+                using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+                {
+                    return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+                }
+            }
+            catch { return false; }
+        }
+
         public static void SafeDelete(string path)
         {
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }

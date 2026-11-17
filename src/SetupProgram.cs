@@ -179,15 +179,38 @@ namespace LiveBackground
             // that and also prepares the user library and wallpaper backups.
             AppConfig config = ConfigStore.Load(_appRoot);
             string error;
-            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
-            bool watchdog = ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
-            if (ok && watchdog)
+            if (CreateTasks(config, userId, out error))
             {
                 Console.WriteLine("logon and watchdog tasks created: " + config.TaskName);
                 return 0;
             }
+
+            // A task registered by an earlier elevated run keeps a permission
+            // that a non-elevated rewrite may not touch, so on an update the
+            // direct attempt above can fail with "Access is denied". Retry once
+            // with an elevation prompt; the installer runs this entry as the
+            // signed-in user, so the task still belongs to the right account.
+            if (!Util.IsElevated())
+            {
+                Console.WriteLine("creating the logon and watchdog tasks (Windows will ask for permission)...");
+                int result = StartupTask.CreateElevated(Installer.SetupExe(_appRoot), Paths.ProgramRoot, out error);
+                if (result == 0)
+                {
+                    Console.WriteLine("logon and watchdog tasks created: " + config.TaskName);
+                    return 0;
+                }
+                if (result == 2) error = "elevation was cancelled";
+            }
             Console.WriteLine("ERROR: " + error);
             return 1;
+        }
+
+        // Creates both tasks for userId (or the current account when it is
+        // null). Returns false with a message in error on the first failure.
+        private static bool CreateTasks(AppConfig config, string userId, out string error)
+        {
+            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
+            return ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
         }
 
         private static int RemoveTask()

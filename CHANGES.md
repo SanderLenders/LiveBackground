@@ -55,6 +55,11 @@
   update over an existing copy the box used to come up empty, because the
   installer reused the previous (empty) choice. The installer now always starts
   from its own defaults, so the startup box is filled.
+- **The ticked "Start LiveBackground when I sign in" box now really creates the
+  logon task on an update.** A task left by an earlier elevated run keeps a
+  permission a plain rewrite is not allowed to touch, so the installer's attempt
+  failed and the task was only created later from Settings. The installer now
+  retries with a permission prompt when the plain attempt is refused.
 
 ### Reliability and safety pass (stage 1)
 
