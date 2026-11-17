@@ -28,17 +28,18 @@ jobs:
       - name: Test
         run: dotnet test LiveBackground.sln --configuration Release --no-build --verbosity normal
 
-      # The application users install is still built by build.ps1 with the
-      # framework csc. Compile the same sources the same way here, so a change
-      # that breaks the shipping build is caught even though the full
-      # packaging build (which needs mpv and ffmpeg) does not run in CI.
-      - name: Compile with the shipping csc reference set
+      # The application users install is produced by build.ps1. Compile both
+      # executables with that same script (its Roslyn C# 7.3 path) so a change
+      # that breaks the shipping build is caught even though the full packaging
+      # build (which needs mpv and ffmpeg) does not run in CI.
+      - name: Compile the shipping binaries
         shell: pwsh
-        run: |
-          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-          $out = Join-Path $env:RUNNER_TEMP 'lb-shipping-check.exe'
-          & $csc /nologo /platform:x64 /target:winexe /main:LiveBackground.Program `
-            /r:System.dll /r:System.Core.dll /r:System.Runtime.Serialization.dll `
-            /r:System.Xml.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
-            "/out:$out" src\*.cs
-          if ($LASTEXITCODE -ne 0) { throw "the shipping csc compile failed" }
+        run: ./build.ps1 -CompileOnly -OutDir "$env:RUNNER_TEMP\lb-shipping"
+
+      # Machines without the .NET SDK fall back to the framework csc (C# 5).
+      # Keep an eye on that path, but do not fail the build when the sources
+      # use newer syntax: the fallback is best effort.
+      - name: Check the framework csc fallback (best effort)
+        shell: pwsh
+        continue-on-error: true
+        run: ./build.ps1 -CompileOnly -FrameworkCsc -OutDir "$env:RUNNER_TEMP\lb-fallback"

@@ -18,9 +18,13 @@
 - **The single-instance name lives in one place** instead of being repeated.
 - **The sources build and test with the modern .NET SDK.** A `dotnet build` /
   `dotnet test` project, a small unit-test suite and a GitHub Actions workflow
-  now cover the same code. The shipped build is unchanged: `build.ps1` still
-  compiles with the .NET Framework `csc`, and the app still runs on .NET
-  Framework 4.8. See `BUILDING.md`.
+  now cover the same code. The app itself still runs on .NET Framework 4.8. See
+  `BUILDING.md`.
+- **The shipping build now uses the modern C# compiler.** `build.ps1` compiles
+  the app with the .NET SDK's Roslyn compiler at C# 7.3 (the newest version the
+  .NET Framework supports) when the SDK is installed, and falls back to the
+  older .NET Framework `csc` (C# 5) with a warning when it is not. The shipped
+  binaries still target .NET Framework 4.8 and behave exactly as before.
 - **The four media lists in the settings window now share one tested
   implementation.** The main Videos and Images panes and the two per-screen
   editors used to carry four hand-copied versions of the same tick, sort, move
@@ -51,7 +55,7 @@
   overload) are back on, and the handful of sites they flagged were cleaned up.
   The analyser build now treats warnings as errors, so a new issue fails the
   build instead of being printed and forgotten. This affects the developer / CI
-  build only; `build.ps1` compiles with `csc` and is unchanged.
+  build only; the shipping `build.ps1` does not run the analysers.
 - **Two more code-quality rules are on.** The analyser now also reports dead
   conditions (`CA1508`) and objects that are not disposed before they go out of
   scope (`CA2000`). It found two genuinely dead conditions, which were removed;

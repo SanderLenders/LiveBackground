@@ -17,6 +17,11 @@
         installer\
             LiveBackgroundSetup.exe   official Windows installer (Inno Setup)
 
+    Compiling:
+        Prefers the .NET SDK's Roslyn compiler (C# 7.3, the last version fully
+        supported on .NET Framework). Falls back to the .NET Framework csc
+        (C# 5) when the SDK is not installed.
+
     Run from a normal PowerShell window:
         .\build.ps1
 
@@ -35,7 +40,9 @@ param(
     [string]$SampleVideo = '',
     [string]$InnoCompiler = '',
     [switch]$SkipSign,
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [switch]$CompileOnly,
+    [switch]$FrameworkCsc
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,6 +67,50 @@ function Find-Csc {
         if (Test-Path $path) { return $path }
     }
     throw 'csc.exe (.NET Framework 4.x) was not found.'
+}
+
+function Find-Dotnet {
+    $candidates = @()
+    if ($env:DOTNET_ROOT) { $candidates += (Join-Path $env:DOTNET_ROOT 'dotnet.exe') }
+    $candidates += @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'),
+        (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe')
+    )
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path $path)) { return $path }
+    }
+    $command = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    return $null
+}
+
+# The SDK's Roslyn compiler, which understands up to C# 7.3. Returns the path to
+# csc.dll, or $null when no SDK is installed.
+function Find-RoslynCsc($dotnetPath) {
+    $roots = @()
+    if ($env:DOTNET_ROOT) { $roots += (Join-Path $env:DOTNET_ROOT 'sdk') }
+    if ($dotnetPath) { $roots += (Join-Path (Split-Path -Parent $dotnetPath) 'sdk') }
+    $roots += @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\sdk'),
+        (Join-Path $env:ProgramFiles 'dotnet\sdk')
+    )
+    foreach ($root in ($roots | Where-Object { $_ } | Select-Object -Unique)) {
+        if (-not (Test-Path $root)) { continue }
+        $csc = Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
+            Sort-Object { try { [version]$_.Name } catch { [version]'0.0' } } -Descending |
+            ForEach-Object { Join-Path $_.FullName 'Roslyn\bincore\csc.dll' } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+        if ($csc) { return $csc }
+    }
+    return $null
+}
+
+function Invoke-Compiler([string[]]$command) {
+    $exe = $command[0]
+    $arguments = @($command | Select-Object -Skip 1)
+    & $exe @arguments
+    if ($LASTEXITCODE -ne 0) { throw "Compilation failed (exit $LASTEXITCODE)." }
 }
 
 function Find-Inno {
@@ -122,33 +173,79 @@ $root = $scriptRoot
 if (-not (Test-Path (Join-Path $root 'src'))) { throw "src folder not found next to build.ps1" }
 
 $csc = Find-Csc
+$frameworkDir = Split-Path -Parent $csc
 $sourceFiles = Get-ChildItem (Join-Path $root 'src') -Filter *.cs | ForEach-Object { $_.FullName }
 if ($sourceFiles.Count -eq 0) { throw 'No .cs files found in src.' }
 
-$referenceArgs = @(
-    '/r:System.dll',
-    '/r:System.Core.dll',
-    '/r:System.Runtime.Serialization.dll',
-    '/r:System.Xml.dll',
-    '/r:System.Drawing.dll',
-    '/r:System.Windows.Forms.dll'
+# Prefer the SDK's Roslyn compiler, which understands C# 7.3 (the newest the
+# .NET Framework supports). Fall back to the framework csc (C# 5) when the SDK
+# is not installed, so the build never hard-fails on a bare machine. Passing
+# -FrameworkCsc forces the fallback.
+$roslynCsc = $null
+$dotnet = $null
+if (-not $FrameworkCsc) {
+    $dotnet = Find-Dotnet
+    if ($dotnet) { $roslynCsc = Find-RoslynCsc $dotnet }
+}
+
+# The framework csc resolves these by simple name and references mscorlib
+# itself; Roslyn needs the full paths plus /nostdlib+ because it does not
+# implicitly reference the .NET Framework.
+$frameworkReferenceNames = @(
+    'mscorlib.dll',
+    'System.dll',
+    'System.Core.dll',
+    'System.Runtime.Serialization.dll',
+    'System.Xml.dll',
+    'System.Drawing.dll',
+    'System.Windows.Forms.dll'
 )
+if ($roslynCsc) {
+    $referenceArgs = $frameworkReferenceNames | ForEach-Object { "/r:" + (Join-Path $frameworkDir $_) }
+} else {
+    $referenceArgs = $frameworkReferenceNames |
+        Where-Object { $_ -ne 'mscorlib.dll' } |
+        ForEach-Object { "/r:$_" }
+}
 
 $icon = Join-Path $root 'assets\LiveBackground.ico'
 $iconArgs = @()
 if (Test-Path $icon) { $iconArgs = @("/win32icon:$icon") }
 
+function Compile-Exe([string]$target, [string]$entryPoint, [string]$outFile) {
+    $common = @('/nologo', '/platform:x64', "/target:$target", "/main:$entryPoint")
+    if ($roslynCsc) {
+        Invoke-Compiler (@($dotnet, 'exec', $roslynCsc, '/nostdlib+', '/langversion:7.3') +
+            $common + $referenceArgs + $iconArgs + @("/out:$outFile") + $sourceFiles)
+    } else {
+        Invoke-Compiler (@($csc) + $common + $referenceArgs + $iconArgs + @("/out:$outFile") + $sourceFiles)
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+if ($roslynCsc) {
+    Write-Host ("  compiler: Roslyn (C# 7.3) via " + $dotnet)
+} elseif ($FrameworkCsc) {
+    Write-Host '  compiler: .NET Framework csc (C# 5), forced by -FrameworkCsc.'
+} else {
+    Write-Warning 'The .NET SDK was not found; compiling with the .NET Framework csc (C# 5).'
+}
 
 Write-Step "Compiling LiveBackground.exe"
 $appExe = Join-Path $OutDir 'LiveBackground.exe'
-& $csc /nologo /platform:x64 /target:winexe /main:LiveBackground.Program @referenceArgs @iconArgs "/out:$appExe" @sourceFiles
-if ($LASTEXITCODE -ne 0) { throw "Compiling the app failed (exit $LASTEXITCODE)." }
+Compile-Exe 'winexe' 'LiveBackground.Program' $appExe
 
 Write-Step "Compiling LiveBackgroundCli.exe"
 $cliExe = Join-Path $OutDir 'LiveBackgroundCli.exe'
-& $csc /nologo /platform:x64 /target:exe /main:LiveBackground.SetupProgram @referenceArgs @iconArgs "/out:$cliExe" @sourceFiles
-if ($LASTEXITCODE -ne 0) { throw "Compiling the command-line helper failed (exit $LASTEXITCODE)." }
+Compile-Exe 'exe' 'LiveBackground.SetupProgram' $cliExe
+
+if ($CompileOnly) {
+    Write-Step 'Done (compile only)'
+    Write-Host ("  " + $appExe)
+    Write-Host ("  " + $cliExe)
+    return
+}
 
 Write-Step 'Copying mpv'
 if (-not $MpvSource) {
