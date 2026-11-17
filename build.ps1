@@ -278,11 +278,19 @@ if (-not $FfmpegSource -or -not (Test-Path (Join-Path $FfmpegSource 'ffmpeg.exe'
 }
 $ffmpegTarget = Join-Path $OutDir 'tools\ffmpeg'
 New-Item -ItemType Directory -Force -Path $ffmpegTarget | Out-Null
-Copy-Item (Join-Path $FfmpegSource 'ffmpeg.exe') $ffmpegTarget -Force
-if (Test-Path (Join-Path $FfmpegSource 'ffprobe.exe')) {
-    Copy-Item (Join-Path $FfmpegSource 'ffprobe.exe') $ffmpegTarget -Force
-} else {
+$ffmpegSourceDir = (Resolve-Path -LiteralPath $FfmpegSource).Path
+$ffmpegFile = Join-Path $ffmpegSourceDir 'ffmpeg.exe'
+$ffprobeFile = Join-Path $ffmpegSourceDir 'ffprobe.exe'
+if (-not (Test-Path $ffprobeFile)) {
     throw 'ffprobe.exe was not found next to ffmpeg.exe.'
+}
+foreach ($sourceFile in @($ffmpegFile, $ffprobeFile)) {
+    $targetFile = Join-Path $ffmpegTarget (Split-Path $sourceFile -Leaf)
+    # When OutDir already holds the tools (the source folder is the target
+    # folder) the source and target are the same file: nothing to copy.
+    if (-not [string]::Equals([IO.Path]::GetFullPath($targetFile), $sourceFile, [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $sourceFile -Destination $targetFile -Force
+    }
 }
 
 Write-Step 'Copying the bundled videos'
@@ -306,7 +314,12 @@ foreach ($video in $bundledVideos) {
         if ($candidate -and (Test-Path $candidate)) { $source = $candidate; break }
     }
     if ($source) {
-        Copy-Item $source (Join-Path (Join-Path $OutDir 'videos') $video.Target) -Force
+        $target = Join-Path (Join-Path $OutDir 'videos') $video.Target
+        # When OutDir already holds the clip (the source is the target) there
+        # is nothing to copy.
+        if (-not [string]::Equals([IO.Path]::GetFullPath($target), (Resolve-Path -LiteralPath $source).Path, [StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item -LiteralPath $source -Destination $target -Force
+        }
         Write-Host ("  " + $video.Target)
     } else {
         Write-Warning ("  missing bundled video: " + $video.Target)

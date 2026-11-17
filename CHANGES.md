@@ -67,6 +67,11 @@
   `FileSystemWatcher` blocks; a `FolderWatcher` now owns the watcher and reports
   changes through callbacks, so the app's state changes and the log wording are
   exactly as before while the start/stop behaviour is covered by unit tests.
+- **`build.ps1` no longer trips over its own output folder.** When the build
+  folder already held the bundled `ffmpeg`/`ffprobe` (or a bundled clip) and no
+  explicit source was given, the copy step tried to copy a file onto itself and
+  failed. The copy is now skipped when the source and the target are the same
+  file. This is a build-script fix only; the shipped binaries are unchanged.
 
 ### Settings window
 
