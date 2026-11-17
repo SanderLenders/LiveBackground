@@ -65,6 +65,12 @@
   logon and watchdog tasks while it is already elevated, so the task step can
   create them fresh without asking again. If the cleanup is ever refused, it
   falls back to the same prompt as before.
+- **The installer and the app are English only.** The installer used to offer
+  English and Dutch and picked one from the Windows language, which put a Dutch
+  "Verwijder LiveBackground" shortcut in the Start Menu. It now ships English
+  only with no language dialog, and an update removes the old Dutch shortcut.
+  The app itself was already English. The logon task check no longer reads
+  Windows' own (localized) error text, so it behaves the same on any language.
 
 ### Reliability and safety pass (stage 1)
 

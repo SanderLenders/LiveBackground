@@ -129,14 +129,10 @@ namespace LiveBackground
             ProcessResult result = ProcessRunner.Run(Schtasks,
                 "/delete /tn " + Util.Quote(taskName) + " /f", null, 60000);
             if (result.ExitCode == 0) return true;
-            string text = result.AllOutput;
-            if (text.IndexOf("cannot find", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                text.IndexOf("niet vinden", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                text.IndexOf("bestaat niet", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                return true;
-            }
-            error = Trim(text);
+            // "The task does not exist" is a success. Decide that from a query
+            // rather than from the error text, which Windows localizes.
+            if (!Exists(taskName)) return true;
+            error = Trim(result.AllOutput);
             return false;
         }
 

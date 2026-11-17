@@ -45,7 +45,9 @@ MinVersion=10.0
 CloseApplications=yes
 RestartApplications=no
 AllowNoIcons=yes
-ShowLanguageDialog=auto
+; English only: the app and its installer ship in English by design, so there
+; is no language to detect and no language dialog to show.
+ShowLanguageDialog=no
 ; Ignore the task choices stored by a previous install. Without this, the
 ; "checkedonce" history (and, on an upgrade, the saved empty task set) can
 ; leave the startup and Start Menu checkboxes unchecked. With it, the [Tasks]
@@ -54,8 +56,8 @@ ShowLanguageDialog=auto
 UsePreviousTasks=no
 
 [Languages]
+; English only. The app is English-only, so the installer is too.
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "dutch"; MessagesFile: "compiler:Languages\Dutch.isl"
 
 [Tasks]
 Name: "autostart"; Description: "Start LiveBackground when I sign in"; GroupDescription: "Startup:"
@@ -73,6 +75,12 @@ Source: "{#SourceDir}\assets\licenses\*"; DestDir: "{app}\assets\licenses"; Flag
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "{#SourceDir}\THIRD-PARTY.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LiveBackground.cer"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+
+[InstallDelete]
+; Earlier installs on a Dutch Windows created the uninstall shortcut under its
+; Dutch name ("Verwijder LiveBackground"). Remove it so nothing non-English is
+; left behind; the English shortcut is created by [Icons] below.
+Type: files; Name: "{group}\Verwijder LiveBackground.lnk"
 
 [Icons]
 Name: "{group}\LiveBackground settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
