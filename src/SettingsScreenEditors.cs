@@ -643,7 +643,7 @@ namespace LiveBackground
                     _shuffle.Checked = settings.ImageShuffle;
                 }
                 finally { _loading = false; }
-                _playlist = CopyEntries(settings.ImagePlaylist);
+                _playlist = PlaylistState.CopyEntries(settings.ImagePlaylist);
                 RefreshImages();
                 UpdateFadeValue();
                 UpdateControls();
@@ -763,34 +763,16 @@ namespace LiveBackground
             private void ApplySingleTicks()
             {
                 _loading = true;
-                int index = -1;
-                for (int i = 0; i < _list.Items.Count; i++)
-                {
-                    if (string.Equals(_list.Items[i].Text, _singleName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        index = i;
-                        break;
-                    }
-                }
-                if (index < 0 && _list.Items.Count > 0) index = 0;
-                for (int i = 0; i < _list.Items.Count; i++) _list.Items[i].Checked = i == index;
+                int index = PlaylistState.PreferredIndex(ListNames(_list), _singleName);
+                SetListChecked(_list, PlaylistState.SingleTicks(_list.Items.Count, index));
                 _singleName = index >= 0 ? _list.Items[index].Text : "";
                 _loading = false;
             }
 
             private void ApplyPlaylistTicks()
             {
-                Dictionary<string, bool> enabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                foreach (PlaylistEntry entry in _playlist)
-                {
-                    if (entry != null && !enabled.ContainsKey(entry.Name)) enabled[entry.Name] = entry.Enabled;
-                }
                 _loading = true;
-                for (int i = 0; i < _list.Items.Count; i++)
-                {
-                    bool on;
-                    _list.Items[i].Checked = !enabled.TryGetValue(_list.Items[i].Text, out on) || on;
-                }
+                SetListChecked(_list, PlaylistState.PlaylistTicks(ListNames(_list), _playlist, true));
                 _loading = false;
             }
 
@@ -801,36 +783,21 @@ namespace LiveBackground
 
             private List<PlaylistEntry> CurrentPlaylist()
             {
-                List<PlaylistEntry> entries = new List<PlaylistEntry>();
-                for (int i = 0; i < _list.Items.Count; i++)
-                {
-                    entries.Add(new PlaylistEntry(_list.Items[i].Text, _list.Items[i].Checked));
-                }
-                return entries;
+                return PlaylistState.Capture(ListNames(_list), ListChecked(_list));
             }
 
             private void Move(int delta)
             {
                 if (_list.SelectedIndices.Count == 0) return;
                 int index = _list.SelectedIndices[0];
-                int target = index + delta;
-                if (target < 0 || target >= _list.Items.Count) return;
-                int[] order = new int[_list.Items.Count];
-                for (int i = 0; i < order.Length; i++) order[i] = i;
-                order[index] = target;
-                order[target] = index;
-                ApplyOrder(order, target);
+                int[] order = PlaylistState.SwapOrder(_list.Items.Count, index, delta);
+                if (order == null) return;
+                ApplyOrder(order, index + delta);
             }
 
             private void Sort()
             {
-                int[] order = new int[_list.Items.Count];
-                for (int i = 0; i < order.Length; i++) order[i] = i;
-                Array.Sort(order, delegate(int a, int b)
-                {
-                    return NaturalComparer.Instance.Compare(_list.Items[a].Text, _list.Items[b].Text);
-                });
-                ApplyOrder(order, -1);
+                ApplyOrder(PlaylistState.SortedOrder(ListNames(_list)), -1);
             }
 
             private void ApplyOrder(int[] order, int select)
@@ -939,7 +906,7 @@ namespace LiveBackground
             private void ApplyFadeSteps()
             {
                 if (_fadeBar == null) return;
-                int step = _fineSteps.Checked ? 1 : 2;
+                int step = CrossfadeState.Step(_fineSteps.Checked);
                 _fadeBar.SmallChange = step;
                 _fadeBar.LargeChange = step * 2;
                 _fadeBar.TickFrequency = step;
@@ -950,31 +917,14 @@ namespace LiveBackground
             private void SnapFade()
             {
                 if (_loading || _fadeBar == null) return;
-                if (!_fineSteps.Checked && (_fadeBar.Value % 2) != 0)
-                {
-                    _fadeBar.Value = Math.Min(10, _fadeBar.Value + 1);
-                }
+                int snapped = CrossfadeState.Snap(_fadeBar.Value, _fineSteps.Checked);
+                if (snapped != _fadeBar.Value) _fadeBar.Value = snapped;
             }
 
             private void UpdateFadeValue()
             {
                 if (_fadeValue == null) return;
-                double seconds = _fadeBar.Value / 2.0;
-                _fadeValue.Text = seconds < 0.05 ? "Off" : seconds.ToString("0.0",
-                    CultureInfo.InvariantCulture) + " s";
-            }
-
-            private static List<PlaylistEntry> CopyEntries(List<PlaylistEntry> entries)
-            {
-                List<PlaylistEntry> copy = new List<PlaylistEntry>();
-                if (entries != null)
-                {
-                    foreach (PlaylistEntry entry in entries)
-                    {
-                        if (entry != null) copy.Add(new PlaylistEntry(entry.Name, entry.Enabled));
-                    }
-                }
-                return copy;
+                _fadeValue.Text = CrossfadeState.Text(_fadeBar.Value, "Off");
             }
         }
     }

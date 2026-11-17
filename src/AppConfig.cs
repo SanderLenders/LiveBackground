@@ -108,15 +108,7 @@ namespace LiveBackground
 
         private static List<PlaylistEntry> CopyEntries(List<PlaylistEntry> entries)
         {
-            List<PlaylistEntry> copy = new List<PlaylistEntry>();
-            if (entries != null)
-            {
-                foreach (PlaylistEntry entry in entries)
-                {
-                    if (entry != null) copy.Add(new PlaylistEntry(entry.Name, entry.Enabled));
-                }
-            }
-            return copy;
+            return PlaylistState.CopyEntries(entries);
         }
     }
 

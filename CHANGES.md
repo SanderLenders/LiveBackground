@@ -21,6 +21,13 @@
   now cover the same code. The shipped build is unchanged: `build.ps1` still
   compiles with the .NET Framework `csc`, and the app still runs on .NET
   Framework 4.8. See `BUILDING.md`.
+- **The four media lists in the settings window now share one tested
+  implementation.** The main Videos and Images panes and the two per-screen
+  editors used to carry four hand-copied versions of the same tick, sort, move
+  and capture logic; they now call a single window-free helper
+  (`PlaylistState`, with `CrossfadeState` for the picture crossfade). The
+  behaviour is unchanged - a clip that has gone missing stays unticked, a
+  picture stays ticked - and the shared logic is covered by unit tests.
 
 ### Settings window
 

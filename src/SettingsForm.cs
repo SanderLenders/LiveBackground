@@ -1218,33 +1218,13 @@ namespace LiveBackground
 
             public int SingleIndex()
             {
-                for (int i = 0; i < ClipList.Items.Count; i++)
-                {
-                    if (ClipList.Items[i].Checked) return i;
-                }
-                return -1;
+                return PlaylistState.CheckedIndex(ListChecked(ClipList));
             }
 
             private void SelectSingleRow()
             {
-                int index = -1;
-                if (!string.IsNullOrEmpty(_singleName))
-                {
-                    for (int i = 0; i < ClipList.Items.Count; i++)
-                    {
-                        if (string.Equals(ClipList.Items[i].Text, _singleName,
-                            StringComparison.OrdinalIgnoreCase))
-                        {
-                            index = i;
-                            break;
-                        }
-                    }
-                }
-                if (index < 0 && ClipList.Items.Count > 0) index = 0;
-                for (int i = 0; i < ClipList.Items.Count; i++)
-                {
-                    ClipList.Items[i].Checked = (i == index);
-                }
+                int index = PlaylistState.PreferredIndex(ListNames(ClipList), _singleName);
+                SetListChecked(ClipList, PlaylistState.SingleTicks(ClipList.Items.Count, index));
                 _singleName = index >= 0 ? ClipList.Items[index].Text : "";
             }
 
@@ -1257,23 +1237,9 @@ namespace LiveBackground
 
             private void ApplyPlaylistTicks()
             {
-                Dictionary<string, bool> enabled =
-                    new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                if (_playlist != null)
-                {
-                    foreach (PlaylistEntry entry in _playlist)
-                    {
-                        if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
-                        if (!enabled.ContainsKey(entry.Name)) enabled[entry.Name] = entry.Enabled;
-                    }
-                }
                 _loading = true;
-                for (int i = 0; i < ClipList.Items.Count; i++)
-                {
-                    bool on;
-                    ClipList.Items[i].Checked =
-                        enabled.TryGetValue(ClipList.Items[i].Text, out on) ? on : false;
-                }
+                SetListChecked(ClipList,
+                    PlaylistState.PlaylistTicks(ListNames(ClipList), _playlist, false));
                 _loading = false;
             }
 
@@ -1284,38 +1250,22 @@ namespace LiveBackground
 
             private List<PlaylistEntry> CurrentPlaylist()
             {
-                List<PlaylistEntry> entries = new List<PlaylistEntry>();
-                for (int i = 0; i < ClipList.Items.Count; i++)
-                {
-                    entries.Add(new PlaylistEntry(ClipList.Items[i].Text, ClipList.Items[i].Checked));
-                }
-                return entries;
+                return PlaylistState.Capture(ListNames(ClipList), ListChecked(ClipList));
             }
 
             private void Move(int delta)
             {
                 if (ClipList.SelectedIndices.Count == 0) return;
                 int index = ClipList.SelectedIndices[0];
-                int target = index + delta;
-                if (target < 0 || target >= ClipList.Items.Count) return;
-                int[] order = new int[ClipList.Items.Count];
-                for (int i = 0; i < order.Length; i++) order[i] = i;
-                order[index] = target;
-                order[target] = index;
-                ApplyOrder(order, target);
+                int[] order = PlaylistState.SwapOrder(ClipList.Items.Count, index, delta);
+                if (order == null) return;
+                ApplyOrder(order, index + delta);
             }
 
             private void Sort()
             {
-                int count = ClipList.Items.Count;
-                if (count < 2) return;
-                int[] order = new int[count];
-                for (int i = 0; i < count; i++) order[i] = i;
-                Array.Sort(order, delegate(int a, int b)
-                {
-                    return NaturalComparer.Instance.Compare(ClipList.Items[a].Text, ClipList.Items[b].Text);
-                });
-                ApplyOrder(order, -1);
+                if (ClipList.Items.Count < 2) return;
+                ApplyOrder(PlaylistState.SortedOrder(ListNames(ClipList)), -1);
             }
 
             private void ApplyOrder(int[] order, int selectIndex)
@@ -1323,8 +1273,6 @@ namespace LiveBackground
                 if (order.Length != ClipList.Items.Count) return;
                 _loading = true;
                 ListViewItem[] items = new ListViewItem[order.Length];
-                List<string> paths = new List<string>();
-                List<double> durations = new List<double>();
                 for (int i = 0; i < order.Length; i++)
                 {
                     int old = order[i];
@@ -1333,9 +1281,9 @@ namespace LiveBackground
                     item.Checked = source.Checked;
                     item.SubItems.Add(source.SubItems[1].Text);
                     items[i] = item;
-                    paths.Add(old < _paths.Count ? _paths[old] : "");
-                    durations.Add(old < _durations.Count ? _durations[old] : -1);
                 }
+                List<string> paths = PlaylistState.Reorder(_paths, order, "");
+                List<double> durations = PlaylistState.Reorder(_durations, order, -1);
                 ClipList.BeginUpdate();
                 ClipList.Items.Clear();
                 ClipList.Items.AddRange(items);
@@ -2560,6 +2508,35 @@ namespace LiveBackground
         }
 
         // ---------------------------------------------------------------
+        // Checkable media lists
+        // ---------------------------------------------------------------
+
+        // Thin adapters between the four ListView media lists (main Videos,
+        // main Images and the two per-screen editors, all nested types of this
+        // form) and the window-free PlaylistState core.
+
+        private static List<string> ListNames(ListView list)
+        {
+            List<string> names = new List<string>();
+            for (int i = 0; i < list.Items.Count; i++) names.Add(list.Items[i].Text);
+            return names;
+        }
+
+        private static List<bool> ListChecked(ListView list)
+        {
+            List<bool> flags = new List<bool>();
+            for (int i = 0; i < list.Items.Count; i++) flags.Add(list.Items[i].Checked);
+            return flags;
+        }
+
+        // Applies ticks from PlaylistState. The caller owns the "loading" flag.
+        private static void SetListChecked(ListView list, bool[] ticks)
+        {
+            int count = Math.Min(list.Items.Count, ticks == null ? 0 : ticks.Length);
+            for (int i = 0; i < count; i++) list.Items[i].Checked = ticks[i];
+        }
+
+        // ---------------------------------------------------------------
         // Playlist state
         // ---------------------------------------------------------------
 
@@ -2625,25 +2602,8 @@ namespace LiveBackground
         // that one is gone. The caller owns the _loading flag.
         private void SelectSingleRow()
         {
-            int index = -1;
-            if (!string.IsNullOrEmpty(_singleName))
-            {
-                for (int i = 0; i < _clipList.Items.Count; i++)
-                {
-                    if (string.Equals(_clipList.Items[i].Text, _singleName,
-                        StringComparison.OrdinalIgnoreCase))
-                    {
-                        index = i;
-                        break;
-                    }
-                }
-            }
-            if (index < 0 && _clipList.Items.Count > 0) index = 0;
-
-            for (int i = 0; i < _clipList.Items.Count; i++)
-            {
-                _clipList.Items[i].Checked = (i == index);
-            }
+            int index = PlaylistState.PreferredIndex(ListNames(_clipList), _singleName);
+            SetListChecked(_clipList, PlaylistState.SingleTicks(_clipList.Items.Count, index));
             _singleName = index >= 0 ? _clipList.Items[index].Text : "";
         }
 
@@ -2658,24 +2618,9 @@ namespace LiveBackground
         // single-clip choice replaced them.
         private void ApplyPlaylistTicks()
         {
-            Dictionary<string, bool> enabled =
-                new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            if (_config.Playlist != null)
-            {
-                foreach (PlaylistEntry entry in _config.Playlist)
-                {
-                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
-                    if (!enabled.ContainsKey(entry.Name)) enabled[entry.Name] = entry.Enabled;
-                }
-            }
-
             _loading = true;
-            for (int i = 0; i < _clipList.Items.Count; i++)
-            {
-                bool on;
-                _clipList.Items[i].Checked =
-                    enabled.TryGetValue(_clipList.Items[i].Text, out on) ? on : false;
-            }
+            SetListChecked(_clipList,
+                PlaylistState.PlaylistTicks(ListNames(_clipList), _config.Playlist, false));
             _loading = false;
         }
 
@@ -2749,25 +2694,8 @@ namespace LiveBackground
 
         private void SelectSingleImageRow()
         {
-            int index = -1;
-            if (!string.IsNullOrEmpty(_singleImageName))
-            {
-                for (int i = 0; i < _imageList.Items.Count; i++)
-                {
-                    if (string.Equals(_imageList.Items[i].Text, _singleImageName,
-                        StringComparison.OrdinalIgnoreCase))
-                    {
-                        index = i;
-                        break;
-                    }
-                }
-            }
-            if (index < 0 && _imageList.Items.Count > 0) index = 0;
-
-            for (int i = 0; i < _imageList.Items.Count; i++)
-            {
-                _imageList.Items[i].Checked = (i == index);
-            }
+            int index = PlaylistState.PreferredIndex(ListNames(_imageList), _singleImageName);
+            SetListChecked(_imageList, PlaylistState.SingleTicks(_imageList.Items.Count, index));
             _singleImageName = index >= 0 ? _imageList.Items[index].Text : "";
         }
 
@@ -2780,24 +2708,9 @@ namespace LiveBackground
 
         private void ApplyImagePlaylistTicks()
         {
-            Dictionary<string, bool> enabled =
-                new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            if (_config.ImagePlaylist != null)
-            {
-                foreach (PlaylistEntry entry in _config.ImagePlaylist)
-                {
-                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
-                    if (!enabled.ContainsKey(entry.Name)) enabled[entry.Name] = entry.Enabled;
-                }
-            }
-
             _loadingImages = true;
-            for (int i = 0; i < _imageList.Items.Count; i++)
-            {
-                bool on;
-                _imageList.Items[i].Checked =
-                    enabled.TryGetValue(_imageList.Items[i].Text, out on) ? on : true;
-            }
+            SetListChecked(_imageList,
+                PlaylistState.PlaylistTicks(ListNames(_imageList), _config.ImagePlaylist, true));
             _loadingImages = false;
         }
 
@@ -2819,39 +2732,22 @@ namespace LiveBackground
 
         private List<PlaylistEntry> CurrentImagePlaylist()
         {
-            List<PlaylistEntry> entries = new List<PlaylistEntry>();
-            for (int i = 0; i < _imageList.Items.Count; i++)
-            {
-                entries.Add(new PlaylistEntry(_imageList.Items[i].Text, _imageList.Items[i].Checked));
-            }
-            return entries;
+            return PlaylistState.Capture(ListNames(_imageList), ListChecked(_imageList));
         }
 
         private void MoveImage(int delta)
         {
             if (_imageList.SelectedIndices.Count == 0) return;
             int index = _imageList.SelectedIndices[0];
-            int target = index + delta;
-            if (target < 0 || target >= _imageList.Items.Count) return;
-
-            int[] order = new int[_imageList.Items.Count];
-            for (int i = 0; i < order.Length; i++) order[i] = i;
-            order[index] = target;
-            order[target] = index;
-            ApplyImageOrder(order, target);
+            int[] order = PlaylistState.SwapOrder(_imageList.Items.Count, index, delta);
+            if (order == null) return;
+            ApplyImageOrder(order, index + delta);
         }
 
         private void SortImages()
         {
-            int count = _imageList.Items.Count;
-            if (count < 2) return;
-            int[] order = new int[count];
-            for (int i = 0; i < count; i++) order[i] = i;
-            Array.Sort(order, delegate(int a, int b)
-            {
-                return NaturalComparer.Instance.Compare(_imageList.Items[a].Text, _imageList.Items[b].Text);
-            });
-            ApplyImageOrder(order, -1);
+            if (_imageList.Items.Count < 2) return;
+            ApplyImageOrder(PlaylistState.SortedOrder(ListNames(_imageList)), -1);
         }
 
         private void ApplyImageOrder(int[] order, int selectIndex)
@@ -2860,7 +2756,6 @@ namespace LiveBackground
             _loadingImages = true;
 
             ListViewItem[] items = new ListViewItem[order.Length];
-            List<string> paths = new List<string>();
             for (int i = 0; i < order.Length; i++)
             {
                 int old = order[i];
@@ -2869,8 +2764,8 @@ namespace LiveBackground
                 item.Checked = source.Checked;
                 item.SubItems.Add(source.SubItems[1].Text);
                 items[i] = item;
-                paths.Add(old < _imagePaths.Count ? _imagePaths[old] : "");
             }
+            List<string> paths = PlaylistState.Reorder(_imagePaths, order, "");
 
             _imageList.BeginUpdate();
             _imageList.Items.Clear();
@@ -3251,20 +3146,18 @@ namespace LiveBackground
         {
             if (_imageCrossfadeBar == null) return;
             bool fine = _imageFineSteps != null && _imageFineSteps.Checked;
-            _imageCrossfadeBar.SmallChange = fine ? 1 : 2;
-            _imageCrossfadeBar.LargeChange = fine ? 2 : 4;
-            _imageCrossfadeBar.TickFrequency = fine ? 1 : 2;
-            int snapped = SnapImageCrossfade(_imageCrossfadeBar.Value);
+            int step = CrossfadeState.Step(fine);
+            _imageCrossfadeBar.SmallChange = step;
+            _imageCrossfadeBar.LargeChange = step * 2;
+            _imageCrossfadeBar.TickFrequency = step;
+            int snapped = CrossfadeState.Snap(_imageCrossfadeBar.Value, fine);
             if (snapped != _imageCrossfadeBar.Value) _imageCrossfadeBar.Value = snapped;
             UpdateCrossfadeLabel();
         }
 
         private int SnapImageCrossfade(int value)
         {
-            value = Clamp(value, 0, 10);
-            bool fine = _imageFineSteps != null && _imageFineSteps.Checked;
-            if (!fine && (value % 2) != 0) value = (value + 1) / 2 * 2;
-            return Clamp(value, 0, 10);
+            return CrossfadeState.Snap(value, _imageFineSteps != null && _imageFineSteps.Checked);
         }
 
         private double SelectedCrossfadeSeconds()
@@ -3276,8 +3169,7 @@ namespace LiveBackground
         private void UpdateCrossfadeLabel()
         {
             if (_imageCrossfadeBar == null || _imageCrossfadeValue == null) return;
-            double seconds = _imageCrossfadeBar.Value / 2.0;
-            _imageCrossfadeValue.Text = seconds < 0.05 ? "Off (instant)" : seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
+            _imageCrossfadeValue.Text = CrossfadeState.Text(_imageCrossfadeBar.Value, "Off (instant)");
         }
 
         private static string FormatIntervalSeconds(int seconds)
@@ -3358,11 +3250,7 @@ namespace LiveBackground
 
         private int SingleIndex()
         {
-            for (int i = 0; i < _clipList.Items.Count; i++)
-            {
-                if (_clipList.Items[i].Checked) return i;
-            }
-            return -1;
+            return PlaylistState.CheckedIndex(ListChecked(_clipList));
         }
 
         private void CapturePlaylist()
@@ -3375,39 +3263,22 @@ namespace LiveBackground
 
         private List<PlaylistEntry> CurrentPlaylist()
         {
-            List<PlaylistEntry> entries = new List<PlaylistEntry>();
-            for (int i = 0; i < _clipList.Items.Count; i++)
-            {
-                entries.Add(new PlaylistEntry(_clipList.Items[i].Text, _clipList.Items[i].Checked));
-            }
-            return entries;
+            return PlaylistState.Capture(ListNames(_clipList), ListChecked(_clipList));
         }
 
         private void MoveClip(int delta)
         {
             if (_clipList.SelectedIndices.Count == 0) return;
             int index = _clipList.SelectedIndices[0];
-            int target = index + delta;
-            if (target < 0 || target >= _clipList.Items.Count) return;
-
-            int[] order = new int[_clipList.Items.Count];
-            for (int i = 0; i < order.Length; i++) order[i] = i;
-            order[index] = target;
-            order[target] = index;
-            ApplyOrder(order, target);
+            int[] order = PlaylistState.SwapOrder(_clipList.Items.Count, index, delta);
+            if (order == null) return;
+            ApplyOrder(order, index + delta);
         }
 
         private void SortClips()
         {
-            int count = _clipList.Items.Count;
-            if (count < 2) return;
-            int[] order = new int[count];
-            for (int i = 0; i < count; i++) order[i] = i;
-            Array.Sort(order, delegate(int a, int b)
-            {
-                return NaturalComparer.Instance.Compare(_clipList.Items[a].Text, _clipList.Items[b].Text);
-            });
-            ApplyOrder(order, -1);
+            if (_clipList.Items.Count < 2) return;
+            ApplyOrder(PlaylistState.SortedOrder(ListNames(_clipList)), -1);
         }
 
         private void ApplyOrder(int[] order, int selectIndex)
@@ -3416,8 +3287,6 @@ namespace LiveBackground
             _loading = true;
 
             ListViewItem[] items = new ListViewItem[order.Length];
-            List<string> paths = new List<string>();
-            List<double> durations = new List<double>();
             for (int i = 0; i < order.Length; i++)
             {
                 int old = order[i];
@@ -3427,9 +3296,9 @@ namespace LiveBackground
                 item.SubItems.Add(source.SubItems[1].Text);
                 item.SubItems.Add(source.SubItems[2].Text);
                 items[i] = item;
-                paths.Add(old < _clipPaths.Count ? _clipPaths[old] : "");
-                durations.Add(old < _clipDurations.Count ? _clipDurations[old] : -1);
             }
+            List<string> paths = PlaylistState.Reorder(_clipPaths, order, "");
+            List<double> durations = PlaylistState.Reorder(_clipDurations, order, -1);
 
             _clipList.BeginUpdate();
             _clipList.Items.Clear();
