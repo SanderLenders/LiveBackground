@@ -12,6 +12,7 @@ LiveBackground.sln
   src\LiveBackground.csproj      SDK-style project, targets net48
   tests\LiveBackground.Tests.csproj   xUnit tests
 .editorconfig                    analyser severities
+.gitattributes                   line-ending policy (text files are LF)
 .github\workflows\build.yml      CI: build + test + a shipping-compile check
 ```
 
@@ -37,10 +38,11 @@ dotnet test    LiveBackground.sln -c Release
 
 `dotnet test` also builds the app, so a bare `dotnet test` is enough.
 
-The tests cover the pure logic only (path and command-line helpers, natural
-sorting, configuration normalisation and migration, playlist resolution and the
-cache signature). They need no display, no ffmpeg and no mpv, so they run
-anywhere, including CI.
+The tests cover the pure logic only: path and command-line helpers, natural
+sorting, configuration normalisation and migration, playlist and crossfade
+state, the JSON store's file round-trip, the folder watchers and the cache
+signature. They need no display, no ffmpeg and no mpv, so they run anywhere,
+including CI.
 
 ## The shipping build
 
@@ -58,8 +60,33 @@ with the same `csc` reference set to catch a change that would break it.
 
 ## Analysers
 
-The SDK build runs the built-in Roslyn analysers at the *Recommended* level. The
-handful of rules that flag deliberate patterns in this codebase (public
-`[DataContract]` fields, the Win32 names in `Native.cs`, the visible P/Invokes)
-are turned off in `.editorconfig`, with the reason next to each one. Everything
-else keeps its default severity, so a genuinely new issue shows up as a warning.
+The SDK build runs the built-in Roslyn analysers at the *Recommended* level, plus
+two rules that are not in that set but are worth having here: `CA1508` (dead
+conditional code) and `CA2000` (dispose objects before losing scope). The handful
+of rules that flag deliberate patterns in this codebase (public `[DataContract]`
+fields, the Win32 names in `Native.cs`, the visible P/Invokes) are turned off in
+`.editorconfig`, with the reason next to each one. Everything else keeps its
+default severity, so a genuinely new issue shows up.
+
+Warnings are errors in this build (`TreatWarningsAsErrors`), so a new issue fails
+`dotnet build` and CI instead of being printed and forgotten. The few findings
+that are genuinely deliberate carry a `SuppressMessage` attribute with a
+justification. Note that the shipping `csc` is the legacy C# 5 compiler, which
+does not accept analyser IDs in `#pragma warning`, so suppressions use
+`[SuppressMessage]` rather than a pragma.
+
+This affects the developer / CI build only: `build.ps1` compiles the sources with
+the framework `csc` and is unaffected.
+
+## Continuous integration
+
+`.github\workflows\build.yml` runs on every push to `main` and every pull
+request. It restores, builds (analysers on, warnings as errors) and tests the
+solution with the .NET SDK, then recompiles `src\*.cs` with the shipping `csc`
+reference set, so a change that would break the real build is caught even though
+the full packaging build (which needs mpv and ffmpeg) does not run there.
+
+## Line endings
+
+`.gitattributes` stores every text file with LF, so the sources are byte-identical
+on every machine.
