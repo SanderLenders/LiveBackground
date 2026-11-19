@@ -113,6 +113,9 @@
   unchanged at 3 seconds. Only a fresh install (or a screen with no saved
   slideshow settings) picks up the new default; a slideshow you already set up
   keeps its own interval.
+- **The settings window has a cleaner, Windows 11-inspired look.** Subtle grey
+  surfaces, clearer typography and updated tab/control styling give it a more
+  modern feel, while keeping the same layout and behaviour.
 
 ### Bundled pictures
 
@@ -163,6 +166,9 @@
   The app also pins its user-interface language to English, so the handful of
   messages Windows itself produces (for example the text of an error the app
   shows after its own English sentence) come out in English too.
+- **The installer wizard uses a flatter, Windows 11-leaning presentation.** It
+  now uses Inno Setup's modern dynamic wizard style for a more current look, with
+  the same install steps and behaviour.
 
 ### Reliability and safety pass (stage 1)
 

@@ -36,7 +36,8 @@ SetupIconFile={#AppIcon}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
-WizardStyle=modern
+; A flatter, Windows 11-leaning wizard presentation (Inno Setup 6.4+).
+WizardStyle=modern dynamic
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible

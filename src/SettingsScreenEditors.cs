@@ -44,7 +44,7 @@ namespace LiveBackground
             TabControl tabs = sender as TabControl;
             if (tabs == null || e.Index < 0 || e.Index >= tabs.TabPages.Count) return;
             Rectangle bounds = tabs.GetTabRect(e.Index);
-            using (SolidBrush back = new SolidBrush(SystemColors.Control))
+            using (SolidBrush back = new SolidBrush(UiBackground))
             {
                 e.Graphics.FillRectangle(back, bounds);
             }
@@ -53,8 +53,16 @@ namespace LiveBackground
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
                 TextRenderer.DrawText(e.Graphics, tabs.TabPages[e.Index].Text, font, bounds,
-                    enabled ? SystemColors.ControlText : SystemColors.GrayText,
+                    enabled ? UiText : UiMutedText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+            if (selected)
+            {
+                using (Pen pen = new Pen(UiAccent, 2))
+                {
+                    e.Graphics.DrawLine(pen, bounds.Left + 6, bounds.Bottom - 2,
+                        bounds.Right - 7, bounds.Bottom - 2);
+                }
             }
         }
 
@@ -180,6 +188,7 @@ namespace LiveBackground
                 _fine.SetBounds(16, 70, 320, 24);
                 _fine.CheckedChanged += delegate { ApplyStepMode(); };
                 _page.Controls.Add(_fine);
+                _form.ApplyModernStyle(_page);
                 return _page;
             }
 
@@ -353,6 +362,7 @@ namespace LiveBackground
                 _drop = _form.MakeImageDropBox(_page, 466, 56, 100, 27, "Drop image",
                     delegate { Browse(); });
                 _drop.Tag = this;
+                _form.ApplyModernStyle(_page);
                 return _page;
             }
 

@@ -128,9 +128,19 @@ namespace LiveBackground
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam,
             out TrackbarRect lParam);
 
-        private static readonly Color DropIdleColor = Color.FromArgb(249, 250, 252);
-        private static readonly Color DropHotColor = Color.FromArgb(228, 239, 255);
-        private static readonly Color WarnColor = Color.FromArgb(176, 106, 0);
+        // Subtle, Windows 11-inspired light palette (no dark mode).
+        private static readonly Color UiBackground = Color.FromArgb(243, 243, 243);
+        private static readonly Color UiSurface = Color.White;
+        private static readonly Color UiText = Color.FromArgb(28, 28, 28);
+        private static readonly Color UiMutedText = Color.FromArgb(96, 96, 96);
+        private static readonly Color UiAccent = Color.FromArgb(0, 120, 212);
+        private static readonly Color UiBorder = Color.FromArgb(229, 229, 229);
+        private static readonly Color UiButtonFace = Color.FromArgb(251, 251, 251);
+        private static readonly Color UiButtonHover = Color.FromArgb(246, 246, 246);
+        private static readonly Color UiInputBack = Color.White;
+        private static readonly Color DropIdleColor = Color.FromArgb(250, 250, 250);
+        private static readonly Color DropHotColor = Color.FromArgb(230, 241, 251);
+        private static readonly Color WarnColor = Color.FromArgb(157, 93, 0);
 
         private readonly List<string> _clipPaths = new List<string>();
         private readonly List<double> _clipDurations = new List<double>();
@@ -191,7 +201,9 @@ namespace LiveBackground
             ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(660, 620);
-            Font = SystemFonts.MessageBoxFont;
+            Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            BackColor = UiBackground;
+            ForeColor = UiText;
             _tips = new ToolTip();
 
             Label modeLabel = new Label();
@@ -315,6 +327,8 @@ namespace LiveBackground
 
             LoadSettings();
 
+            ApplyModernStyle(this);
+
             // A light poll, running only while this window is open. Two Win32
             // calls every 1.5 s is far cheaper than the watchdog's own 2 s
             // layout check, and it keeps the Second screen tab honest.
@@ -387,27 +401,27 @@ namespace LiveBackground
         {
             if (e.Index < 0 || e.Index >= _tabs.TabPages.Count) return;
             Rectangle bounds = _tabs.GetTabRect(e.Index);
-            using (SolidBrush back = new SolidBrush(SystemColors.Control))
+            using (SolidBrush back = new SolidBrush(UiBackground))
             {
                 e.Graphics.FillRectangle(back, bounds);
             }
 
-            // The active tab is drawn in bold so it stays obvious that the
-            // greyed tabs belong to the other wallpaper mode.
+            // The active tab is drawn in bold with an accent underline; greyed
+            // tabs stay visible but cannot be selected.
             bool enabled = !TabGreyed(e.Index);
             bool selected = e.Index == _tabs.SelectedIndex;
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
                 TextRenderer.DrawText(e.Graphics, _tabs.TabPages[e.Index].Text, font, bounds,
-                    enabled ? SystemColors.ControlText : SystemColors.GrayText,
+                    enabled ? UiText : UiMutedText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
             if (selected)
             {
-                using (Pen pen = new Pen(Color.FromArgb(70, 110, 180)))
+                using (Pen pen = new Pen(UiAccent, 2))
                 {
-                    e.Graphics.DrawLine(pen, bounds.Left + 2, bounds.Bottom - 1,
-                        bounds.Right - 3, bounds.Bottom - 1);
+                    e.Graphics.DrawLine(pen, bounds.Left + 6, bounds.Bottom - 2,
+                        bounds.Right - 7, bounds.Bottom - 2);
                 }
             }
         }
@@ -557,7 +571,7 @@ namespace LiveBackground
 
             _clipHint = MakeLabel(page, "", 16, 384, 588);
             _clipHint.Height = 46;
-            _clipHint.ForeColor = SystemColors.GrayText;
+            _clipHint.ForeColor = UiMutedText;
 
             // Drop target: drag videos onto it, or click to pick files. Files
             // are copied into the folder shown above, so the running app's
@@ -627,7 +641,7 @@ namespace LiveBackground
             }
 
             _multiStatus = MakeLabel(page, "", 16, 44, 588);
-            _multiStatus.ForeColor = SystemColors.GrayText;
+            _multiStatus.ForeColor = UiMutedText;
 
             _screenTabs = new TabControl();
             _screenTabs.SetBounds(8, 74, 612, 412);
@@ -720,7 +734,7 @@ namespace LiveBackground
         {
             if (_screenTabs == null || e.Index < 0 || e.Index >= _screenTabs.TabPages.Count) return;
             Rectangle bounds = _screenTabs.GetTabRect(e.Index);
-            using (SolidBrush back = new SolidBrush(SystemColors.Control))
+            using (SolidBrush back = new SolidBrush(UiBackground))
             {
                 e.Graphics.FillRectangle(back, bounds);
             }
@@ -730,8 +744,16 @@ namespace LiveBackground
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
                 TextRenderer.DrawText(e.Graphics, _screenTabs.TabPages[e.Index].Text, font, bounds,
-                    enabled ? SystemColors.ControlText : SystemColors.GrayText,
+                    enabled ? UiText : UiMutedText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+            if (selected)
+            {
+                using (Pen pen = new Pen(UiAccent, 2))
+                {
+                    e.Graphics.DrawLine(pen, bounds.Left + 6, bounds.Bottom - 2,
+                        bounds.Right - 7, bounds.Bottom - 2);
+                }
             }
         }
 
@@ -958,7 +980,7 @@ namespace LiveBackground
                 _videoPane.Controls.Add(Same);
 
                 _status = MakeLabel(_videoPane, "", 12, 40, 576);
-                _status.ForeColor = SystemColors.GrayText;
+                _status.ForeColor = UiMutedText;
 
                 Label folderLabel = MakeLabel(_videoPane, "Video folder", 12, 70, 200);
                 folderLabel.Font = new Font(_form.Font, FontStyle.Bold);
@@ -1037,7 +1059,7 @@ namespace LiveBackground
 
                 _hint = MakeLabel(_videoPane, "", 12, 348, 572);
                 _hint.Height = 30;
-                _hint.ForeColor = SystemColors.GrayText;
+                _hint.ForeColor = UiMutedText;
 
                 Images = new ScreenImagesSlot(_form, _number);
                 Panel imagePane = Images.Build();
@@ -1045,6 +1067,7 @@ namespace LiveBackground
                 imagePane.Visible = false;
                 Page.Controls.Add(imagePane);
 
+                _form.ApplyModernStyle(Page);
                 return Page;
             }
 
@@ -1768,7 +1791,7 @@ namespace LiveBackground
             page.Controls.Add(_imageModeSlideshow);
 
             _imageSingleHint = MakeLabel(page, "Pick one image in the list below", 244, 72, 360);
-            _imageSingleHint.ForeColor = SystemColors.GrayText;
+            _imageSingleHint.ForeColor = UiMutedText;
             _imageSingleHint.Visible = false;
 
             _imageList = new ListView();
@@ -1841,7 +1864,7 @@ namespace LiveBackground
 
             _imageHint = MakeLabel(page, "", 16, 384, 588);
             _imageHint.Height = 46;
-            _imageHint.ForeColor = SystemColors.GrayText;
+            _imageHint.ForeColor = UiMutedText;
 
             _imageDropPanel = new Panel();
             _imageDropPanel.SetBounds(428, 104, 188, 202);
@@ -1889,7 +1912,7 @@ namespace LiveBackground
             page.Controls.Add(_imageInterval);
 
             _imageIntervalValue = MakeLabel(page, "10 seconds", 382, 52, 120);
-            _imageIntervalValue.ForeColor = SystemColors.GrayText;
+            _imageIntervalValue.ForeColor = UiMutedText;
 
             // The trackbar grows taller than the 45 px it is given once Windows
             // draws it at 125% (about 56 px); the number row must start below
@@ -1919,7 +1942,7 @@ namespace LiveBackground
             page.Controls.Add(_imageCustomInterval);
 
             _imageSecondsLabel = MakeLabel(page, "seconds (1-86400)", 216, 136, 150);
-            _imageSecondsLabel.ForeColor = SystemColors.GrayText;
+            _imageSecondsLabel.ForeColor = UiMutedText;
 
             Label fadeLabel = MakeLabel(page, "Crossfade between pictures", 16, 168, 300);
             fadeLabel.Font = new Font(Font, FontStyle.Bold);
@@ -1945,7 +1968,7 @@ namespace LiveBackground
             page.Controls.Add(_imageCrossfadeBar);
 
             _imageCrossfadeValue = MakeLabel(page, "2.0 s", 382, 200, 120);
-            _imageCrossfadeValue.ForeColor = SystemColors.GrayText;
+            _imageCrossfadeValue.ForeColor = UiMutedText;
 
             _imageCrossfadeMarks = new Label[]
             {
@@ -2231,10 +2254,11 @@ namespace LiveBackground
             bounds.Inflate(-1, -1);
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Color offTrack = Color.FromArgb(210, 210, 210);
             using (GraphicsPath path = RoundedRect(bounds, bounds.Height / 2))
-            using (SolidBrush track = new SolidBrush(Color.FromArgb(212, 216, 224)))
-            using (SolidBrush on = new SolidBrush(Color.FromArgb(64, 120, 220)))
-            using (Pen border = new Pen(Color.FromArgb(170, 176, 188)))
+            using (SolidBrush track = new SolidBrush(offTrack))
+            using (SolidBrush on = new SolidBrush(UiAccent))
+            using (Pen border = new Pen(UiBorder))
             {
                 e.Graphics.FillPath(track, path);
                 e.Graphics.DrawPath(border, path);
@@ -2244,7 +2268,7 @@ namespace LiveBackground
                 int x = images ? bounds.Right - pad - size : bounds.Left + pad;
                 Rectangle thumb = new Rectangle(x, bounds.Top + pad, size, size);
 
-                using (SolidBrush fill = new SolidBrush(images ? on.Color : Color.FromArgb(245, 246, 248)))
+                using (SolidBrush fill = new SolidBrush(Color.White))
                 {
                     e.Graphics.FillEllipse(fill, thumb);
                 }
@@ -2284,7 +2308,7 @@ namespace LiveBackground
             label.Text = text;
             label.AutoSize = true;
             label.Top = y;
-            label.ForeColor = SystemColors.GrayText;
+            label.ForeColor = UiMutedText;
             parent.Controls.Add(label);
             return label;
         }
@@ -2496,12 +2520,12 @@ namespace LiveBackground
         {
             double max = FadeSeconds;
             _fadeValue.Text = max.ToString("0.0", CultureInfo.InvariantCulture) + " s";
-            _fadeValue.ForeColor = max > 5.0 ? WarnColor : SystemColors.ControlText;
+            _fadeValue.ForeColor = max > 5.0 ? WarnColor : UiText;
 
             int count = _effectiveDurations.Count;
             if (count == 0)
             {
-                _fadeEffective.ForeColor = SystemColors.GrayText;
+                _fadeEffective.ForeColor = UiMutedText;
                 _fadeEffective.Text = _modeSingle != null && _modeSingle.Checked
                     ? "No clip selected. Tick a clip in the list."
                     : "No clips selected. Tick the clips you want to play.";
@@ -2540,7 +2564,7 @@ namespace LiveBackground
                 text += " Long fades are capped by the shortest clip.";
             }
 
-            _fadeEffective.ForeColor = max > 5.0 ? WarnColor : SystemColors.ControlText;
+            _fadeEffective.ForeColor = max > 5.0 ? WarnColor : UiText;
             _fadeEffective.Text = text;
         }
 
@@ -3939,6 +3963,111 @@ namespace LiveBackground
             updated.Normalize();
 
             return updated;
+        }
+
+        private void ApplyModernStyle(Control root)
+        {
+            if (root == null) return;
+
+            if (ReferenceEquals(root, _wallpaperVideo))
+            {
+                // Custom-painted mode pill: keep its transparent/special look.
+            }
+            else if (root is Form form)
+            {
+                form.BackColor = UiBackground;
+                form.ForeColor = UiText;
+            }
+            else if (root is TabPage tabPage)
+            {
+                tabPage.UseVisualStyleBackColor = false;
+                tabPage.BackColor = UiBackground;
+                tabPage.ForeColor = UiText;
+            }
+            else if (root is TabControl)
+            {
+                root.BackColor = UiBackground;
+                root.ForeColor = UiText;
+            }
+            else if (root is GroupBox groupBox)
+            {
+                groupBox.BackColor = UiBackground;
+                groupBox.ForeColor = UiText;
+                groupBox.FlatStyle = FlatStyle.Flat;
+            }
+            else if (root is Button button)
+            {
+                if (button.FlatStyle != FlatStyle.Flat || button.BackColor != Color.Transparent)
+                {
+                    // Preserve the custom transparent/flat pill, but modernize regular buttons.
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.FlatAppearance.BorderColor = UiBorder;
+                    button.FlatAppearance.BorderSize = 1;
+                    button.FlatAppearance.MouseOverBackColor = UiButtonHover;
+                    button.FlatAppearance.MouseDownBackColor = UiBorder;
+                    button.BackColor = UiButtonFace;
+                    button.ForeColor = UiText;
+                    button.UseVisualStyleBackColor = false;
+                }
+            }
+            else if (root is TextBox textBox)
+            {
+                textBox.BorderStyle = BorderStyle.FixedSingle;
+                textBox.BackColor = textBox.ReadOnly ? UiButtonFace : UiInputBack;
+                textBox.ForeColor = UiText;
+            }
+            else if (root is ComboBox comboBox)
+            {
+                comboBox.BackColor = UiInputBack;
+                comboBox.ForeColor = UiText;
+            }
+            else if (root is ListView listView)
+            {
+                listView.BorderStyle = BorderStyle.FixedSingle;
+                listView.BackColor = UiSurface;
+                listView.ForeColor = UiText;
+            }
+            else if (root is NumericUpDown numericUpDown)
+            {
+                numericUpDown.BorderStyle = BorderStyle.FixedSingle;
+                numericUpDown.BackColor = UiInputBack;
+                numericUpDown.ForeColor = UiText;
+            }
+            else if (root is CheckBox || root is RadioButton)
+            {
+                // Keep native control glyphs, but blend background with subtle grey surfaces.
+                if (!ReferenceEquals(root, _wallpaperVideo))
+                {
+                    root.BackColor = UiBackground;
+                    root.ForeColor = UiText;
+                }
+            }
+            else if (root is Panel panel)
+            {
+                bool dropZone = panel.BackColor == DropIdleColor || panel.BackColor == DropHotColor;
+                if (!dropZone && panel.BackColor != Color.Transparent)
+                {
+                    panel.BackColor = UiBackground;
+                }
+                if (!dropZone)
+                {
+                    panel.ForeColor = UiText;
+                }
+            }
+            else if (root is Label)
+            {
+                // Preserve explicit hint/warning/state colors and transparent backgrounds
+                // (e.g. drop-zone overlay labels). Other labels inherit the page color.
+                if (root.BackColor == Color.Transparent)
+                {
+                    root.BackColor = Color.Transparent;
+                }
+            }
+
+            foreach (Control child in root.Controls)
+            {
+                ApplyModernStyle(child);
+            }
         }
 
         private static bool IsStartupEnabled(string taskName)
