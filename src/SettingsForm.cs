@@ -50,7 +50,6 @@ namespace LiveBackground
         private ComboBox _fps;
         private ComboBox _quality;
         private CheckBox _startWithWindows;
-        private CheckBox _darkMode;
         private RadioButton _lockFrame;
         private RadioButton _lockCustom;
         private RadioButton _lockImages;
@@ -129,27 +128,9 @@ namespace LiveBackground
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam,
             out TrackbarRect lParam);
 
-        // Dark mode applies to this dialog only; the app has no other window of
-        // its own. The colours below are properties so the many places that
-        // repaint a control after a user action pick up the active theme too.
-        private static bool _dark;
-        private static Color SurfaceColor { get { return _dark ? Color.FromArgb(32, 34, 39) : SystemColors.Control; } }
-        private static Color PanelColor { get { return _dark ? Color.FromArgb(43, 46, 53) : SystemColors.Control; } }
-        private static Color InputColor { get { return _dark ? Color.FromArgb(48, 52, 60) : SystemColors.Window; } }
-        private static Color BodyText { get { return _dark ? Color.FromArgb(235, 237, 242) : SystemColors.ControlText; } }
-        private static Color MutedText { get { return _dark ? Color.FromArgb(150, 156, 168) : SystemColors.GrayText; } }
-        private static Color AccentColor { get { return _dark ? Color.FromArgb(86, 140, 240) : Color.FromArgb(70, 110, 180); } }
-        private static Color BorderColor { get { return _dark ? Color.FromArgb(70, 74, 84) : Color.FromArgb(170, 176, 188); } }
-        private static Color TrackColor { get { return _dark ? Color.FromArgb(70, 74, 84) : Color.FromArgb(212, 216, 224); } }
-        private static Color ThumbColor { get { return _dark ? Color.FromArgb(150, 156, 168) : Color.FromArgb(245, 246, 248); } }
-        private static Color DropIdleColor { get { return _dark ? Color.FromArgb(48, 52, 60) : Color.FromArgb(249, 250, 252); } }
-        private static Color DropHotColor { get { return _dark ? Color.FromArgb(58, 88, 140) : Color.FromArgb(228, 239, 255); } }
-        private static Color WarnColor { get { return _dark ? Color.FromArgb(235, 170, 80) : Color.FromArgb(176, 106, 0); } }
-
-        // The light colours are captured the first time a theme is applied, so
-        // switching back restores exactly what WinForms gave us originally.
-        private readonly Dictionary<Control, Color> _lightBack = new Dictionary<Control, Color>();
-        private readonly Dictionary<Control, Color> _lightFore = new Dictionary<Control, Color>();
+        private static readonly Color DropIdleColor = Color.FromArgb(249, 250, 252);
+        private static readonly Color DropHotColor = Color.FromArgb(228, 239, 255);
+        private static readonly Color WarnColor = Color.FromArgb(176, 106, 0);
 
         private readonly List<string> _clipPaths = new List<string>();
         private readonly List<double> _clipDurations = new List<double>();
@@ -368,9 +349,9 @@ namespace LiveBackground
             _tabs.TabPages.Add(_windowsTab);
             // Stay on Multi Monitor or Other while the pill switches; a mode
             // editor that just disappeared is replaced by the new first page.
-            _tabs.SelectedTab = selected == _secondTab || selected == _windowsTab
-                ? selected
-                : first;
+            bool keep = selected == _windowsTab ||
+                (selected == _secondTab && !TabGreyed(_tabs.TabPages.IndexOf(_secondTab)));
+            _tabs.SelectedTab = keep ? selected : first;
             _tabs.Invalidate();
         }
 
@@ -386,29 +367,27 @@ namespace LiveBackground
             return true;
         }
 
-        // A tab that is selectable but currently useless is greyed without
-        // being blocked: the Second screen tab explains itself when only one
-        // display is attached.
+        // A tab that is currently unusable is greyed and cannot be selected.
+        // The Multi Monitor tab stays usable while Windows is duplicating, so it
+        // is only greyed when there is just one screen and no duplicate layout.
         private bool TabGreyed(int index)
         {
             if (_tabs == null || index < 0 || index >= _tabs.TabPages.Count) return false;
             if (!TabEnabled(index)) return true;
-            // While Windows is duplicating, the tab is still useful: that is
-            // where the user switches back to Extended.
             return _tabs.TabPages[index] == _secondTab &&
                 !_hasSecondScreen && !_secondDuplicateLayout;
         }
 
         private void TabSelecting(object sender, TabControlCancelEventArgs e)
         {
-            if (!TabEnabled(e.TabPageIndex)) e.Cancel = true;
+            if (TabGreyed(e.TabPageIndex)) e.Cancel = true;
         }
 
         private void TabDrawItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0 || e.Index >= _tabs.TabPages.Count) return;
             Rectangle bounds = _tabs.GetTabRect(e.Index);
-            using (SolidBrush back = new SolidBrush(SurfaceColor))
+            using (SolidBrush back = new SolidBrush(SystemColors.Control))
             {
                 e.Graphics.FillRectangle(back, bounds);
             }
@@ -420,12 +399,12 @@ namespace LiveBackground
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
                 TextRenderer.DrawText(e.Graphics, _tabs.TabPages[e.Index].Text, font, bounds,
-                    enabled ? BodyText : MutedText,
+                    enabled ? SystemColors.ControlText : SystemColors.GrayText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
             if (selected)
             {
-                using (Pen pen = new Pen(AccentColor))
+                using (Pen pen = new Pen(Color.FromArgb(70, 110, 180)))
                 {
                     e.Graphics.DrawLine(pen, bounds.Left + 2, bounds.Bottom - 1,
                         bounds.Right - 3, bounds.Bottom - 1);
@@ -438,7 +417,7 @@ namespace LiveBackground
             if (_tabs == null) return;
             bool images = _wallpaperImages.Checked;
             UpdateModeTabs();
-            if (!TabEnabled(_tabs.SelectedIndex))
+            if (TabGreyed(_tabs.SelectedIndex))
             {
                 _tabs.SelectedTab = images ? _imagesTab : _videosTab;
             }
@@ -477,79 +456,6 @@ namespace LiveBackground
                 _screenTimer = null;
             }
             base.OnFormClosing(e);
-        }
-
-        // Applies the persisted theme to every control, including the per-screen
-        // panes that are built later. Called when the form loads and whenever
-        // the checkbox changes, so switching takes effect immediately.
-        private void ApplyTheme(bool dark)
-        {
-            _dark = dark;
-            if (_darkMode != null && _darkMode.Checked != dark) _darkMode.Checked = dark;
-            if (!_lightBack.ContainsKey(this))
-            {
-                _lightBack[this] = BackColor;
-                _lightFore[this] = ForeColor;
-            }
-            BackColor = dark ? SurfaceColor : _lightBack[this];
-            ForeColor = dark ? BodyText : _lightFore[this];
-            ApplyThemeTo(this);
-            if (_tabs != null) _tabs.Invalidate();
-            if (_screenTabs != null) _screenTabs.Invalidate();
-            if (_wallpaperVideo != null) _wallpaperVideo.Invalidate();
-            // Recompute labels whose colours depend on the current values, so a
-            // theme toggle does not leave a warning/muted state painted over.
-            if (_fadeValue != null) UpdateFadeLabels();
-        }
-
-        private void ApplyThemeTo(Control parent)
-        {
-            foreach (Control control in parent.Controls)
-            {
-                Color lightBack;
-                Color lightFore;
-                if (!_lightBack.TryGetValue(control, out lightBack))
-                {
-                    lightBack = control.BackColor;
-                    lightFore = control.ForeColor;
-                    _lightBack[control] = lightBack;
-                    _lightFore[control] = lightFore;
-                }
-                else
-                {
-                    lightFore = _lightFore[control];
-                }
-                if (_dark)
-                {
-                    if (control == _dropPanel || control == _imageDropPanel ||
-                        control == _lockDrop || control == _desktopDrop)
-                    {
-                        control.BackColor = DropIdleColor;
-                    }
-                    else if (control is TextBox || control is ComboBox || control is NumericUpDown)
-                    {
-                        control.BackColor = InputColor;
-                    }
-                    else if (control is TabPage)
-                    {
-                        control.BackColor = SurfaceColor;
-                    }
-                    else
-                    {
-                        control.BackColor = PanelColor;
-                    }
-                    // Labels and hints that were muted in the light theme stay
-                    // muted in dark mode instead of being forced to body text.
-                    control.ForeColor = lightFore == SystemColors.GrayText
-                        ? MutedText : BodyText;
-                }
-                else
-                {
-                    control.BackColor = lightBack;
-                    control.ForeColor = lightFore;
-                }
-                ApplyThemeTo(control);
-            }
         }
 
         private void BuildVideosTab(TabPage page)
@@ -651,7 +557,7 @@ namespace LiveBackground
 
             _clipHint = MakeLabel(page, "", 16, 384, 588);
             _clipHint.Height = 46;
-            _clipHint.ForeColor = MutedText;
+            _clipHint.ForeColor = SystemColors.GrayText;
 
             // Drop target: drag videos onto it, or click to pick files. Files
             // are copied into the folder shown above, so the running app's
@@ -721,7 +627,7 @@ namespace LiveBackground
             }
 
             _multiStatus = MakeLabel(page, "", 16, 44, 588);
-            _multiStatus.ForeColor = MutedText;
+            _multiStatus.ForeColor = SystemColors.GrayText;
 
             _screenTabs = new TabControl();
             _screenTabs.SetBounds(8, 74, 612, 412);
@@ -814,7 +720,7 @@ namespace LiveBackground
         {
             if (_screenTabs == null || e.Index < 0 || e.Index >= _screenTabs.TabPages.Count) return;
             Rectangle bounds = _screenTabs.GetTabRect(e.Index);
-            using (SolidBrush back = new SolidBrush(SurfaceColor))
+            using (SolidBrush back = new SolidBrush(SystemColors.Control))
             {
                 e.Graphics.FillRectangle(back, bounds);
             }
@@ -824,7 +730,7 @@ namespace LiveBackground
             using (Font font = selected ? new Font(e.Font, FontStyle.Bold) : new Font(e.Font, FontStyle.Regular))
             {
                 TextRenderer.DrawText(e.Graphics, _screenTabs.TabPages[e.Index].Text, font, bounds,
-                    enabled ? BodyText : MutedText,
+                    enabled ? SystemColors.ControlText : SystemColors.GrayText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
         }
@@ -892,6 +798,11 @@ namespace LiveBackground
             }
 
             UpdateMultiControls();
+            if (_tabs != null && _tabs.SelectedIndex >= 0 && TabGreyed(_tabs.SelectedIndex))
+            {
+                bool images = _wallpaperImages != null && _wallpaperImages.Checked;
+                _tabs.SelectedTab = images ? _imagesTab : _videosTab;
+            }
         }
 
         private void ScreenTimerTick(object sender, EventArgs e)
@@ -926,6 +837,11 @@ namespace LiveBackground
                 finally { _updatingTopology = false; }
             }
             UpdateMultiControls();
+            if (_tabs != null && _tabs.SelectedIndex >= 0 && TabGreyed(_tabs.SelectedIndex))
+            {
+                bool images = _wallpaperImages != null && _wallpaperImages.Checked;
+                _tabs.SelectedTab = images ? _imagesTab : _videosTab;
+            }
             _tabs.Invalidate();
         }
 
@@ -1042,7 +958,7 @@ namespace LiveBackground
                 _videoPane.Controls.Add(Same);
 
                 _status = MakeLabel(_videoPane, "", 12, 40, 576);
-                _status.ForeColor = MutedText;
+                _status.ForeColor = SystemColors.GrayText;
 
                 Label folderLabel = MakeLabel(_videoPane, "Video folder", 12, 70, 200);
                 folderLabel.Font = new Font(_form.Font, FontStyle.Bold);
@@ -1121,7 +1037,7 @@ namespace LiveBackground
 
                 _hint = MakeLabel(_videoPane, "", 12, 348, 572);
                 _hint.Height = 30;
-                _hint.ForeColor = MutedText;
+                _hint.ForeColor = SystemColors.GrayText;
 
                 Images = new ScreenImagesSlot(_form, _number);
                 Panel imagePane = Images.Build();
@@ -1852,7 +1768,7 @@ namespace LiveBackground
             page.Controls.Add(_imageModeSlideshow);
 
             _imageSingleHint = MakeLabel(page, "Pick one image in the list below", 244, 72, 360);
-            _imageSingleHint.ForeColor = MutedText;
+            _imageSingleHint.ForeColor = SystemColors.GrayText;
             _imageSingleHint.Visible = false;
 
             _imageList = new ListView();
@@ -1925,7 +1841,7 @@ namespace LiveBackground
 
             _imageHint = MakeLabel(page, "", 16, 384, 588);
             _imageHint.Height = 46;
-            _imageHint.ForeColor = MutedText;
+            _imageHint.ForeColor = SystemColors.GrayText;
 
             _imageDropPanel = new Panel();
             _imageDropPanel.SetBounds(428, 104, 188, 202);
@@ -1973,7 +1889,7 @@ namespace LiveBackground
             page.Controls.Add(_imageInterval);
 
             _imageIntervalValue = MakeLabel(page, "10 seconds", 382, 52, 120);
-            _imageIntervalValue.ForeColor = MutedText;
+            _imageIntervalValue.ForeColor = SystemColors.GrayText;
 
             // The trackbar grows taller than the 45 px it is given once Windows
             // draws it at 125% (about 56 px); the number row must start below
@@ -2003,7 +1919,7 @@ namespace LiveBackground
             page.Controls.Add(_imageCustomInterval);
 
             _imageSecondsLabel = MakeLabel(page, "seconds (1-86400)", 216, 136, 150);
-            _imageSecondsLabel.ForeColor = MutedText;
+            _imageSecondsLabel.ForeColor = SystemColors.GrayText;
 
             Label fadeLabel = MakeLabel(page, "Crossfade between pictures", 16, 168, 300);
             fadeLabel.Font = new Font(Font, FontStyle.Bold);
@@ -2029,7 +1945,7 @@ namespace LiveBackground
             page.Controls.Add(_imageCrossfadeBar);
 
             _imageCrossfadeValue = MakeLabel(page, "2.0 s", 382, 200, 120);
-            _imageCrossfadeValue.ForeColor = MutedText;
+            _imageCrossfadeValue.ForeColor = SystemColors.GrayText;
 
             _imageCrossfadeMarks = new Label[]
             {
@@ -2056,14 +1972,8 @@ namespace LiveBackground
         {
             _startWithWindows = new CheckBox();
             _startWithWindows.Text = "Start LiveBackground when I sign in";
-            _startWithWindows.SetBounds(16, 18, 330, 24);
+            _startWithWindows.SetBounds(16, 18, 400, 24);
             page.Controls.Add(_startWithWindows);
-
-            _darkMode = new CheckBox();
-            _darkMode.Text = "Dark mode";
-            _darkMode.SetBounds(484, 18, 120, 24);
-            _darkMode.CheckedChanged += delegate { ApplyTheme(_darkMode.Checked); };
-            page.Controls.Add(_darkMode);
 
             GroupBox group = new GroupBox();
             group.Text = "Lock screen";
@@ -2322,9 +2232,9 @@ namespace LiveBackground
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (GraphicsPath path = RoundedRect(bounds, bounds.Height / 2))
-            using (SolidBrush track = new SolidBrush(TrackColor))
-            using (SolidBrush on = new SolidBrush(AccentColor))
-            using (Pen border = new Pen(BorderColor))
+            using (SolidBrush track = new SolidBrush(Color.FromArgb(212, 216, 224)))
+            using (SolidBrush on = new SolidBrush(Color.FromArgb(64, 120, 220)))
+            using (Pen border = new Pen(Color.FromArgb(170, 176, 188)))
             {
                 e.Graphics.FillPath(track, path);
                 e.Graphics.DrawPath(border, path);
@@ -2334,7 +2244,7 @@ namespace LiveBackground
                 int x = images ? bounds.Right - pad - size : bounds.Left + pad;
                 Rectangle thumb = new Rectangle(x, bounds.Top + pad, size, size);
 
-                using (SolidBrush fill = new SolidBrush(images ? on.Color : ThumbColor))
+                using (SolidBrush fill = new SolidBrush(images ? on.Color : Color.FromArgb(245, 246, 248)))
                 {
                     e.Graphics.FillEllipse(fill, thumb);
                 }
@@ -2374,7 +2284,7 @@ namespace LiveBackground
             label.Text = text;
             label.AutoSize = true;
             label.Top = y;
-            label.ForeColor = MutedText;
+            label.ForeColor = SystemColors.GrayText;
             parent.Controls.Add(label);
             return label;
         }
@@ -2500,7 +2410,6 @@ namespace LiveBackground
             UpdateLockControls();
 
             _desktopWallpaper.Checked = _config.DesktopWallpaper;
-            _darkMode.Checked = _config.DarkMode;
             _screensaverActive.Checked = _config.ScreensaverActive;
             _screensaverVideo.Checked = _config.ScreensaverVideo;
             // A hand-edited config with both set is resolved in favour of the
@@ -2525,8 +2434,6 @@ namespace LiveBackground
 
             // The per-screen settings are loaded into the "Multi Monitor"
             // slots when the tab is bound to the connected monitors (OnShown).
-            // Apply the theme last so no binding above can overwrite its colours.
-            ApplyTheme(_config.DarkMode);
         }
 
         private void ApplyFadeStepMode()
@@ -2589,12 +2496,12 @@ namespace LiveBackground
         {
             double max = FadeSeconds;
             _fadeValue.Text = max.ToString("0.0", CultureInfo.InvariantCulture) + " s";
-            _fadeValue.ForeColor = max > 5.0 ? WarnColor : BodyText;
+            _fadeValue.ForeColor = max > 5.0 ? WarnColor : SystemColors.ControlText;
 
             int count = _effectiveDurations.Count;
             if (count == 0)
             {
-                _fadeEffective.ForeColor = MutedText;
+                _fadeEffective.ForeColor = SystemColors.GrayText;
                 _fadeEffective.Text = _modeSingle != null && _modeSingle.Checked
                     ? "No clip selected. Tick a clip in the list."
                     : "No clips selected. Tick the clips you want to play.";
@@ -2633,7 +2540,7 @@ namespace LiveBackground
                 text += " Long fades are capped by the shortest clip.";
             }
 
-            _fadeEffective.ForeColor = max > 5.0 ? WarnColor : BodyText;
+            _fadeEffective.ForeColor = max > 5.0 ? WarnColor : SystemColors.ControlText;
             _fadeEffective.Text = text;
         }
 
@@ -4014,7 +3921,6 @@ namespace LiveBackground
                 : _config.DesktopWallpaperImage;
             updated.ScreensaverActive = _screensaverActive.Checked;
             updated.ScreensaverVideo = _screensaverVideo.Checked;
-            updated.DarkMode = _darkMode.Checked;
 
             // Each connected extra screen keeps its own entry, matched by
             // device name. Both video and image settings are captured so an

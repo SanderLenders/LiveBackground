@@ -100,10 +100,6 @@
 
 ### Settings window
 
-- **The settings window opens in dark mode by default.** A fresh install starts
-  with the "Dark mode" option on the Other tab turned on. Turning it off switches
-  the window back to the light theme and the choice is saved, so it stays the
-  way you set it.
 - **"Single clip" now comes before "All clips in this order"**, and "One image"
   before "Slideshow", so the narrower choice leads on every tab and per-screen
   pane, including the 2nd and 3rd Screen sub-tabs.

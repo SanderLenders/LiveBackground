@@ -313,9 +313,6 @@ from my image wallpapers" on the Other tab and pick a picture from the list.
 That picture is read from the image folder, so it changes if you replace or
 rename the file.
 
-The settings window opens in dark mode by default. You can turn "Dark mode" on
-or off on the Other tab; the choice is saved.
-
 If a custom image is deleted from the library, the app falls back to the first
 frame of the loop for the desktop, and leaves the lock screen unchanged.
 
@@ -388,7 +385,6 @@ Useful fields:
     screensaverActive  let Windows dim/lock the screen (default true)
     screensaverVideo   keep the screen on and hide the shell after the
                        Windows idle timeout (default false)
-    darkMode           show the settings window in dark mode (default true)
     extraScreens       per-monitor settings keyed by device name: video and
                        image mirror switches (both default true), folders,
                        playlists, optional video crossfade, slideshow settings
