@@ -123,6 +123,14 @@
   "Galaxy Image.jpg" is replaced rather than left beside the new one. Pictures
   you added yourself are never touched.
 
+### Bundled videos
+
+- **The bundled "Fokuz Recordings Clip.mp4" is now a smaller re-encode.** The
+  30-second, 30 fps version replaces the 88-second, 60 fps one, so the installer
+  is noticeably smaller. The name the app seeds is unchanged, and a video
+  library you already have is left alone - only a fresh install gets the new
+  file.
+
 ### Icon and installer
 
 - **The app has a new icon.** A monitor mark, with a transparent background,

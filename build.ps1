@@ -304,6 +304,9 @@ $bundledVideos = @(
         (Join-Path $OutDir 'videos\Galaxy HD Clip.mp4')
     ) },
     @{ Target = 'Fokuz Recordings Clip.mp4'; Sources = @(
+        # The smaller re-encode ships now. The older, longer template is kept
+        # only as a fallback for builds made from an older working copy.
+        (Join-Path $root 'dist\videos\Fokuz Recordings Clip.mp4'),
         (Join-Path $root 'dist\videos\Fokuz Recordings Youtube Template 60fps.mp4'),
         (Join-Path $OutDir 'videos\Fokuz Recordings Clip.mp4')
     ) }
