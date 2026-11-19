@@ -2061,7 +2061,7 @@ namespace LiveBackground
 
             _darkMode = new CheckBox();
             _darkMode.Text = "Dark mode";
-            _darkMode.SetBounds(350, 18, 140, 24);
+            _darkMode.SetBounds(484, 18, 120, 24);
             _darkMode.CheckedChanged += delegate { ApplyTheme(_darkMode.Checked); };
             page.Controls.Add(_darkMode);
 
