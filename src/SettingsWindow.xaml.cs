@@ -165,15 +165,31 @@ namespace LiveBackground
         {
             var panel = VideosPanel;
             panel.Children.Clear();
-            panel.Children.Add(Header("Video folder"));
-            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 10) };
+
+            var folderBlock = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            folderBlock.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            folderBlock.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var left = new StackPanel();
+            left.Children.Add(Header("Video folder"));
+            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
             var browse = new Button { Content = "Browse...", MinWidth = 100, Margin = new Thickness(8, 0, 0, 0) };
             DockPanel.SetDock(browse, Dock.Right);
             browse.Click += delegate { BrowseInto(_videoFolderBox); RefreshClipList(); };
-            _videoFolderBox = new TextBox { MinWidth = 420 };
+            _videoFolderBox = new TextBox { MinWidth = 360 };
             row.Children.Add(browse);
             row.Children.Add(_videoFolderBox);
-            panel.Children.Add(row);
+            left.Children.Add(row);
+            Grid.SetColumn(left, 0);
+            folderBlock.Children.Add(left);
+
+            var clipDrop = CreateDropZone("Drag videos here\nor click to choose", AddVideos, BrowseAndAddVideos, false);
+            clipDrop.Margin = new Thickness(12, 0, 0, 0);
+            clipDrop.VerticalAlignment = VerticalAlignment.Stretch;
+            clipDrop.MinWidth = 180;
+            Grid.SetColumn(clipDrop, 1);
+            folderBlock.Children.Add(clipDrop);
+            panel.Children.Add(folderBlock);
 
             var modeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
             _videoModeSingle = new RadioButton { Content = "Single clip", GroupName = "vmode", Margin = new Thickness(0, 0, 16, 0) };
@@ -184,10 +200,7 @@ namespace LiveBackground
             modeRow.Children.Add(_videoModePlaylist);
             panel.Children.Add(modeRow);
 
-            var clipDrop = CreateDropZone("Drag video files here, or click to choose files", AddVideos, BrowseAndAddVideos, false);
-            panel.Children.Add(clipDrop);
-
-            _clipList = new ListView { Height = 260, Margin = new Thickness(0, 0, 0, 8) };
+            _clipList = new ListView { Height = 300, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
             gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
             gv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 320, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
@@ -202,7 +215,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_videoFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _clipHint = Muted("Drag videos into the box above, or add files to the folder and refresh. Tick clips to include them in the playlist.");
+            _clipHint = Muted("Drag videos into the box beside the folder, or add files to the folder and refresh. Tick clips to include them in the playlist.");
             panel.Children.Add(_clipHint);
         }
 
@@ -240,23 +253,36 @@ namespace LiveBackground
         private void BuildImagesTab()
         {
             var panel = ImagesPanel; panel.Children.Clear();
-            panel.Children.Add(Header("Image folder"));
-            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 10) };
+
+            var folderBlock = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            folderBlock.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            folderBlock.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var left = new StackPanel();
+            left.Children.Add(Header("Image folder"));
+            var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
             var browse = new Button { Content = "Browse...", MinWidth = 100, Margin = new Thickness(8, 0, 0, 0) };
             DockPanel.SetDock(browse, Dock.Right);
             browse.Click += delegate { BrowseInto(_imageFolderBox); RefreshImageList(); RefreshLockImageChoices(); };
-            _imageFolderBox = new TextBox { MinWidth = 420 };
-            row.Children.Add(browse); row.Children.Add(_imageFolderBox); panel.Children.Add(row);
+            _imageFolderBox = new TextBox { MinWidth = 360 };
+            row.Children.Add(browse); row.Children.Add(_imageFolderBox); left.Children.Add(row);
+            Grid.SetColumn(left, 0);
+            folderBlock.Children.Add(left);
+
+            var imageDrop = CreateDropZone("Drag images here\nor click to choose", AddImages, BrowseAndAddImages, true);
+            imageDrop.Margin = new Thickness(12, 0, 0, 0);
+            imageDrop.VerticalAlignment = VerticalAlignment.Stretch;
+            imageDrop.MinWidth = 180;
+            Grid.SetColumn(imageDrop, 1);
+            folderBlock.Children.Add(imageDrop);
+            panel.Children.Add(folderBlock);
 
             var modeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
             _imageModeSingle = new RadioButton { Content = "One image", GroupName = "imode", Margin = new Thickness(0, 0, 16, 0) };
             _imageModeSlideshow = new RadioButton { Content = "Slideshow", GroupName = "imode" };
             modeRow.Children.Add(_imageModeSingle); modeRow.Children.Add(_imageModeSlideshow); panel.Children.Add(modeRow);
 
-            var imageDrop = CreateDropZone("Drag image files here, or click to choose files", AddImages, BrowseAndAddImages, true);
-            panel.Children.Add(imageDrop);
-
-            _imageList = new ListView { Height = 280, Margin = new Thickness(0, 0, 0, 8) };
+            _imageList = new ListView { Height = 300, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
             gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
             gv.Columns.Add(new GridViewColumn { Header = "Image", Width = 420, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
@@ -270,7 +296,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); RefreshLockImageChoices(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_imageFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _imageHint = Muted("Drag images into the box above, or add pictures to the folder and refresh. Tick images to include them.");
+            _imageHint = Muted("Drag images into the box beside the folder, or add pictures to the folder and refresh. Tick images to include them.");
             panel.Children.Add(_imageHint);
         }
 
@@ -994,11 +1020,13 @@ namespace LiveBackground
                 BorderBrush = new SolidColorBrush(Color.FromRgb(107, 119, 133)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
-                MinHeight = 84,
-                Margin = new Thickness(0, 0, 0, 8),
+                MinHeight = 56,
+                MinWidth = 170,
+                Padding = new Thickness(6),
                 Child = label,
                 AllowDrop = true,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                SnapsToDevicePixels = true
             };
             border.MouseLeftButtonUp += delegate { try { onClick(); } catch { } };
             border.DragOver += delegate(object sender, DragEventArgs e)
