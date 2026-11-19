@@ -198,7 +198,11 @@ $frameworkReferenceNames = @(
     'System.Runtime.Serialization.dll',
     'System.Xml.dll',
     'System.Drawing.dll',
-    'System.Windows.Forms.dll'
+    'System.Windows.Forms.dll',
+    'System.Xaml.dll',
+    'WindowsBase.dll',
+    'PresentationCore.dll',
+    'PresentationFramework.dll'
 )
 if ($roslynCsc) {
     $referenceArgs = $frameworkReferenceNames | ForEach-Object { "/r:" + (Join-Path $frameworkDir $_) }
@@ -224,21 +228,58 @@ function Compile-Exe([string]$target, [string]$entryPoint, [string]$outFile) {
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-if ($roslynCsc) {
-    Write-Host ("  compiler: Roslyn (C# 7.3) via " + $dotnet)
-} elseif ($FrameworkCsc) {
-    Write-Host '  compiler: .NET Framework csc (C# 5), forced by -FrameworkCsc.'
-} else {
-    Write-Warning 'The .NET SDK was not found; compiling with the .NET Framework csc (C# 5).'
-}
-
-Write-Step "Compiling LiveBackground.exe"
 $appExe = Join-Path $OutDir 'LiveBackground.exe'
-Compile-Exe 'winexe' 'LiveBackground.Program' $appExe
-
-Write-Step "Compiling LiveBackgroundCli.exe"
 $cliExe = Join-Path $OutDir 'LiveBackgroundCli.exe'
-Compile-Exe 'exe' 'LiveBackground.SetupProgram' $cliExe
+$dotnetExe = $dotnet
+if (-not $dotnetExe) { $dotnetExe = Find-Dotnet }
+$projectPath = Join-Path $root 'src\LiveBackground.csproj'
+
+if ($dotnetExe -and (Test-Path $projectPath)) {
+    Write-Host ("  compiler: dotnet build (MSBuild, net48) via " + $dotnetExe)
+
+    function Invoke-DotnetBuildExe([string]$name, [string]$outputType, [string]$assemblyName, [string]$startupObject, [string]$destExe) {
+        $buildOut = Join-Path $OutDir (".build_" + $name)
+        if (Test-Path $buildOut) { Remove-Item $buildOut -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $buildOut | Out-Null
+        $args = @(
+            'build', $projectPath,
+            '-c', 'Release',
+            '-nologo',
+            '-o', $buildOut,
+            "-p:IntermediateOutputPath=$buildOut\obj\",
+            "-p:OutputType=$outputType",
+            "-p:AssemblyName=$assemblyName",
+            "-p:StartupObject=$startupObject"
+        )
+        & $dotnetExe @args
+        if ($LASTEXITCODE -ne 0) { throw "Compilation failed for $name (exit $LASTEXITCODE)." }
+        $built = Join-Path $buildOut ($assemblyName + '.exe')
+        if (-not (Test-Path $built)) { throw "Build output not found: $built" }
+        Copy-Item -LiteralPath $built -Destination $destExe -Force
+        Remove-Item $buildOut -Recurse -Force
+    }
+
+    Write-Step "Compiling LiveBackground.exe"
+    Invoke-DotnetBuildExe 'gui' 'WinExe' 'LiveBackground' 'LiveBackground.Program' $appExe
+
+    Write-Step "Compiling LiveBackgroundCli.exe"
+    Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe
+}
+else {
+    if ($roslynCsc) {
+        Write-Host ("  compiler: Roslyn (C# 7.3) via " + $dotnet)
+    } elseif ($FrameworkCsc) {
+        Write-Host '  compiler: .NET Framework csc (C# 5), forced by -FrameworkCsc.'
+    } else {
+        Write-Warning 'The .NET SDK was not found; compiling with the .NET Framework csc (C# 5).'
+    }
+
+    Write-Step "Compiling LiveBackground.exe"
+    Compile-Exe 'winexe' 'LiveBackground.Program' $appExe
+
+    Write-Step "Compiling LiveBackgroundCli.exe"
+    Compile-Exe 'exe' 'LiveBackground.SetupProgram' $cliExe
+}
 
 if ($CompileOnly) {
     Write-Step 'Done (compile only)'
