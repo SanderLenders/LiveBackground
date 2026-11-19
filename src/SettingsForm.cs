@@ -2056,12 +2056,12 @@ namespace LiveBackground
         {
             _startWithWindows = new CheckBox();
             _startWithWindows.Text = "Start LiveBackground when I sign in";
-            _startWithWindows.SetBounds(16, 18, 400, 24);
+            _startWithWindows.SetBounds(16, 18, 330, 24);
             page.Controls.Add(_startWithWindows);
 
             _darkMode = new CheckBox();
             _darkMode.Text = "Dark mode";
-            _darkMode.SetBounds(16, 44, 400, 24);
+            _darkMode.SetBounds(350, 18, 140, 24);
             _darkMode.CheckedChanged += delegate { ApplyTheme(_darkMode.Checked); };
             page.Controls.Add(_darkMode);
 
