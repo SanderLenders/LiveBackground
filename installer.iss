@@ -1,4 +1,4 @@
-; LiveBackground installer (Inno Setup 6).
+﻿; LiveBackground installer (Inno Setup 6).
 ; Build with build.ps1, or directly:
 ;   ISCC.exe /DSourceDir=dist /DOutputDir=dist\installer installer.iss
 
@@ -25,7 +25,11 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+UninstallDisplayName={#MyAppName}
 VersionInfoVersion=1.8.6.0
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} installer
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
@@ -38,6 +42,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 ; A flatter, Windows 11-leaning wizard presentation (Inno Setup 6.4+).
 WizardStyle=modern dynamic
+WizardSizePercent=120
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible
@@ -130,3 +135,4 @@ begin
     Exec(Cli, 'stop', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
+

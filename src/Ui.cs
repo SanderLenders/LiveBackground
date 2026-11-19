@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -17,7 +17,8 @@ namespace LiveBackground
         private NotifyIcon _icon;
         private ContextMenuStrip _menu;
         private ToolStripMenuItem _pauseItem;
-        private SettingsForm _form;
+        private readonly object _settingsSync = new object();
+        private System.Windows.Threading.Dispatcher _settingsDispatcher;
         private BuildProgressForm _progress;
         private bool _closed;
 
@@ -95,17 +96,73 @@ namespace LiveBackground
             Post(delegate
             {
                 if (_closed) return;
-                if (_form != null && !_form.IsDisposed)
+                lock (_settingsSync)
                 {
-                    if (_form.WindowState == FormWindowState.Minimized)
-                        _form.WindowState = FormWindowState.Normal;
-                    _form.Activate();
-                    return;
+                    if (_settingsDispatcher != null)
+                    {
+                        try
+                        {
+                            _settingsDispatcher.BeginInvoke(new Action(delegate
+                            {
+                                try
+                                {
+                                    if (System.Windows.Application.Current != null)
+                                    {
+                                        foreach (System.Windows.Window w in System.Windows.Application.Current.Windows)
+                                        {
+                                            if (w is SettingsWindow sw)
+                                            {
+                                                if (sw.WindowState == System.Windows.WindowState.Minimized)
+                                                    sw.WindowState = System.Windows.WindowState.Normal;
+                                                sw.Activate();
+                                                sw.Topmost = true;
+                                                sw.Topmost = false;
+                                                sw.Focus();
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }));
+                            return;
+                        }
+                        catch
+                        {
+                            _settingsDispatcher = null;
+                        }
+                    }
+
+                    Thread thread = new Thread(delegate()
+                    {
+                        try
+                        {
+                            if (System.Windows.Application.Current == null)
+                            {
+                                new SettingsApp { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+                            }
+                            SettingsWindow window = new SettingsWindow(_appRoot);
+                            window.Closed += delegate
+                            {
+                                lock (_settingsSync) { _settingsDispatcher = null; }
+                                try { System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); } catch { }
+                            };
+                            lock (_settingsSync) { _settingsDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher; }
+                            window.Show();
+                            window.Activate();
+                            System.Windows.Threading.Dispatcher.Run();
+                        }
+                        catch (Exception ex)
+                        {
+                            try { Log.Warn("could not open settings window: " + ex.Message); } catch { }
+                            lock (_settingsSync) { _settingsDispatcher = null; }
+                        }
+                    });
+                    thread.IsBackground = true;
+                    thread.SetApartmentState(ApartmentState.STA);
+                    thread.Name = "livebackground-settings";
+                    thread.Start();
                 }
-                _form = new SettingsForm(_appRoot);
-                _form.FormClosed += delegate { _form = null; };
-                _form.Show();
-                _form.Activate();
             });
         }
 
@@ -163,7 +220,32 @@ namespace LiveBackground
         {
             if (_closed) return;
             _closed = true;
-            if (_form != null && !_form.IsDisposed) _form.Close();
+            lock (_settingsSync)
+            {
+                try
+                {
+                    if (_settingsDispatcher != null)
+                    {
+                        _settingsDispatcher.BeginInvoke(new Action(delegate
+                        {
+                            try
+                            {
+                                if (System.Windows.Application.Current != null)
+                                {
+                                                                            var windows = new System.Collections.Generic.List<System.Windows.Window>();
+                                        foreach (System.Windows.Window w in System.Windows.Application.Current.Windows) windows.Add(w);
+                                        foreach (System.Windows.Window w in windows)
+                                    {
+                                        try { w.Close(); } catch { }
+                                    }
+                                }
+                            }
+                            catch { }
+                        }));
+                    }
+                }
+                catch { }
+            }
             if (_progress != null && !_progress.IsDisposed)
             {
                 _progress.Hide();
@@ -444,3 +526,6 @@ namespace LiveBackground
         }
     }
 }
+
+
+

@@ -1,6 +1,9 @@
-# LiveBackground change list
+﻿# LiveBackground change list
 
 ## 1.8.6
+- Modernized the settings window with a Windows 11-style WPF interface (grey/black theme, top-tab layout) on .NET Framework 4.8 while keeping existing settings behavior and instant-startup philosophy intact.
+- Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
+- Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48) when available, with framework compiler fallback preserved.
 
 ### Housekeeping and display scaling
 
@@ -107,7 +110,7 @@
   the per-screen tabs; the clip list sits right under the choice.
 - **The per-screen mirror switch now names what it mirrors.** On the Multi
   Monitor tab it reads "Use the same image as the main screen", or "Use the
-  same images…" while the main screen is a slideshow, matching the Videos side.
+  same imagesâ€¦" while the main screen is a slideshow, matching the Videos side.
 - **A new slideshow starts at 10 seconds per picture**, with the 2-second
   picture crossfade it already had. The video crossfade on the Playback tab is
   unchanged at 3 seconds. Only a fresh install (or a screen with no saved
@@ -194,7 +197,7 @@
 
 - **A killed app can no longer leave a video painting over the desktop.** The
   wallpaper puts its video player in a Windows job object that the system cleans
-  up when the app exits — even after a crash, a Task Manager kill or a power
+  up when the app exits â€” even after a crash, a Task Manager kill or a power
   loss. It also sweeps away any stray player left by an earlier run as it starts.
 - **Rendering no longer risks overflowing the Windows command line.** The filter
   graph for a loop is passed in a file instead of inline, so a folder with many
@@ -209,7 +212,7 @@
 ### Reliability and safety pass (stage 3)
 
 - **Saving the settings no longer freezes the window.** The work that follows a
-  save — scanning the video folder and bringing the image layers up — can take a
+  save â€” scanning the video folder and bringing the image layers up â€” can take a
   few seconds, so it now runs on its own thread and the settings window closes
   at once. If you save again while that work is still running, the newest
   settings replace the pending ones instead of queueing up.
@@ -367,7 +370,7 @@
   has 2nd Screen and 3rd Screen sub-tabs. They are greyed out while that screen
   mirrors the main loop, is disconnected, or Windows is duplicating. Existing
   screens keep inheriting the main fade until their own fade is saved.
-- **Desktop fallback images can be set per independent video screen.** Other →
+- **Desktop fallback images can be set per independent video screen.** Other â†’
   Desktop wallpaper image now has Main Screen, 2nd Screen and 3rd Screen tabs.
   A screen can use the first frame of its own loop or a custom image while its
   video is paused, stopped or still being built. Mirroring screens continue to
@@ -565,7 +568,7 @@
   logon task.
 - **A UTF-8 BOM no longer breaks config.json.** A config saved or
   touched by an editor or script that adds a BOM loaded as defaults
-  ("unexpected character ï" in the log); the reader now skips the BOM.
+  ("unexpected character Ã¯" in the log); the reader now skips the BOM.
 - **Saving config.json is now atomic** (write to a temporary file,
   then swap it in), so a crash or power cut mid-save cannot leave a
   truncated file that would load as defaults.
@@ -695,3 +698,4 @@ New fields: `wallpaperMode`, `imageFolder`, `imageMode`, `imageSingle`,
 ## 1.3.0
 
 - Playlist checkboxes, custom order and one-clip radio behaviour.
+
