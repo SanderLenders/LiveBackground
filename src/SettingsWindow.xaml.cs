@@ -12,6 +12,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
 
 namespace LiveBackground
 {
@@ -938,6 +939,265 @@ namespace LiveBackground
             return fullPath;
         }
 
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            TryApplyDarkTitleBar();
+        }
+
+        private void TryApplyDarkTitleBar()
+        {
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
+                int useDark = 1;
+                // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 19041+/Win11), 19 for older builds
+                DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
+                DwmSetWindowAttribute(hwnd, 19, ref useDark, sizeof(int));
+                // 35 = DWMWA_CAPTION_COLOR, 36 = DWMWA_TEXT_COLOR (Win11)
+                int caption = ColorToBgr(Color.FromRgb(30, 34, 40)); // #1E2228
+                int text = ColorToBgr(Color.FromRgb(232, 237, 242));
+                DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
+                DwmSetWindowAttribute(hwnd, 36, ref text, sizeof(int));
+            }
+            catch { }
+        }
+
+        private static int ColorToBgr(Color c) { return c.R | (c.G << 8) | (c.B << 16); }
+
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll", PreserveSig = true)]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private static Border CreateDropZone(string text, Action<string[]> onDropFiles, Action onClick, bool forImages)
+        {
+            var label = new TextBlock
+            {
+                Text = text,
+                TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(170, 180, 191)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(8)
+            };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(47, 54, 64)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(107, 119, 133)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                MinHeight = 84,
+                Margin = new Thickness(0, 0, 0, 8),
+                Child = label,
+                AllowDrop = true,
+                Cursor = Cursors.Hand
+            };
+            border.MouseLeftButtonUp += delegate { try { onClick(); } catch { } };
+            border.DragOver += delegate(object sender, DragEventArgs e)
+            {
+                try
+                {
+                    bool ok = HasDroppedMedia(e.Data, forImages);
+                    e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+                    e.Handled = true;
+                    border.Background = new SolidColorBrush(ok ? Color.FromRgb(58, 69, 82) : Color.FromRgb(47, 54, 64));
+                }
+                catch { }
+            };
+            border.DragLeave += delegate { border.Background = new SolidColorBrush(Color.FromRgb(47, 54, 64)); };
+            border.Drop += delegate(object sender, DragEventArgs e)
+            {
+                try
+                {
+                    border.Background = new SolidColorBrush(Color.FromRgb(47, 54, 64));
+                    var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                    if (files != null) onDropFiles(files);
+                }
+                catch { }
+            };
+            return border;
+        }
+
+        private static bool HasDroppedMedia(IDataObject data, bool forImages)
+        {
+            if (data == null || !data.GetDataPresent(DataFormats.FileDrop)) return false;
+            var files = data.GetData(DataFormats.FileDrop) as string[];
+            if (files == null) return false;
+            foreach (string file in files)
+            {
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        if (forImages ? MediaPipeline.IsImage(file) : MediaPipeline.IsVideo(file)) return true;
+                    }
+                    else if (Directory.Exists(file))
+                    {
+                        if (forImages ? MediaPipeline.ScanImages(file).Count > 0 : MediaPipeline.ScanVideos(file).Count > 0) return true;
+                    }
+                }
+                catch { }
+            }
+            return false;
+        }
+
+        private void BrowseAndAddVideos()
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog();
+                dlg.Title = "Choose wallpaper videos";
+                dlg.Filter = "Video files|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.m4v;*.wmv;*.mpg;*.mpeg;*.ts;*.m2ts;*.flv;*.ogv;*.3gp|All files|*.*";
+                dlg.Multiselect = true;
+                dlg.CheckFileExists = true;
+                if (dlg.ShowDialog(this) == true) AddVideos(dlg.FileNames);
+            }
+            catch { }
+        }
+
+        private void BrowseAndAddImages()
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog();
+                dlg.Title = "Choose images";
+                dlg.Filter = "Image files|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp|All files|*.*";
+                dlg.Multiselect = true;
+                dlg.CheckFileExists = true;
+                if (dlg.ShowDialog(this) == true) AddImages(dlg.FileNames);
+            }
+            catch { }
+        }
+
+        private static string UniquePath(string folder, string fileName)
+        {
+            string target = System.IO.Path.Combine(folder, fileName);
+            if (!File.Exists(target)) return target;
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+            string extension = System.IO.Path.GetExtension(fileName);
+            for (int i = 2; i < 10000; i++)
+            {
+                target = System.IO.Path.Combine(folder, baseName + " (" + i + ")" + extension);
+                if (!File.Exists(target)) return target;
+            }
+            return System.IO.Path.Combine(folder, baseName + " (" + DateTime.Now.Ticks + ")" + extension);
+        }
+
+        private void AddVideos(string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return;
+            string folder = Resolve(_videoFolderBox.Text);
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not create the video folder: " + ex.Message, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // Preserve current UI order/enabled state
+            _config.Playlist = GetClipItems().Select(c => new PlaylistEntry(c.Name, c.Enabled)).ToList();
+
+            var sources = new List<string>();
+            foreach (string path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path) && MediaPipeline.IsVideo(path)) sources.Add(path);
+                    else if (Directory.Exists(path)) sources.AddRange(MediaPipeline.ScanVideos(path));
+                }
+                catch { }
+            }
+            if (sources.Count == 0)
+            {
+                if (_clipHint != null) _clipHint.Text = "No supported video files were found in what you dropped.";
+                return;
+            }
+
+            int copied = 0; int skipped = 0; string firstError = "";
+            foreach (string source in sources)
+            {
+                try
+                {
+                    string sourceFull = System.IO.Path.GetFullPath(source);
+                    if (string.Equals(System.IO.Path.GetDirectoryName(sourceFull), folder, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }
+                    string target = UniquePath(folder, System.IO.Path.GetFileName(sourceFull));
+                    File.Copy(sourceFull, target, false);
+                    copied++;
+                }
+                catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
+            }
+            RefreshClipList();
+            string message;
+            if (copied == 0 && skipped > 0) message = "Those videos are already in this folder.";
+            else if (copied == 0) message = "Could not add the videos." + (firstError.Length > 0 ? " " + firstError : "");
+            else
+            {
+                message = "Added " + copied + " video(s) to " + folder + ". They are in the list but not ticked yet, so they will not play until you tick them.";
+                if (skipped > 0) message += " " + skipped + " already in the folder.";
+                if (firstError.Length > 0) message += " One file failed: " + firstError;
+                try { Ui.Notify("LiveBackground", "Added " + copied + " video(s). Tick them in the playlist to play them."); } catch { }
+            }
+            if (_clipHint != null) _clipHint.Text = message;
+        }
+
+        private void AddImages(string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return;
+            string folder = Resolve(_imageFolderBox.Text);
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not create the image folder: " + ex.Message, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _config.ImagePlaylist = GetImageItems().Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList();
+
+            var sources = new List<string>();
+            foreach (string path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path) && MediaPipeline.IsImage(path)) sources.Add(path);
+                    else if (Directory.Exists(path)) sources.AddRange(MediaPipeline.ScanImages(path));
+                }
+                catch { }
+            }
+            if (sources.Count == 0)
+            {
+                if (_imageHint != null) _imageHint.Text = "No supported image files were found in what you dropped.";
+                return;
+            }
+
+            int copied = 0; int skipped = 0; string firstError = "";
+            foreach (string source in sources)
+            {
+                try
+                {
+                    string sourceFull = System.IO.Path.GetFullPath(source);
+                    if (string.Equals(System.IO.Path.GetDirectoryName(sourceFull), folder, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }
+                    string target = UniquePath(folder, System.IO.Path.GetFileName(sourceFull));
+                    File.Copy(sourceFull, target, false);
+                    copied++;
+                }
+                catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
+            }
+            RefreshImageList();
+            RefreshLockImageChoices();
+            string message;
+            if (copied == 0 && skipped > 0) message = "Those images are already in this folder.";
+            else if (copied == 0) message = "Could not add the images." + (firstError.Length > 0 ? " " + firstError : "");
+            else
+            {
+                message = "Added " + copied + " image(s) to " + folder + ".";
+                if (skipped > 0) message += " " + skipped + " already in the folder.";
+                if (firstError.Length > 0) message += " One file failed: " + firstError;
+                try { Ui.Notify("LiveBackground", "Added " + copied + " image(s)."); } catch { }
+            }
+            if (_imageHint != null) _imageHint.Text = message;
+        }
         private sealed class MonitorSlotUi
         {
             private readonly SettingsWindow _owner;
@@ -1063,6 +1323,9 @@ namespace LiveBackground
         }
     }
 }
+
+
+
 
 
 
