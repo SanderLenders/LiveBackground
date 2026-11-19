@@ -184,10 +184,13 @@ namespace LiveBackground
             modeRow.Children.Add(_videoModePlaylist);
             panel.Children.Add(modeRow);
 
-            _clipList = new ListView { Height = 280, Margin = new Thickness(0, 0, 0, 8) };
+            var clipDrop = CreateDropZone("Drag video files here, or click to choose files", AddVideos, BrowseAndAddVideos, false);
+            panel.Children.Add(clipDrop);
+
+            _clipList = new ListView { Height = 260, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
             gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
-            gv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 280, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
+            gv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 320, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
             gv.Columns.Add(new GridViewColumn { Header = "Length", Width = 90, DisplayMemberBinding = new System.Windows.Data.Binding("Length") });
             _clipList.View = gv;
             panel.Children.Add(_clipList);
@@ -199,7 +202,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_videoFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _clipHint = Muted("Add video files to the folder, then refresh. Tick clips to include them in the playlist.");
+            _clipHint = Muted("Drag videos into the box above, or add files to the folder and refresh. Tick clips to include them in the playlist.");
             panel.Children.Add(_clipHint);
         }
 
@@ -250,10 +253,13 @@ namespace LiveBackground
             _imageModeSlideshow = new RadioButton { Content = "Slideshow", GroupName = "imode" };
             modeRow.Children.Add(_imageModeSingle); modeRow.Children.Add(_imageModeSlideshow); panel.Children.Add(modeRow);
 
-            _imageList = new ListView { Height = 300, Margin = new Thickness(0, 0, 0, 8) };
+            var imageDrop = CreateDropZone("Drag image files here, or click to choose files", AddImages, BrowseAndAddImages, true);
+            panel.Children.Add(imageDrop);
+
+            _imageList = new ListView { Height = 280, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
             gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
-            gv.Columns.Add(new GridViewColumn { Header = "Image", Width = 380, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
+            gv.Columns.Add(new GridViewColumn { Header = "Image", Width = 420, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
             _imageList.View = gv;
             panel.Children.Add(_imageList);
 
@@ -264,7 +270,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); RefreshLockImageChoices(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_imageFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _imageHint = Muted("Add pictures to the folder, then refresh. Tick images to include them.");
+            _imageHint = Muted("Drag images into the box above, or add pictures to the folder and refresh. Tick images to include them.");
             panel.Children.Add(_imageHint);
         }
 
