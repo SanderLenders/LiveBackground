@@ -202,7 +202,7 @@ namespace LiveBackground
 
             _clipList = new ListView { Height = 300, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
-            gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
+            gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = ClipCheckCellTemplate() });
             gv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 320, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
             gv.Columns.Add(new GridViewColumn { Header = "Length", Width = 90, DisplayMemberBinding = new System.Windows.Data.Binding("Length") });
             _clipList.View = gv;
@@ -279,11 +279,13 @@ namespace LiveBackground
             var modeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
             _imageModeSingle = new RadioButton { Content = "One image", GroupName = "imode", Margin = new Thickness(0, 0, 16, 0) };
             _imageModeSlideshow = new RadioButton { Content = "Slideshow", GroupName = "imode" };
+            _imageModeSingle.Checked += delegate { UpdateImageListMode(); };
+            _imageModeSlideshow.Checked += delegate { UpdateImageListMode(); };
             modeRow.Children.Add(_imageModeSingle); modeRow.Children.Add(_imageModeSlideshow); panel.Children.Add(modeRow);
 
             _imageList = new ListView { Height = 300, Margin = new Thickness(0, 0, 0, 8) };
             var gv = new GridView();
-            gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = CheckCellTemplate("Enabled") });
+            gv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = ImageCheckCellTemplate() });
             gv.Columns.Add(new GridViewColumn { Header = "Image", Width = 420, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
             _imageList.View = gv;
             panel.Children.Add(_imageList);
@@ -440,12 +442,64 @@ namespace LiveBackground
         private static TextBlock Muted(string text) { return new TextBlock { Text = text, Foreground = new SolidColorBrush(Color.FromRgb(167, 176, 188)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) }; }
         private static Button ActionButton(string text, Action action) { var b = new Button { Content = text, Margin = new Thickness(0, 0, 8, 8), MinWidth = 90 }; b.Click += delegate { action(); }; return b; }
 
-        private static DataTemplate CheckCellTemplate(string bindingPath)
+        private DataTemplate ClipCheckCellTemplate()
         {
             var fef = new FrameworkElementFactory(typeof(CheckBox));
-            fef.SetBinding(ToggleButton.IsCheckedProperty, new System.Windows.Data.Binding(bindingPath) { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+            fef.SetBinding(ToggleButton.IsCheckedProperty, new System.Windows.Data.Binding("Enabled") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
             fef.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            fef.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(ClipCheckBox_Checked));
             return new DataTemplate { VisualTree = fef };
+        }
+
+        private DataTemplate ImageCheckCellTemplate()
+        {
+            var fef = new FrameworkElementFactory(typeof(CheckBox));
+            fef.SetBinding(ToggleButton.IsCheckedProperty, new System.Windows.Data.Binding("Enabled") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+            fef.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            fef.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(ImageCheckBox_Checked));
+            return new DataTemplate { VisualTree = fef };
+        }
+
+        private void ClipCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_videoModeSingle == null || _videoModeSingle.IsChecked != true) return;
+            var cb = sender as System.Windows.Controls.CheckBox;
+            var current = cb != null ? cb.DataContext as ClipItem : null;
+            if (current == null) return;
+            var items = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
+            if (items == null) return;
+            bool changed = false;
+            foreach (var item in items)
+            {
+                bool should = object.ReferenceEquals(item, current);
+                if (item.Enabled != should) { item.Enabled = should; changed = true; }
+            }
+            if (changed && _clipList != null)
+            {
+                var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
+                if (view != null) view.Refresh();
+            }
+        }
+
+        private void ImageCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_imageModeSingle == null || _imageModeSingle.IsChecked != true) return;
+            var cb = sender as System.Windows.Controls.CheckBox;
+            var current = cb != null ? cb.DataContext as ImageItem : null;
+            if (current == null) return;
+            var items = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
+            if (items == null) return;
+            bool changed = false;
+            foreach (var item in items)
+            {
+                bool should = object.ReferenceEquals(item, current);
+                if (item.Enabled != should) { item.Enabled = should; changed = true; }
+            }
+            if (changed && _imageList != null)
+            {
+                var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
+                if (view != null) view.Refresh();
+            }
         }
 
         private static void AddLabeledCombo(Grid grid, int row, string label, out ComboBox combo)
@@ -689,6 +743,7 @@ namespace LiveBackground
             }
             catch { }
             _imageList.ItemsSource = items;
+            UpdateImageListMode();
         }
 
         private void RefreshLockImageChoices()
@@ -712,7 +767,36 @@ namespace LiveBackground
             if (_lockImageCombo.Items.Count > 0 && _lockImageCombo.SelectedIndex < 0) _lockImageCombo.SelectedIndex = 0;
         }
 
-        private void UpdateClipListMode() { _ = _clipList; }
+        private void UpdateClipListMode()
+        {
+            if (_videoModeSingle == null || _videoModeSingle.IsChecked != true) return;
+            var items = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
+            if (items == null) return;
+            var checkedItems = items.Where(i => i.Enabled).ToList();
+            if (checkedItems.Count <= 1) return;
+            ClipItem keep = null;
+            var selected = _clipList.SelectedItem as ClipItem;
+            if (selected != null && selected.Enabled) keep = selected;
+            if (keep == null) keep = checkedItems[0];
+            foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
+            if (view != null) view.Refresh();
+        }
+        private void UpdateImageListMode()
+        {
+            if (_imageModeSingle == null || _imageModeSingle.IsChecked != true) return;
+            var items = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
+            if (items == null) return;
+            var checkedItems = items.Where(i => i.Enabled).ToList();
+            if (checkedItems.Count <= 1) return;
+            ImageItem keep = null;
+            var selected = _imageList.SelectedItem as ImageItem;
+            if (selected != null && selected.Enabled) keep = selected;
+            if (keep == null) keep = checkedItems[0];
+            foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
+            if (view != null) view.Refresh();
+        }
 
         private static void MoveSelected(ListView list, int delta)
         {
@@ -1604,6 +1688,8 @@ namespace LiveBackground
         }
     }
 }
+
+
 
 
 
