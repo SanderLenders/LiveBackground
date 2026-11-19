@@ -98,7 +98,9 @@ namespace LiveBackground
                 "--wid={0} --loop-file=inf --no-config --load-scripts=no --media-controls=no --no-audio " +
                 "--no-osc --no-osd-bar --no-input-default-bindings --no-border --hwdec=auto --panscan=1.0 " +
                 "--force-window=yes --terminal=no --no-resume-playback --sub-auto=no --audio-file-auto=no " +
-                "--stop-screensaver=" + (config.ScreensaverActive ? "no" : "yes") +
+                // "Video background" and "off" both keep the display awake;
+                // only Dim and Lock lets Windows dim, switch off and lock.
+                "--stop-screensaver=" + (config.ScreensaverActive && !config.ScreensaverVideo ? "no" : "yes") +
                 " --cache=no --priority=abovenormal " +
                 "--demuxer-lavf-analyzeduration=0 --demuxer-lavf-probesize=32768 " +
                 "--log-file={1} {2}{3}",

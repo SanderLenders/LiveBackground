@@ -59,6 +59,7 @@ namespace LiveBackground
         private ComboBox _lockImageCombo;
         private CheckBox _desktopWallpaper;
         private CheckBox _screensaverActive;
+        private CheckBox _screensaverVideo;
         private GroupBox _desktopGroup;
         private RadioButton _desktopFrame;
         private RadioButton _desktopCustom;
@@ -1679,19 +1680,55 @@ namespace LiveBackground
             page.Controls.Add(_quality);
 
             _screensaverActive = new CheckBox();
-            _screensaverActive.Text = "Screensaver active (let Windows dim and lock the screen)";
-            _screensaverActive.SetBounds(16, 420, 588, 24);
+            _screensaverActive.Text = "Screensaver Dim and Lock";
+            _screensaverActive.SetBounds(16, 420, 310, 24);
+            _screensaverActive.CheckedChanged += ScreensaverChoiceChanged;
             page.Controls.Add(_screensaverActive);
 
-            Label screenHint = MakeLabel(page,
-                "On (recommended): Windows dims, turns off and locks the screen according to " +
-                "your power settings, even while the video plays. Off: the video keeps the " +
-                "screen awake.",
-                16, 448, 588);
-            screenHint.Height = 36;
-            screenHint.ForeColor = SystemColors.GrayText;
+            _screensaverVideo = new CheckBox();
+            _screensaverVideo.Text = "Screensaver Video Background";
+            _screensaverVideo.SetBounds(16, 448, 310, 24);
+            _screensaverVideo.CheckedChanged += ScreensaverChoiceChanged;
+            page.Controls.Add(_screensaverVideo);
+
+            // The Windows screen-saver page is where the idle timeout for the
+            // video option is configured, so put a shortcut right here.
+            Button screensaverButton = new Button();
+            screensaverButton.Text = "Screensaver settings...";
+            screensaverButton.SetBounds(340, 433, 190, 27);
+            screensaverButton.Click += delegate { OpenScreensaverSettings(); };
+            page.Controls.Add(screensaverButton);
 
             BuildScreenFadeTabs(page);
+        }
+
+        // The two screensaver choices are mutually exclusive: one lets Windows
+        // dim and lock, the other keeps the screen on and shows only the video.
+        // Setting the other one to false raises its event again with itself as
+        // the sender, which stops the chain here.
+        private void ScreensaverChoiceChanged(object sender, EventArgs e)
+        {
+            if (_screensaverActive == null || _screensaverVideo == null) return;
+            if (sender == _screensaverActive && _screensaverActive.Checked)
+            {
+                _screensaverVideo.Checked = false;
+            }
+            else if (sender == _screensaverVideo && _screensaverVideo.Checked)
+            {
+                _screensaverActive.Checked = false;
+            }
+        }
+
+        private static void OpenScreensaverSettings()
+        {
+            try
+            {
+                Process.Start("control.exe", "desk.cpl,,@screensaver");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("could not open the Windows screen-saver settings: " + ex.Message);
+            }
         }
 
         private void BuildImagesTab(TabPage page)
@@ -2366,6 +2403,10 @@ namespace LiveBackground
 
             _desktopWallpaper.Checked = _config.DesktopWallpaper;
             _screensaverActive.Checked = _config.ScreensaverActive;
+            _screensaverVideo.Checked = _config.ScreensaverVideo;
+            // A hand-edited config with both set is resolved in favour of the
+            // video option, which is also what the UI enforces.
+            if (_screensaverVideo.Checked) _screensaverActive.Checked = false;
             bool customWallpaper = string.Equals(_config.DesktopWallpaperMode, "custom",
                 StringComparison.OrdinalIgnoreCase);
             _desktopCustom.Checked = customWallpaper;
@@ -3871,6 +3912,7 @@ namespace LiveBackground
                 ? desktopImage
                 : _config.DesktopWallpaperImage;
             updated.ScreensaverActive = _screensaverActive.Checked;
+            updated.ScreensaverVideo = _screensaverVideo.Checked;
 
             // Each connected extra screen keeps its own entry, matched by
             // device name. Both video and image settings are captured so an

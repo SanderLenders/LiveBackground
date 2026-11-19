@@ -319,7 +319,8 @@ namespace LiveBackground
             bool wasImages = IsImagesMode;
             // The screen-power option is an mpv argument, so a changed value
             // needs a player restart rather than a new loop.
-            bool screenChanged = _config.ScreensaverActive != updated.ScreensaverActive;
+            bool screenChanged = _config.ScreensaverActive != updated.ScreensaverActive ||
+                _config.ScreensaverVideo != updated.ScreensaverVideo;
             bool lockChanged = !string.Equals(_config.LockScreenMode, updated.LockScreenMode,
                 StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(_config.LockScreenImage ?? "", updated.LockScreenImage ?? "",
@@ -589,6 +590,10 @@ namespace LiveBackground
                 }
                 finally
                 {
+                    // A graceful exit must never leave the shell hidden by the
+                    // video screensaver. A hard kill is covered at startup and
+                    // by the watchdog, both of which call Show() as well.
+                    ShellChrome.Show();
                     if (_player != null) _player.Stop();
                     foreach (ScreenPlayer screen in _screenPlayers)
                     {
@@ -607,6 +612,10 @@ namespace LiveBackground
         {
             try
             {
+                // Belt and braces: if a hard kill happened while the video
+                // screensaver had the shell hidden, restore it before doing
+                // anything else. Show() is a no-op when it is already visible.
+                ShellChrome.Show();
                 if (File.Exists(Installer.QuitFlag(_appRoot)))
                 {
                     Log.Info("watchdog: wallpaper was stopped by the user, not restarting");
@@ -649,6 +658,10 @@ namespace LiveBackground
         private static int Run()
         {
             DesktopHost.EnablePerMonitorDpi();
+            // Recover from a previous run that was killed while "Screensaver
+            // Video Background" had the shell hidden. Show() is a no-op when
+            // the taskbar and icons are already visible.
+            ShellChrome.Show();
 
             Log.Info("=== LiveBackground starting ===");
             // Win the logon race: the early startup work below (config, displays,
@@ -767,6 +780,7 @@ namespace LiveBackground
             // frame. Starting them later keeps them from competing with the
             // first cold disk read.
             StartLockScreenWorker();
+            StartScreensaverWorker();
 
             if (imagesMode)
             {

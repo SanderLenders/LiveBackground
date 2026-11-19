@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32;
 
 namespace LiveBackground
 {
@@ -942,6 +945,112 @@ namespace LiveBackground
             thread.IsBackground = true;
             thread.Name = "livebackground-lockscreen";
             thread.Start();
+        }
+
+        // "Screensaver Video Background" hides the shell chrome once the
+        // Windows screen-saver timeout passes with no user input, and puts it
+        // back on the first input. This runs on its own small thread so the
+        // wallpaper watchdog is never held up by registry or window calls.
+        private static void StartScreensaverWorker()
+        {
+            Thread thread = new Thread(delegate()
+            {
+                // Let mpv and the first frame win the disk race. The shell is
+                // not needed until the user has been away for minutes anyway.
+                Thread.Sleep(4000);
+                int timeout = ScreensaverIdle.DefaultTimeoutSeconds;
+                DateTime nextRefresh = DateTime.MinValue;
+                bool hidden = false;
+                while (true)
+                {
+                    AppConfig config = _config;
+                    bool videoBackground = config != null && config.ScreensaverVideo;
+                    try
+                    {
+                        if (DateTime.UtcNow >= nextRefresh)
+                        {
+                            bool active;
+                            int configured;
+                            ReadScreensaverSettings(out active, out configured);
+                            timeout = ScreensaverIdle.ResolveTimeout(active, configured);
+                            nextRefresh = DateTime.UtcNow.AddSeconds(60);
+                        }
+                        bool hide = ScreensaverIdle.ShouldHide(videoBackground, _paused,
+                            WallpaperRunning(), IdleMilliseconds(), timeout);
+                        if (hide)
+                        {
+                            // Re-apply every tick: an Explorer restart would
+                            // otherwise bring a fresh taskbar back unnoticed.
+                            ShellChrome.Hide();
+                            hidden = true;
+                        }
+                        else if (hidden)
+                        {
+                            ShellChrome.Show();
+                            hidden = false;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warn("screensaver worker failed: " + ex.Message);
+                    }
+                    Thread.Sleep(1000);
+                }
+            });
+            thread.IsBackground = true;
+            thread.Name = "livebackground-screensaver";
+            thread.Start();
+        }
+
+        private static void ReadScreensaverSettings(out bool active, out int timeoutSeconds)
+        {
+            active = false;
+            timeoutSeconds = 0;
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop", false))
+                {
+                    if (key == null) return;
+                    active = string.Equals(key.GetValue("ScreenSaveActive") as string, "1",
+                        StringComparison.Ordinal);
+                    string value = key.GetValue("ScreenSaveTimeOut") as string;
+                    int parsed;
+                    if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
+                    {
+                        timeoutSeconds = parsed;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("could not read the Windows screen-saver settings: " + ex.Message);
+            }
+        }
+
+        private static long IdleMilliseconds()
+        {
+            Native.LASTINPUTINFO info = new Native.LASTINPUTINFO();
+            info.cbSize = (uint)Marshal.SizeOf<Native.LASTINPUTINFO>();
+            if (!Native.GetLastInputInfo(ref info)) return 0;
+            int elapsed = unchecked(Environment.TickCount - (int)info.dwTime);
+            return elapsed < 0 ? 0 : elapsed;
+        }
+
+        private static bool WallpaperRunning()
+        {
+            if (_player != null && _player.IsRunning) return true;
+            List<ScreenPlayer> players = _screenPlayers;
+            if (players != null)
+            {
+                foreach (ScreenPlayer screen in players)
+                {
+                    if (screen != null && screen.Player != null && screen.Player.IsRunning) return true;
+                }
+            }
+            lock (ImageSync)
+            {
+                return _imageSurfaces.Count > 0;
+            }
         }
 
     }

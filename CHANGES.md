@@ -84,6 +84,20 @@
   bundled player is unaffected (it sets its own priority). How the app starts is
   unchanged - still a logon task, with no delay.
 
+### Screensaver
+
+- **A new "Screensaver Video Background" choice on the Playback tab.** The old
+  checkbox is now called "Screensaver Dim and Lock"; the two choices are
+  mutually exclusive. With the new choice the screen stays on and, once the
+  Windows screen-saver timeout passes with no user input, the taskbar and
+  desktop icons are hidden so only the video is visible. Any mouse move or key
+  press brings them straight back. The "Screensaver settings..." button opens
+  the Windows screen-saver page, which is where the idle timeout is set; if
+  that page has no usable timeout, the app uses five minutes. Nothing is
+  terminated - the shell windows are only hidden and shown again, and they are
+  restored on exit, at startup and by the watchdog, so a crash cannot leave the
+  taskbar hidden.
+
 ### Settings window
 
 - **"Single clip" now comes before "All clips in this order"**, and "One image"

@@ -155,6 +155,24 @@ namespace LiveBackground
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+        // Top-level window enumeration. FindWindow only returns the first
+        // taskbar; a multi-monitor desktop has one Shell_SecondaryTrayWnd per
+        // extra screen and all of them have to be hidden or restored.
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        // Last user input, used by the video screensaver's idle timer. dwTime
+        // is a 32-bit tick count, so it is compared with Environment.TickCount.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern int SystemParametersInfo(uint uiAction, uint uiParam, string pvParam, uint fWinIni);
 
@@ -556,6 +574,54 @@ namespace LiveBackground
                 Log.Warn("could not set desktop wallpaper: " + ex.Message);
                 return false;
             }
+        }
+    }
+
+    // Hides the Windows shell chrome for "Screensaver Video Background" so the
+    // wallpaper video is the only thing on screen. Nothing is terminated: the
+    // taskbars and the desktop icon view are ordinary windows that ShowWindow
+    // can put back instantly. Show() is deliberately idempotent and is also
+    // called at startup and by the watchdog, so a hard kill while hidden can
+    // never leave a user without a taskbar.
+    public static class ShellChrome
+    {
+        private const string TaskbarClass = "Shell_TrayWnd";
+        private const string SecondaryTaskbarClass = "Shell_SecondaryTrayWnd";
+
+        private static void SetTaskbars(int show)
+        {
+            Native.EnumWindows(delegate(IntPtr handle, IntPtr lParam)
+            {
+                StringBuilder name = new StringBuilder(64);
+                Native.GetClassName(handle, name, name.Capacity);
+                string cls = name.ToString();
+                if (string.Equals(cls, TaskbarClass, StringComparison.Ordinal) ||
+                    string.Equals(cls, SecondaryTaskbarClass, StringComparison.Ordinal))
+                {
+                    Native.ShowWindow(handle, show);
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        private static void SetDesktopIcons(int show)
+        {
+            IntPtr progman = Native.FindWindow("Progman", null);
+            if (progman == IntPtr.Zero) return;
+            IntPtr icons = DesktopHost.FindDesktopIcons(progman);
+            if (icons != IntPtr.Zero) Native.ShowWindow(icons, show);
+        }
+
+        public static void Hide()
+        {
+            SetTaskbars(Native.SW_HIDE);
+            SetDesktopIcons(Native.SW_HIDE);
+        }
+
+        public static void Show()
+        {
+            SetTaskbars(Native.SW_SHOW);
+            SetDesktopIcons(Native.SW_SHOW);
         }
     }
 }

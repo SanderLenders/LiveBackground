@@ -155,6 +155,12 @@ namespace LiveBackground
         // On by default: the video must not stop Windows from dimming or
         // locking the screen. Turning this off keeps the display awake.
         [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = true;
+        // The other screensaver choice: keep the screen on and, once Windows
+        // would have started its screen saver, hide the taskbar and desktop
+        // icons so only the video is visible. The settings window makes the
+        // two choices mutually exclusive; older configs lack this key and
+        // read as false, so they behave exactly as before.
+        [DataMember(Name = "screensaverVideo")] public bool ScreensaverVideo = false;
 
         // The second screen can mirror the main clip or play its own loop.
         // "Same as main" keeps a single loop and lets each screen crop it;
@@ -208,6 +214,7 @@ namespace LiveBackground
             ExtraMpvArgs = "";
             LogLevel = "info";
             ScreensaverActive = true;
+            ScreensaverVideo = false;
             SecondScreenSameAsMain = true;
             SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
             SecondScreenPlaybackMode = "single";
@@ -276,6 +283,7 @@ namespace LiveBackground
             ExtraMpvArgs = other.ExtraMpvArgs;
             LogLevel = other.LogLevel;
             ScreensaverActive = other.ScreensaverActive;
+            ScreensaverVideo = other.ScreensaverVideo;
             SecondScreenSameAsMain = other.SecondScreenSameAsMain;
             SecondScreenFolder = other.SecondScreenFolder;
             SecondScreenPlaybackMode = other.SecondScreenPlaybackMode;

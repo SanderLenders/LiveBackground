@@ -295,9 +295,12 @@ What appears where
   lock-screen slideshow, so the lock screen is always one still picture.
 - Power: the video does not keep the display awake by default. The screen dims,
   turns off and locks according to your Windows power settings, exactly as it
-  did before the app was installed. You can change this with "Screensaver
-  active" on the Playback tab; turning it off keeps the screen awake while the
-  video plays.
+  did before the app was installed. The Playback tab has two mutually exclusive
+  choices: "Screensaver Dim and Lock" (the default, as above) and "Screensaver
+  Video Background", which keeps the screen on and hides the taskbar and
+  desktop icons after the idle time configured in Windows, leaving only the
+  video visible. Any mouse move or key press brings them back. The "Screensaver
+  settings..." button opens that Windows page.
 
 To use a custom desktop wallpaper, open the Other tab and choose "Use a
 custom image" under "Desktop wallpaper image". To use a custom lock-screen
@@ -380,6 +383,8 @@ Useful fields:
     desktopWallpaperMode  "frame" (first loop frame) or "custom"
     desktopWallpaperImage path used when desktopWallpaperMode is "custom"
     screensaverActive  let Windows dim/lock the screen (default true)
+    screensaverVideo   keep the screen on and hide the shell after the
+                       Windows idle timeout (default false)
     extraScreens       per-monitor settings keyed by device name: video and
                        image mirror switches (both default true), folders,
                        playlists, optional video crossfade, slideshow settings
