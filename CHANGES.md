@@ -73,6 +73,17 @@
   failed. The copy is now skipped when the source and the target are the same
   file. This is a build-script fix only; the shipped binaries are unchanged.
 
+### Startup
+
+- **The app now starts at a higher priority, so the wallpaper is up sooner at
+  logon.** The logon task launches it at High priority, so it outranks the
+  other logon apps for CPU while it does its early work (reading the config,
+  enumerating the displays, reaping a leftover player), then drops back to
+  Normal the moment the wallpaper is up, so it never competes with what you are
+  doing afterwards. High priority needs no administrator rights, and the
+  bundled player is unaffected (it sets its own priority). How the app starts is
+  unchanged - still a logon task, with no delay.
+
 ### Settings window
 
 - **"Single clip" now comes before "All clips in this order"**, and "One image"

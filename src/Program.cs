@@ -651,6 +651,11 @@ namespace LiveBackground
             DesktopHost.EnablePerMonitorDpi();
 
             Log.Info("=== LiveBackground starting ===");
+            // Win the logon race: the early startup work below (config, displays,
+            // process reap) is CPU-bound, so run it at High and outrank the other
+            // logon apps. Dropped back to Normal once the wallpaper is up.
+            SetStartupPriority(true);
+            Log.Info("startup priority raised to High for the logon race");
             // Own every process we start: a job that kills its children when
             // this process exits, even on a hard kill, so an mpv can never be
             // left painting over the desktop. Best-effort; if the OS refuses we
@@ -779,6 +784,8 @@ namespace LiveBackground
                 _imageActive = true;
                 Log.Info("images mode: showing " +
                     (string.IsNullOrEmpty(_currentImage) ? "no picture" : Path.GetFileName(_currentImage)));
+                SetStartupPriority(false);
+                Log.Info("startup priority restored to Normal");
                 Ui.Start(_appRoot);
                 return WatchLoop();
             }
@@ -815,10 +822,28 @@ namespace LiveBackground
                 ThreadPool.QueueUserWorkItem(delegate { DesktopHost.SetDesktopWallpaper(path); });
             }
 
+            SetStartupPriority(false);
+            Log.Info("startup priority restored to Normal");
             StartWatcher(folder);
             StartImageWatcher(imageFolder);
             Ui.Start(_appRoot);
             return WatchLoop();
+        }
+
+        // Runs the early startup at High so the app outranks the other logon apps
+        // for CPU and reaches the desktop sooner, then drops back to Normal so it
+        // never competes with the user's foreground apps afterwards. High needs
+        // no privilege (only Realtime does, and Windows caps that at High anyway).
+        private static void SetStartupPriority(bool boosted)
+        {
+            try
+            {
+                using (Process self = Process.GetCurrentProcess())
+                {
+                    self.PriorityClass = boosted ? ProcessPriorityClass.High : ProcessPriorityClass.Normal;
+                }
+            }
+            catch { /* best-effort: priority is a hint, not required */ }
         }
     }
 }

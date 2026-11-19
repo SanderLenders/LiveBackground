@@ -219,6 +219,10 @@ namespace LiveBackground
             }
         }
 
+        // Priority 1 (High) makes the logon task start the app at High from its
+        // very first instruction, so it outranks the other logon apps for CPU
+        // during the logon storm; Run() drops it back to Normal once the
+        // wallpaper is up. High needs no elevation (only Realtime does).
         private static string BuildXml(string taskName, string appExe, string userId)
         {
             string user = Xml(string.IsNullOrEmpty(userId) ? Util.CurrentUser() : userId);
@@ -260,7 +264,7 @@ namespace LiveBackground
                 "    <RunOnlyIfIdle>false</RunOnlyIfIdle>" + Environment.NewLine +
                 "    <WakeToRun>false</WakeToRun>" + Environment.NewLine +
                 "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>" + Environment.NewLine +
-                "    <Priority>4</Priority>" + Environment.NewLine +
+                "    <Priority>1</Priority>" + Environment.NewLine +
                 "  </Settings>" + Environment.NewLine +
                 "  <Actions Context=\"Author\">" + Environment.NewLine +
                 "    <Exec>" + Environment.NewLine +
