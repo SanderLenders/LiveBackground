@@ -215,8 +215,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_videoFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _clipHint = Muted("Drag videos into the box beside the folder, or add files to the folder and refresh. Tick clips to include them in the playlist.");
-            panel.Children.Add(_clipHint);
+            _clipHint = null;
         }
 
         private void BuildPlaybackTab()
@@ -296,8 +295,7 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); RefreshLockImageChoices(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_imageFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _imageHint = Muted("Drag images into the box beside the folder, or add pictures to the folder and refresh. Tick images to include them.");
-            panel.Children.Add(_imageHint);
+            _imageHint = null;
         }
 
         private void BuildSlideshowTab()
@@ -366,12 +364,32 @@ namespace LiveBackground
             _lockImages = new RadioButton { Content = "Use an image from your image folder", GroupName = "lock", Margin = new Thickness(0, 0, 0, 4) };
             _lockImageCombo = new ComboBox { MinWidth = 260, Margin = new Thickness(20, 0, 0, 8) };
             _lockCustom = new RadioButton { Content = "Use a custom image", GroupName = "lock", Margin = new Thickness(0, 0, 0, 4) };
-            var lockPathRow = new DockPanel { Margin = new Thickness(20, 0, 0, 16) };
-            var lockBrowse = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
-            DockPanel.SetDock(lockBrowse, Dock.Right);
-            lockBrowse.Click += delegate { BrowseImageInto(_lockCustomPath); _lockCustom.IsChecked = true; };
+            var lockPathRow = new Grid { Margin = new Thickness(20, 0, 0, 16) };
+            lockPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            lockPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            lockPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _lockCustomPath = new TextBox();
-            lockPathRow.Children.Add(lockBrowse); lockPathRow.Children.Add(_lockCustomPath);
+            Grid.SetColumn(_lockCustomPath, 0);
+            var lockBrowse = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+            lockBrowse.Click += delegate { BrowseImageInto(_lockCustomPath); _lockCustom.IsChecked = true; };
+            Grid.SetColumn(lockBrowse, 1);
+            var lockDrop = CreateSingleFileDropZone("Drop image", delegate(string path)
+            {
+                _lockCustomPath.Text = path ?? "";
+                _lockCustom.IsChecked = true;
+            }, delegate
+            {
+                BrowseImageInto(_lockCustomPath);
+                _lockCustom.IsChecked = true;
+            }, true);
+            lockDrop.MinWidth = 110;
+            lockDrop.MinHeight = 0;
+            lockDrop.Margin = new Thickness(8, 0, 0, 0);
+            lockDrop.VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetColumn(lockDrop, 2);
+            lockPathRow.Children.Add(_lockCustomPath);
+            lockPathRow.Children.Add(lockBrowse);
+            lockPathRow.Children.Add(lockDrop);
             panel.Children.Add(_lockFrame);
             panel.Children.Add(_lockImages);
             panel.Children.Add(_lockImageCombo);
@@ -382,12 +400,32 @@ namespace LiveBackground
             _desktopWallpaper = new CheckBox { Content = "Set a desktop wallpaper image behind the video", Margin = new Thickness(0, 6, 0, 6) };
             _desktopFrame = new RadioButton { Content = "Use the first frame of the video loop", GroupName = "desk", Margin = new Thickness(20, 0, 0, 4) };
             _desktopCustom = new RadioButton { Content = "Use a custom image", GroupName = "desk", Margin = new Thickness(20, 0, 0, 4) };
-            var deskPathRow = new DockPanel { Margin = new Thickness(40, 0, 0, 8) };
-            var deskBrowse = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
-            DockPanel.SetDock(deskBrowse, Dock.Right);
-            deskBrowse.Click += delegate { BrowseImageInto(_desktopCustomPath); _desktopCustom.IsChecked = true; };
+            var deskPathRow = new Grid { Margin = new Thickness(40, 0, 0, 8) };
+            deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _desktopCustomPath = new TextBox();
-            deskPathRow.Children.Add(deskBrowse); deskPathRow.Children.Add(_desktopCustomPath);
+            Grid.SetColumn(_desktopCustomPath, 0);
+            var deskBrowse = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+            deskBrowse.Click += delegate { BrowseImageInto(_desktopCustomPath); _desktopCustom.IsChecked = true; };
+            Grid.SetColumn(deskBrowse, 1);
+            var deskDrop = CreateSingleFileDropZone("Drop image", delegate(string path)
+            {
+                _desktopCustomPath.Text = path ?? "";
+                _desktopCustom.IsChecked = true;
+            }, delegate
+            {
+                BrowseImageInto(_desktopCustomPath);
+                _desktopCustom.IsChecked = true;
+            }, true);
+            deskDrop.MinWidth = 110;
+            deskDrop.MinHeight = 0;
+            deskDrop.Margin = new Thickness(8, 0, 0, 0);
+            deskDrop.VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetColumn(deskDrop, 2);
+            deskPathRow.Children.Add(_desktopCustomPath);
+            deskPathRow.Children.Add(deskBrowse);
+            deskPathRow.Children.Add(deskDrop);
             panel.Children.Add(_desktopWallpaper);
             panel.Children.Add(_desktopFrame);
             panel.Children.Add(_desktopCustom);
@@ -1077,6 +1115,165 @@ namespace LiveBackground
             return false;
         }
 
+        private static string FirstDroppedImagePath(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(DataFormats.FileDrop)) return null;
+            var files = data.GetData(DataFormats.FileDrop) as string[];
+            if (files == null) return null;
+            foreach (string file in files)
+            {
+                try
+                {
+                    if (File.Exists(file) && MediaPipeline.IsImage(file)) return file;
+                    if (Directory.Exists(file))
+                    {
+                        var imgs = MediaPipeline.ScanImages(file);
+                        if (imgs != null && imgs.Count > 0) return imgs[0];
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static Border CreateSingleFileDropZone(string text, Action<string> onPicked, Action onClick, bool forImages)
+        {
+            var label = new TextBlock
+            {
+                Text = text,
+                TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(170, 180, 191)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(6, 2, 6, 2)
+            };
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(47, 54, 64)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(107, 119, 133)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                MinHeight = 28,
+                MinWidth = 90,
+                Padding = new Thickness(4, 2, 4, 2),
+                Child = label,
+                AllowDrop = true,
+                Cursor = Cursors.Hand,
+                SnapsToDevicePixels = true
+            };
+            border.MouseLeftButtonUp += delegate { try { if (onClick != null) onClick(); } catch { } };
+            border.DragOver += delegate(object sender, DragEventArgs e)
+            {
+                try
+                {
+                    bool ok = forImages ? FirstDroppedImagePath(e.Data) != null : HasDroppedMedia(e.Data, false);
+                    e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+                    e.Handled = true;
+                    border.Background = new SolidColorBrush(ok ? Color.FromRgb(58, 69, 82) : Color.FromRgb(47, 54, 64));
+                }
+                catch { }
+            };
+            border.DragLeave += delegate { border.Background = new SolidColorBrush(Color.FromRgb(47, 54, 64)); };
+            border.Drop += delegate(object sender, DragEventArgs e)
+            {
+                try
+                {
+                    border.Background = new SolidColorBrush(Color.FromRgb(47, 54, 64));
+                    string picked = null;
+                    if (forImages) picked = FirstDroppedImagePath(e.Data);
+                    else
+                    {
+                        var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                        if (files != null && files.Length > 0) picked = files[0];
+                    }
+                    if (!string.IsNullOrEmpty(picked) && onPicked != null) onPicked(picked);
+                }
+                catch { }
+            };
+            return border;
+        }
+
+        private void CopyVideosToFolder(string folderPath, string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return;
+            string folder = Resolve(folderPath ?? "");
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                MessageBox.Show(this, "Choose a video folder first.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception ex) { MessageBox.Show(this, "Could not create the video folder: " + ex.Message, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Error); return; }
+
+            var sources = new List<string>();
+            foreach (string path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path) && MediaPipeline.IsVideo(path)) sources.Add(path);
+                    else if (Directory.Exists(path)) sources.AddRange(MediaPipeline.ScanVideos(path));
+                }
+                catch { }
+            }
+            if (sources.Count == 0) return;
+            int copied = 0; int skipped = 0; string firstError = "";
+            foreach (string source in sources)
+            {
+                try
+                {
+                    string sourceFull = System.IO.Path.GetFullPath(source);
+                    if (string.Equals(System.IO.Path.GetDirectoryName(sourceFull), folder, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }
+                    string target = UniquePath(folder, System.IO.Path.GetFileName(sourceFull));
+                    File.Copy(sourceFull, target, false);
+                    copied++;
+                }
+                catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
+            }
+            if (copied > 0) { try { Ui.Notify("LiveBackground", "Added " + copied + " video(s) to " + folder + "."); } catch { } }
+            else if (copied == 0 && firstError.Length > 0) { MessageBox.Show(this, "Could not add the videos. " + firstError, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        }
+
+        private void CopyImagesToFolder(string folderPath, string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return;
+            string folder = Resolve(folderPath ?? "");
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                MessageBox.Show(this, "Choose an image folder first.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception ex) { MessageBox.Show(this, "Could not create the image folder: " + ex.Message, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Error); return; }
+
+            var sources = new List<string>();
+            foreach (string path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path) && MediaPipeline.IsImage(path)) sources.Add(path);
+                    else if (Directory.Exists(path)) sources.AddRange(MediaPipeline.ScanImages(path));
+                }
+                catch { }
+            }
+            if (sources.Count == 0) return;
+            int copied = 0; int skipped = 0; string firstError = "";
+            foreach (string source in sources)
+            {
+                try
+                {
+                    string sourceFull = System.IO.Path.GetFullPath(source);
+                    if (string.Equals(System.IO.Path.GetDirectoryName(sourceFull), folder, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }
+                    string target = UniquePath(folder, System.IO.Path.GetFileName(sourceFull));
+                    File.Copy(sourceFull, target, false);
+                    copied++;
+                }
+                catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
+            }
+            if (copied > 0) { try { Ui.Notify("LiveBackground", "Added " + copied + " image(s) to " + folder + "."); } catch { } }
+            else if (copied == 0 && firstError.Length > 0) { MessageBox.Show(this, "Could not add the images. " + firstError, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        }
+
         private void BrowseAndAddVideos()
         {
             try
@@ -1241,9 +1438,11 @@ namespace LiveBackground
             private CheckBox _sameVideo;
             private TextBox _videoFolder;
             private ComboBox _videoMode;
+            private Border _videoDrop;
             private CheckBox _sameImages;
             private TextBox _imageFolder;
             private ComboBox _imageMode;
+            private Border _imageDrop;
             private string _device = "";
 
             public MonitorSlotUi(SettingsWindow owner, int number) { _owner = owner; _number = number; }
@@ -1258,12 +1457,20 @@ namespace LiveBackground
                 sp.Children.Add(Header("Video"));
                 _sameVideo = new CheckBox { Content = "Same as main screen", Margin = new Thickness(0, 6, 0, 6), IsChecked = true };
                 sp.Children.Add(_sameVideo);
-                var vrow = new DockPanel { Margin = new Thickness(20, 0, 0, 6) };
-                var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
-                DockPanel.SetDock(vb, Dock.Right);
-                vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
+                var vrow = new Grid { Margin = new Thickness(20, 0, 0, 6) };
+                vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _videoFolder = new TextBox();
-                vrow.Children.Add(vb); vrow.Children.Add(_videoFolder); sp.Children.Add(vrow);
+                Grid.SetColumn(_videoFolder, 0);
+                var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+                vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
+                Grid.SetColumn(vb, 1);
+                _videoDrop = CreateDropZone("Drop videos", delegate(string[] files) { if (_sameVideo == null || _sameVideo.IsChecked == true) return; _owner.CopyVideosToFolder(_videoFolder.Text, files); }, BrowseAndAddVideosToSlot, false);
+                _videoDrop.MinWidth = 120; _videoDrop.MinHeight = 0; _videoDrop.Margin = new Thickness(8, 0, 0, 0); _videoDrop.VerticalAlignment = VerticalAlignment.Stretch;
+                Grid.SetColumn(_videoDrop, 2);
+                vrow.Children.Add(_videoFolder); vrow.Children.Add(vb); vrow.Children.Add(_videoDrop);
+                sp.Children.Add(vrow);
                 var vmRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 12) };
                 vmRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _videoMode = new ComboBox { Width = 180 }; _videoMode.Items.Add("Playlist"); _videoMode.Items.Add("Single clip");
@@ -1272,12 +1479,20 @@ namespace LiveBackground
                 sp.Children.Add(Header("Images"));
                 _sameImages = new CheckBox { Content = "Same as main screen", Margin = new Thickness(0, 6, 0, 6), IsChecked = true };
                 sp.Children.Add(_sameImages);
-                var irow = new DockPanel { Margin = new Thickness(20, 0, 0, 6) };
-                var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
-                DockPanel.SetDock(ib, Dock.Right);
-                ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
+                var irow = new Grid { Margin = new Thickness(20, 0, 0, 6) };
+                irow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _imageFolder = new TextBox();
-                irow.Children.Add(ib); irow.Children.Add(_imageFolder); sp.Children.Add(irow);
+                Grid.SetColumn(_imageFolder, 0);
+                var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+                ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
+                Grid.SetColumn(ib, 1);
+                _imageDrop = CreateDropZone("Drop images", delegate(string[] files) { if (_sameImages == null || _sameImages.IsChecked == true) return; _owner.CopyImagesToFolder(_imageFolder.Text, files); }, BrowseAndAddImagesToSlot, true);
+                _imageDrop.MinWidth = 120; _imageDrop.MinHeight = 0; _imageDrop.Margin = new Thickness(8, 0, 0, 0); _imageDrop.VerticalAlignment = VerticalAlignment.Stretch;
+                Grid.SetColumn(_imageDrop, 2);
+                irow.Children.Add(_imageFolder); irow.Children.Add(ib); irow.Children.Add(_imageDrop);
+                sp.Children.Add(irow);
                 var imRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
                 imRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _imageMode = new ComboBox { Width = 180 }; _imageMode.Items.Add("Slideshow"); _imageMode.Items.Add("One image");
@@ -1293,6 +1508,36 @@ namespace LiveBackground
                 return _tab;
             }
 
+            private void BrowseAndAddVideosToSlot()
+            {
+                try
+                {
+                    if (_sameVideo != null && _sameVideo.IsChecked == true) return;
+                    var dlg = new Microsoft.Win32.OpenFileDialog();
+                    dlg.Title = "Choose wallpaper videos";
+                    dlg.Filter = "Video files|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.m4v;*.wmv;*.mpg;*.mpeg;*.ts;*.m2ts;*.flv;*.ogv;*.3gp|All files|*.*";
+                    dlg.Multiselect = true;
+                    dlg.CheckFileExists = true;
+                    if (dlg.ShowDialog(_owner) == true) _owner.CopyVideosToFolder(_videoFolder != null ? _videoFolder.Text : "", dlg.FileNames);
+                }
+                catch { }
+            }
+
+            private void BrowseAndAddImagesToSlot()
+            {
+                try
+                {
+                    if (_sameImages != null && _sameImages.IsChecked == true) return;
+                    var dlg = new Microsoft.Win32.OpenFileDialog();
+                    dlg.Title = "Choose images";
+                    dlg.Filter = "Image files|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp|All files|*.*";
+                    dlg.Multiselect = true;
+                    dlg.CheckFileExists = true;
+                    if (dlg.ShowDialog(_owner) == true) _owner.CopyImagesToFolder(_imageFolder != null ? _imageFolder.Text : "", dlg.FileNames);
+                }
+                catch { }
+            }
+
             private void UpdateEnabled()
             {
                 bool has = !string.IsNullOrEmpty(_device);
@@ -1301,8 +1546,10 @@ namespace LiveBackground
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
                 if (_videoFolder != null) _videoFolder.IsEnabled = has && !sv;
                 if (_videoMode != null) _videoMode.IsEnabled = has && !sv;
+                if (_videoDrop != null) _videoDrop.IsEnabled = has && !sv;
                 if (_imageFolder != null) _imageFolder.IsEnabled = has && !si;
                 if (_imageMode != null) _imageMode.IsEnabled = has && !si;
+                if (_imageDrop != null) _imageDrop.IsEnabled = has && !si;
             }
 
             public void SetMode(bool imagesMode) { _ = imagesMode; UpdateEnabled(); }
