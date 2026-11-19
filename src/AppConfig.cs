@@ -152,6 +152,9 @@ namespace LiveBackground
         [DataMember(Name = "taskName")] public string TaskName = "LiveBackground (early startup)";
         [DataMember(Name = "extraMpvArgs")] public string ExtraMpvArgs = "";
         [DataMember(Name = "logLevel")] public string LogLevel = "info";
+        // Factory setting: a fresh install opens the settings window in dark
+        // mode. Turning it off is a persistent preference, not a session toggle.
+        [DataMember(Name = "darkMode")] public bool DarkMode = true;
         // On by default: the video must not stop Windows from dimming or
         // locking the screen. Turning this off keeps the display awake.
         [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = true;
@@ -213,6 +216,7 @@ namespace LiveBackground
             TaskName = "LiveBackground (early startup)";
             ExtraMpvArgs = "";
             LogLevel = "info";
+            DarkMode = true;
             ScreensaverActive = true;
             ScreensaverVideo = false;
             SecondScreenSameAsMain = true;
@@ -282,6 +286,7 @@ namespace LiveBackground
             TaskName = other.TaskName;
             ExtraMpvArgs = other.ExtraMpvArgs;
             LogLevel = other.LogLevel;
+            DarkMode = other.DarkMode;
             ScreensaverActive = other.ScreensaverActive;
             ScreensaverVideo = other.ScreensaverVideo;
             SecondScreenSameAsMain = other.SecondScreenSameAsMain;
