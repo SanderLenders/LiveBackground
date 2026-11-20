@@ -27,28 +27,26 @@ namespace LiveBackground
     }
 
     // These DTOs are filled in by the JSON serializer through reflection, so
-    // the compiler cannot see the assignments. Silence the "never assigned"
-    // warning for them.
-#pragma warning disable 0649
+    // the compiler cannot see the assignments. Explicit defaults document the
+    // intent and avoid compiler warnings without pragmas.
     [DataContract]
     internal sealed class ProbeStream
     {
-        [DataMember(Name = "duration")] public string Duration;
+        [DataMember(Name = "duration")] public string Duration = null;
     }
 
     [DataContract]
     internal sealed class ProbeFormat
     {
-        [DataMember(Name = "duration")] public string Duration;
+        [DataMember(Name = "duration")] public string Duration = null;
     }
 
     [DataContract]
     internal sealed class ProbeResult
     {
-        [DataMember(Name = "streams")] public ProbeStream[] Streams;
-        [DataMember(Name = "format")] public ProbeFormat Format;
+        [DataMember(Name = "streams")] public ProbeStream[] Streams = null;
+        [DataMember(Name = "format")] public ProbeFormat Format = null;
     }
-#pragma warning restore 0649
 
     public class BuildResult
     {
