@@ -160,8 +160,9 @@ namespace LiveBackground
         // desktop icons so only the video is visible. The two choices are
         // mutually exclusive.
         [DataMember(Name = "screensaverVideo")] public bool ScreensaverVideo = true;
-        // Idle delay before hiding taskbar/desktop icons when ScreensaverVideo
-        // is enabled. Stored in seconds (preset values selected in settings).
+        // Idle delay before the selected screensaver action runs (hide
+        // taskbar/desktop icons, or dim and lock the workstation). Shared by
+        // both options. Stored in seconds (preset values selected in settings).
         [DataMember(Name = "screensaverHideSeconds")] public int ScreensaverHideSeconds = 300;
 
         // The second screen can mirror the main clip or play its own loop.
