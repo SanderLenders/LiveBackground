@@ -62,6 +62,9 @@ namespace LiveBackground
         private RadioButton _desktopFrame;
         private RadioButton _desktopCustom;
         private TextBox _desktopCustomPath;
+        private StackPanel _desktopSection;
+        private Button _desktopBrowseBtn;
+        private Border _desktopDropZone;
 
         private TabControl _monitorTabs;
         private MonitorSlotUi _slot2;
@@ -398,20 +401,26 @@ namespace LiveBackground
             panel.Children.Add(_lockCustom);
             panel.Children.Add(lockPathRow);
 
-            panel.Children.Add(Header("Desktop wallpaper (video mode)"));
+            _desktopSection = new StackPanel();
+            _desktopSection.Children.Add(Header("Desktop wallpaper (video mode)"));
             _desktopWallpaper = new CheckBox { Content = "Set a desktop wallpaper image behind the video", Margin = new Thickness(0, 6, 0, 6) };
+            _desktopWallpaper.Checked += delegate { UpdateDesktopEnabled(); };
+            _desktopWallpaper.Unchecked += delegate { UpdateDesktopEnabled(); };
+            _desktopSection.Children.Add(_desktopWallpaper);
             _desktopFrame = new RadioButton { Content = "Use the first frame of the video loop", GroupName = "desk", Margin = new Thickness(20, 0, 0, 4) };
+            _desktopSection.Children.Add(_desktopFrame);
             _desktopCustom = new RadioButton { Content = "Use a custom image", GroupName = "desk", Margin = new Thickness(20, 0, 0, 4) };
+            _desktopSection.Children.Add(_desktopCustom);
             var deskPathRow = new Grid { Margin = new Thickness(40, 0, 0, 8) };
             deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             deskPathRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _desktopCustomPath = new TextBox();
             Grid.SetColumn(_desktopCustomPath, 0);
-            var deskBrowse = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
-            deskBrowse.Click += delegate { BrowseImageInto(_desktopCustomPath); _desktopCustom.IsChecked = true; };
-            Grid.SetColumn(deskBrowse, 1);
-            var deskDrop = CreateSingleFileDropZone("Drop image", delegate(string path)
+            _desktopBrowseBtn = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+            _desktopBrowseBtn.Click += delegate { BrowseImageInto(_desktopCustomPath); _desktopCustom.IsChecked = true; };
+            Grid.SetColumn(_desktopBrowseBtn, 1);
+            _desktopDropZone = CreateSingleFileDropZone("Drop image", delegate(string path)
             {
                 _desktopCustomPath.Text = path ?? "";
                 _desktopCustom.IsChecked = true;
@@ -420,18 +429,16 @@ namespace LiveBackground
                 BrowseImageInto(_desktopCustomPath);
                 _desktopCustom.IsChecked = true;
             }, true);
-            deskDrop.MinWidth = 110;
-            deskDrop.MinHeight = 0;
-            deskDrop.Margin = new Thickness(8, 0, 0, 0);
-            deskDrop.VerticalAlignment = VerticalAlignment.Stretch;
-            Grid.SetColumn(deskDrop, 2);
+            _desktopDropZone.MinWidth = 110;
+            _desktopDropZone.MinHeight = 0;
+            _desktopDropZone.Margin = new Thickness(8, 0, 0, 0);
+            _desktopDropZone.VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetColumn(_desktopDropZone, 2);
             deskPathRow.Children.Add(_desktopCustomPath);
-            deskPathRow.Children.Add(deskBrowse);
-            deskPathRow.Children.Add(deskDrop);
-            panel.Children.Add(_desktopWallpaper);
-            panel.Children.Add(_desktopFrame);
-            panel.Children.Add(_desktopCustom);
-            panel.Children.Add(deskPathRow);
+            deskPathRow.Children.Add(_desktopBrowseBtn);
+            deskPathRow.Children.Add(_desktopDropZone);
+            _desktopSection.Children.Add(deskPathRow);
+            panel.Children.Add(_desktopSection);
         }
 
         private void UpdateFadeLabel() { if (_videoFadeValue != null && _videoFadeSlider != null) _videoFadeValue.Text = _videoFadeSlider.Value.ToString("0.0", CultureInfo.InvariantCulture) + " s"; }
@@ -557,11 +564,14 @@ namespace LiveBackground
             catch (Exception ex) { try { Log.Warn("could not open display settings: " + ex.Message); } catch { } }
         }
 
+        private bool IsImagesMode()
+        {
+            return ModeToggleBtn != null && ModeToggleBtn.IsChecked == true;
+        }
+
         private void ApplyModeUi()
         {
-            bool images = ModeImagesBtn.IsChecked == true;
-            ModeVideoBtn.IsChecked = !images;
-            ModeImagesBtn.IsChecked = images;
+            bool images = IsImagesMode();
 
             TabVideos.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
             TabPlayback.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
@@ -580,24 +590,29 @@ namespace LiveBackground
 
         private void UpdateDesktopEnabled()
         {
-            bool images = ModeImagesBtn.IsChecked == true;
-            if (_desktopWallpaper != null)
+            bool images = IsImagesMode();
+            if (_desktopSection != null)
             {
-                _desktopWallpaper.IsEnabled = !images;
-                _desktopFrame.IsEnabled = !images && _desktopWallpaper.IsChecked == true;
-                _desktopCustom.IsEnabled = !images && _desktopWallpaper.IsChecked == true;
-                _desktopCustomPath.IsEnabled = !images && _desktopWallpaper.IsChecked == true;
+                _desktopSection.IsEnabled = !images;
+                _desktopSection.Opacity = images ? 0.45 : 1.0;
+            }
+            if (!images && _desktopWallpaper != null)
+            {
+                bool enabled = _desktopWallpaper.IsChecked == true;
+                if (_desktopFrame != null) _desktopFrame.IsEnabled = enabled;
+                if (_desktopCustom != null) _desktopCustom.IsEnabled = enabled;
+                if (_desktopCustomPath != null) _desktopCustomPath.IsEnabled = enabled;
+                if (_desktopBrowseBtn != null) _desktopBrowseBtn.IsEnabled = enabled;
+                if (_desktopDropZone != null) _desktopDropZone.IsEnabled = enabled;
             }
         }
 
-        private void ModeVideoBtn_Click(object sender, RoutedEventArgs e) { ModeImagesBtn.IsChecked = false; ModeVideoBtn.IsChecked = true; ApplyModeUi(); }
-        private void ModeImagesBtn_Click(object sender, RoutedEventArgs e) { ModeVideoBtn.IsChecked = false; ModeImagesBtn.IsChecked = true; ApplyModeUi(); }
+        private void ModeToggleBtn_Click(object sender, RoutedEventArgs e) { ApplyModeUi(); }
 
         private void LoadFromConfig()
         {
             bool images = string.Equals(_config.WallpaperMode, "images", StringComparison.OrdinalIgnoreCase);
-            ModeImagesBtn.IsChecked = images;
-            ModeVideoBtn.IsChecked = !images;
+            ModeToggleBtn.IsChecked = images;
 
             _videoFolderBox.Text = _config.VideoFolder ?? "";
             _imageFolderBox.Text = _config.ImageFolder ?? "";
@@ -847,7 +862,7 @@ namespace LiveBackground
         {
             bool available = _hasSecondScreen || _duplicateLayout;
             TabMultiMonitor.IsEnabled = available;
-            if (!available && MainTabs.SelectedItem == TabMultiMonitor) MainTabs.SelectedItem = ModeImagesBtn.IsChecked == true ? TabImages : TabVideos;
+            if (!available && MainTabs.SelectedItem == TabMultiMonitor) MainTabs.SelectedItem = IsImagesMode() ? TabImages : TabVideos;
         }
 
         protected override void OnActivated(EventArgs e)
@@ -903,7 +918,7 @@ namespace LiveBackground
 
         private AppConfig CollectConfig()
         {
-            bool imagesMode = ModeImagesBtn.IsChecked == true;
+            bool imagesMode = IsImagesMode();
             string folder = (_videoFolderBox.Text ?? "").Trim();
             string imageFolder = (_imageFolderBox.Text ?? "").Trim();
 
