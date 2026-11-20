@@ -948,10 +948,10 @@ namespace LiveBackground
         }
 
         // Runs the selected screensaver action after the configured idle delay
-        // (shared by both options): hide taskbar/desktop icons and show only the
-        // video wallpaper, or dim and lock the workstation. Restores on input.
-        // Runs on its own thread so the wallpaper watchdog is never held up by
-        // window calls.
+        // (shared by both options): hide taskbar/desktop icons and open windows so
+        // only the video wallpaper is visible, or dim and lock the workstation.
+        // Restores on input. Runs on its own thread so the wallpaper watchdog is
+        // never held up by window calls.
         private static void StartScreensaverWorker()
         {
             Thread thread = new Thread(delegate()
@@ -960,7 +960,7 @@ namespace LiveBackground
                 // not needed until the user has been away for minutes anyway.
                 Thread.Sleep(4000);
                 bool hidden = false;
-                bool desktopHiddenByUs = false;
+                bool windowsMinimizedByUs = false;
                 bool lockFired = false;
                 while (true)
                 {
@@ -980,10 +980,10 @@ namespace LiveBackground
                             // Re-apply chrome hide every tick: an Explorer restart
                             // would otherwise bring a fresh taskbar back unnoticed.
                             ShellChrome.Hide();
-                            if (!desktopHiddenByUs)
+                            if (!windowsMinimizedByUs)
                             {
-                                ToggleDesktop();
-                                desktopHiddenByUs = true;
+                                MinimizeAllWindows();
+                                windowsMinimizedByUs = true;
                             }
                             hidden = true;
                             lockFired = false;
@@ -995,10 +995,10 @@ namespace LiveBackground
                                 ShellChrome.Show();
                                 hidden = false;
                             }
-                            if (desktopHiddenByUs)
+                            if (windowsMinimizedByUs)
                             {
-                                ToggleDesktop();
-                                desktopHiddenByUs = false;
+                                UndoMinimizeAllWindows();
+                                windowsMinimizedByUs = false;
                             }
                             if (dimLockMode && due)
                             {
@@ -1024,10 +1024,11 @@ namespace LiveBackground
             });
             thread.IsBackground = true;
             thread.Name = "livebackground-screensaver";
+            thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
         }
 
-        private static void ToggleDesktop()
+        private static void MinimizeAllWindows()
         {
             try
             {
@@ -1036,7 +1037,7 @@ namespace LiveBackground
                 object shell = Activator.CreateInstance(shellType);
                 try
                 {
-                    shellType.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, shell, null, CultureInfo.InvariantCulture);
+                    shellType.InvokeMember("MinimizeAll", BindingFlags.InvokeMethod, null, shell, null, CultureInfo.InvariantCulture);
                 }
                 finally
                 {
@@ -1045,7 +1046,29 @@ namespace LiveBackground
             }
             catch (Exception ex)
             {
-                try { Log.Warn("could not toggle desktop: " + ex.Message); } catch { }
+                try { Log.Warn("could not minimize windows: " + ex.Message); } catch { }
+            }
+        }
+
+        private static void UndoMinimizeAllWindows()
+        {
+            try
+            {
+                Type shellType = Type.GetTypeFromProgID("Shell.Application");
+                if (shellType == null) return;
+                object shell = Activator.CreateInstance(shellType);
+                try
+                {
+                    shellType.InvokeMember("UndoMinimizeALL", BindingFlags.InvokeMethod, null, shell, null, CultureInfo.InvariantCulture);
+                }
+                finally
+                {
+                    try { Marshal.FinalReleaseComObject(shell); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Log.Warn("could not restore windows: " + ex.Message); } catch { }
             }
         }
 
