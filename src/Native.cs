@@ -177,6 +177,9 @@ namespace LiveBackground
         public static extern int SystemParametersInfo(uint uiAction, uint uiParam, string pvParam, uint fWinIni);
 
         [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool LockWorkStation();
+
+        [DllImport("user32.dll", SetLastError = true)]
         public static extern bool DestroyIcon(IntPtr hIcon);
 
         // ---- job object: own the lifetime of the child processes ----

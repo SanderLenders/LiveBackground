@@ -1726,8 +1726,8 @@ namespace LiveBackground
             _screensaverVideo.CheckedChanged += ScreensaverChoiceChanged;
             page.Controls.Add(_screensaverVideo);
 
-            _screensaverHideCaptionLabel = MakeLabel(page, "Hide after:", 36, 476, 70);
-            _screensaverHideValueLabel = MakeLabel(page, "5 minutes", 110, 476, 120);
+            _screensaverHideCaptionLabel = MakeLabel(page, "After idle:", 36, 476, 70);
+            _screensaverHideValueLabel = MakeLabel(page, "5m", 110, 476, 120);
             _screensaverHideValueLabel.Font = new Font(Font, FontStyle.Bold);
             _screensaverHideTrackBar = new TrackBar();
             _screensaverHideTrackBar.SetBounds(36, 498, 320, 45);
@@ -1763,21 +1763,20 @@ namespace LiveBackground
 
         private void UpdateScreensaverHideUi()
         {
-            bool enabled = _screensaverVideo != null && _screensaverVideo.Checked;
-            if (_screensaverHideTrackBar != null) _screensaverHideTrackBar.Enabled = enabled;
-            if (_screensaverHideCaptionLabel != null) _screensaverHideCaptionLabel.Enabled = enabled;
-            if (_screensaverHideValueLabel != null) _screensaverHideValueLabel.Enabled = enabled;
+            if (_screensaverHideTrackBar != null) _screensaverHideTrackBar.Enabled = true;
+            if (_screensaverHideCaptionLabel != null) _screensaverHideCaptionLabel.Enabled = true;
+            if (_screensaverHideValueLabel != null) _screensaverHideValueLabel.Enabled = true;
             if (_screensaverHideTrackBar != null && _screensaverHideValueLabel != null)
             {
                 int idx = _screensaverHideTrackBar.Value;
                 if (idx < 0) idx = 0;
                 if (idx >= ScreensaverHidePresets.Length) idx = ScreensaverHidePresets.Length - 1;
                 int seconds = ScreensaverHidePresets[idx];
-                if (seconds < 60) _screensaverHideValueLabel.Text = seconds.ToString(CultureInfo.InvariantCulture) + " seconds";
+                if (seconds < 60) _screensaverHideValueLabel.Text = seconds.ToString(CultureInfo.InvariantCulture) + "s";
                 else
                 {
                     int minutes = seconds / 60;
-                    _screensaverHideValueLabel.Text = minutes.ToString(CultureInfo.InvariantCulture) + (minutes == 1 ? " minute" : " minutes");
+                    _screensaverHideValueLabel.Text = minutes.ToString(CultureInfo.InvariantCulture) + "m";
                 }
             }
         }
@@ -2482,6 +2481,7 @@ namespace LiveBackground
             // A hand-edited config with both set is resolved in favour of the
             // video option, which is also what the UI enforces.
             if (_screensaverVideo.Checked) _screensaverActive.Checked = false;
+            if (!_screensaverActive.Checked && !_screensaverVideo.Checked) _screensaverVideo.Checked = true;
             SetScreensaverHideSeconds(_config.ScreensaverHideSeconds);
             UpdateScreensaverHideUi();
             bool customWallpaper = string.Equals(_config.DesktopWallpaperMode, "custom",

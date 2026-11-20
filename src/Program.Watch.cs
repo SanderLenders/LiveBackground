@@ -947,10 +947,10 @@ namespace LiveBackground
             thread.Start();
         }
 
-        // Hides the taskbar and desktop icons after the configured idle delay
-        // so only the wallpaper video is visible, and restores them on input.
-        // Runs on its own thread so the wallpaper watchdog is never held up by
-        // window calls.
+        // Runs the selected screensaver action after the configured idle delay
+        // (shared by both options): hide taskbar/desktop icons, or dim and lock
+        // the workstation. Restores hidden chrome on input. Runs on its own
+        // thread so the wallpaper watchdog is never held up by window calls.
         private static void StartScreensaverWorker()
         {
             Thread thread = new Thread(delegate()
@@ -959,27 +959,48 @@ namespace LiveBackground
                 // not needed until the user has been away for minutes anyway.
                 Thread.Sleep(4000);
                 bool hidden = false;
+                bool lockFired = false;
                 while (true)
                 {
                     AppConfig config = _config;
-                    bool videoBackground = config != null && config.ScreensaverVideo;
                     try
                     {
+                        bool hideMode = config != null && config.ScreensaverVideo;
+                        bool dimLockMode = config != null && config.ScreensaverActive && !config.ScreensaverVideo;
                         int timeout = config != null ? config.ScreensaverHideSeconds : ScreensaverIdle.DefaultTimeoutSeconds;
                         if (timeout <= 0) timeout = ScreensaverIdle.DefaultTimeoutSeconds;
-                        bool hide = ScreensaverIdle.ShouldHide(videoBackground, _paused,
-                            WallpaperRunning(), IdleMilliseconds(), timeout);
-                        if (hide)
+                        bool running = WallpaperRunning();
+                        long idle = IdleMilliseconds();
+                        bool due = !_paused && running && timeout > 0 && idle >= (long)timeout * 1000L;
+
+                        if (hideMode && due)
                         {
                             // Re-apply every tick: an Explorer restart would
                             // otherwise bring a fresh taskbar back unnoticed.
                             ShellChrome.Hide();
                             hidden = true;
+                            lockFired = false;
                         }
-                        else if (hidden)
+                        else
                         {
-                            ShellChrome.Show();
-                            hidden = false;
+                            if (hidden)
+                            {
+                                ShellChrome.Show();
+                                hidden = false;
+                            }
+                            if (dimLockMode && due)
+                            {
+                                if (!lockFired)
+                                {
+                                    lockFired = true;
+                                    try { Native.LockWorkStation(); }
+                                    catch (Exception ex) { Log.Warn("could not lock workstation: " + ex.Message); }
+                                }
+                            }
+                            else
+                            {
+                                lockFired = false;
+                            }
                         }
                     }
                     catch (Exception ex)

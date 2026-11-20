@@ -26,5 +26,13 @@ namespace LiveBackground
             if (timeoutSeconds <= 0) return false;
             return idleMilliseconds >= (long)timeoutSeconds * 1000L;
         }
+
+        public static bool ShouldTrigger(bool enabled, bool paused, bool running,
+            long idleMilliseconds, int timeoutSeconds)
+        {
+            if (!enabled || paused || !running) return false;
+            if (timeoutSeconds <= 0) return false;
+            return idleMilliseconds >= (long)timeoutSeconds * 1000L;
+        }
     }
 }

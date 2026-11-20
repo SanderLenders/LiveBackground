@@ -152,14 +152,14 @@ namespace LiveBackground
         [DataMember(Name = "taskName")] public string TaskName = "LiveBackground (early startup)";
         [DataMember(Name = "extraMpvArgs")] public string ExtraMpvArgs = "";
         [DataMember(Name = "logLevel")] public string LogLevel = "info";
-        // On by default: the video must not stop Windows from dimming or
-        // locking the screen. Turning this off keeps the display awake.
-        [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = true;
-        // The other choice: keep the screen on and, after the user has been
-        // idle for ScreensaverHideSeconds, hide the taskbar and desktop icons
-        // so only the video is visible. The two choices are mutually
-        // exclusive; older configs lack this key and read as false.
-        [DataMember(Name = "screensaverVideo")] public bool ScreensaverVideo = false;
+        // Screensaver action after the user has been idle for
+        // ScreensaverHideSeconds: dim and lock the workstation.
+        [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = false;
+        // Alternative screensaver action: keep the screen on and, after the
+        // user has been idle for ScreensaverHideSeconds, hide the taskbar and
+        // desktop icons so only the video is visible. The two choices are
+        // mutually exclusive.
+        [DataMember(Name = "screensaverVideo")] public bool ScreensaverVideo = true;
         // Idle delay before hiding taskbar/desktop icons when ScreensaverVideo
         // is enabled. Stored in seconds (preset values selected in settings).
         [DataMember(Name = "screensaverHideSeconds")] public int ScreensaverHideSeconds = 300;
@@ -215,8 +215,8 @@ namespace LiveBackground
             TaskName = "LiveBackground (early startup)";
             ExtraMpvArgs = "";
             LogLevel = "info";
-            ScreensaverActive = true;
-            ScreensaverVideo = false;
+            ScreensaverActive = false;
+            ScreensaverVideo = true;
             ScreensaverHideSeconds = 300;
             SecondScreenSameAsMain = true;
             SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
