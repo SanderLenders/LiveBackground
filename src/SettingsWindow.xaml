@@ -311,10 +311,10 @@
 
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
             <TextBlock Text="Wallpaper mode:" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource Muted}"/>
-            <Border x:Name="ModePill" CornerRadius="15" Background="#2F3640" BorderBrush="{StaticResource Border}" BorderThickness="1" Padding="2">
-                <ToggleButton x:Name="ModeToggleBtn" Width="180" Height="28" Click="ModeToggleBtn_Click" Cursor="Hand" Focusable="False">
-                    <ToggleButton.Template>
-                        <ControlTemplate TargetType="ToggleButton">
+            <ToggleButton x:Name="ModeToggleBtn" Width="184" Height="32" Click="ModeToggleBtn_Click" Cursor="Hand" Focusable="False">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Track" CornerRadius="16" Background="#2F3640" BorderBrush="{StaticResource Border}" BorderThickness="1" Padding="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -324,20 +324,20 @@
                                 <TextBlock x:Name="VideoLabel" Grid.Column="0" Text="Video" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF" FontWeight="SemiBold"/>
                                 <TextBlock x:Name="ImagesLabel" Grid.Column="1" Text="Images" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontWeight="SemiBold"/>
                             </Grid>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="Thumb" Property="Grid.Column" Value="1"/>
-                                    <Setter TargetName="VideoLabel" Property="Foreground" Value="{StaticResource Muted}"/>
-                                    <Setter TargetName="ImagesLabel" Property="Foreground" Value="#FFFFFF"/>
-                                </Trigger>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Thumb" Property="Background" Value="#5E6B7C"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </ToggleButton.Template>
-                </ToggleButton>
-            </Border>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Thumb" Property="Grid.Column" Value="1"/>
+                                <Setter TargetName="VideoLabel" Property="Foreground" Value="{StaticResource Muted}"/>
+                                <Setter TargetName="ImagesLabel" Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Thumb" Property="Background" Value="#5E6B7C"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
         </StackPanel>
 
         <TabControl x:Name="MainTabs" Grid.Row="1" Background="{StaticResource Bg}">
