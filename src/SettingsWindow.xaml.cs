@@ -19,7 +19,7 @@ namespace LiveBackground
     public partial class SettingsWindow : Window
     {
         private readonly string _appRoot;
-        private readonly AppConfig _config;
+        private AppConfig _config;
         private readonly List<ScreenInfo> _screens = new List<ScreenInfo>();
         private bool _hasSecondScreen;
         private bool _duplicateLayout;
@@ -972,8 +972,8 @@ namespace LiveBackground
                 }
             }
 
+            _config = updated.Clone();
             Program.ApplyConfig(updated);
-            Close();
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) { Close(); }
