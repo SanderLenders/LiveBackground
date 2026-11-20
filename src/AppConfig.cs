@@ -155,12 +155,14 @@ namespace LiveBackground
         // On by default: the video must not stop Windows from dimming or
         // locking the screen. Turning this off keeps the display awake.
         [DataMember(Name = "screensaverActive")] public bool ScreensaverActive = true;
-        // The other screensaver choice: keep the screen on and, once Windows
-        // would have started its screen saver, hide the taskbar and desktop
-        // icons so only the video is visible. The settings window makes the
-        // two choices mutually exclusive; older configs lack this key and
-        // read as false, so they behave exactly as before.
+        // The other choice: keep the screen on and, after the user has been
+        // idle for ScreensaverHideSeconds, hide the taskbar and desktop icons
+        // so only the video is visible. The two choices are mutually
+        // exclusive; older configs lack this key and read as false.
         [DataMember(Name = "screensaverVideo")] public bool ScreensaverVideo = false;
+        // Idle delay before hiding taskbar/desktop icons when ScreensaverVideo
+        // is enabled. Stored in seconds (preset values selected in settings).
+        [DataMember(Name = "screensaverHideSeconds")] public int ScreensaverHideSeconds = 300;
 
         // The second screen can mirror the main clip or play its own loop.
         // "Same as main" keeps a single loop and lets each screen crop it;
@@ -215,6 +217,7 @@ namespace LiveBackground
             LogLevel = "info";
             ScreensaverActive = true;
             ScreensaverVideo = false;
+            ScreensaverHideSeconds = 300;
             SecondScreenSameAsMain = true;
             SecondScreenFolder = @"%USERPROFILE%\LiveBackground\Videos";
             SecondScreenPlaybackMode = "single";
@@ -284,6 +287,7 @@ namespace LiveBackground
             LogLevel = other.LogLevel;
             ScreensaverActive = other.ScreensaverActive;
             ScreensaverVideo = other.ScreensaverVideo;
+            ScreensaverHideSeconds = other.ScreensaverHideSeconds;
             SecondScreenSameAsMain = other.SecondScreenSameAsMain;
             SecondScreenFolder = other.SecondScreenFolder;
             SecondScreenPlaybackMode = other.SecondScreenPlaybackMode;

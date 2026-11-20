@@ -2,9 +2,10 @@ using System;
 
 namespace LiveBackground
 {
-    // The decisions behind "Screensaver Video Background", kept free of
-    // P/Invoke and the registry so they can be unit-tested. The actual hiding
-    // lives in ShellChrome; the worker only feeds it these answers.
+    // The decisions behind hiding the taskbar and desktop icons after idle
+    // (so only the wallpaper is visible), kept free of P/Invoke and the
+    // registry so they can be unit-tested. The actual hiding lives in
+    // ShellChrome; the worker only feeds it these answers.
     public static class ScreensaverIdle
     {
         // Windows can have the screen saver switched off with no usable timeout

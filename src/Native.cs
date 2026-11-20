@@ -577,7 +577,7 @@ namespace LiveBackground
         }
     }
 
-    // Hides the Windows shell chrome for "Screensaver Video Background" so the
+    // Hides the Windows shell chrome (taskbars and desktop icons) so the
     // wallpaper video is the only thing on screen. Nothing is terminated: the
     // taskbars and the desktop icon view are ordinary windows that ShowWindow
     // can put back instantly. Show() is deliberately idempotent and is also

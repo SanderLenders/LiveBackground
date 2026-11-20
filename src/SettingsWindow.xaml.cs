@@ -53,6 +53,10 @@ namespace LiveBackground
         private CheckBox _startWithWindows;
         private CheckBox _screensaverDimLock;
         private CheckBox _screensaverVideoBg;
+        private Slider _screensaverHideSlider;
+        private TextBlock _screensaverHideValue;
+        private StackPanel _screensaverHidePanel;
+        private static readonly int[] ScreensaverHidePresets = new[] { 30, 60, 120, 180, 240, 300, 600, 900, 1200, 1500, 1800, 2700, 3600, 5400, 7200 };
         private RadioButton _lockFrame;
         private RadioButton _lockImages;
         private RadioButton _lockCustom;
@@ -355,14 +359,37 @@ namespace LiveBackground
 
             panel.Children.Add(Header("Screensaver"));
             _screensaverDimLock = new CheckBox { Content = "Screensaver Dim and Lock", Margin = new Thickness(0, 6, 0, 4) };
-            _screensaverVideoBg = new CheckBox { Content = "Screensaver Video Background", Margin = new Thickness(0, 0, 0, 6) };
-            _screensaverDimLock.Checked += delegate { if (_screensaverDimLock.IsChecked == true) _screensaverVideoBg.IsChecked = false; };
-            _screensaverVideoBg.Checked += delegate { if (_screensaverVideoBg.IsChecked == true) _screensaverDimLock.IsChecked = false; };
+            _screensaverVideoBg = new CheckBox { Content = "Hide taskbar and desktop icons after idle (show video only)", Margin = new Thickness(0, 0, 0, 6) };
+            _screensaverDimLock.Checked += delegate { if (_screensaverDimLock.IsChecked == true) _screensaverVideoBg.IsChecked = false; UpdateScreensaverHideEnabled(); };
+            _screensaverDimLock.Unchecked += delegate { UpdateScreensaverHideEnabled(); };
+            _screensaverVideoBg.Checked += delegate { if (_screensaverVideoBg.IsChecked == true) _screensaverDimLock.IsChecked = false; UpdateScreensaverHideEnabled(); };
+            _screensaverVideoBg.Unchecked += delegate { UpdateScreensaverHideEnabled(); };
             panel.Children.Add(_screensaverDimLock);
             panel.Children.Add(_screensaverVideoBg);
-            var ssBtn = ActionButton("Screensaver settings...", OpenScreensaverSettings);
-            ssBtn.Margin = new Thickness(0, 0, 0, 16);
-            panel.Children.Add(ssBtn);
+
+            _screensaverHidePanel = new StackPanel { Margin = new Thickness(20, 0, 0, 16) };
+            var hideRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            hideRow.Children.Add(new TextBlock { Text = "Hide after:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            _screensaverHideValue = new TextBlock { Text = "5 minutes", VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, MinWidth = 90 };
+            hideRow.Children.Add(_screensaverHideValue);
+            _screensaverHidePanel.Children.Add(hideRow);
+            _screensaverHideSlider = new Slider
+            {
+                Minimum = 0,
+                Maximum = ScreensaverHidePresets.Length - 1,
+                TickFrequency = 1,
+                IsSnapToTickEnabled = true,
+                TickPlacement = System.Windows.Controls.Primitives.TickPlacement.BottomRight,
+                SmallChange = 1,
+                LargeChange = 1,
+                MinWidth = 320
+            };
+            _screensaverHideSlider.ValueChanged += delegate { UpdateScreensaverHideLabel(); };
+            _screensaverHidePanel.Children.Add(_screensaverHideSlider);
+            var hideHint = Muted("30 s, 1–5, 10, 15, 20, 25, 30, 45, 60, 90, 120 minutes. Hides taskbar and desktop icons when idle; restores on input.");
+            hideHint.Margin = new Thickness(0, 4, 0, 0);
+            _screensaverHidePanel.Children.Add(hideHint);
+            panel.Children.Add(_screensaverHidePanel);
 
             panel.Children.Add(Header("Lock screen"));
             _lockFrame = new RadioButton { Content = "Use the first frame of the video loop", GroupName = "lock", Margin = new Thickness(0, 6, 0, 4) };
@@ -444,6 +471,60 @@ namespace LiveBackground
         private void UpdateFadeLabel() { if (_videoFadeValue != null && _videoFadeSlider != null) _videoFadeValue.Text = _videoFadeSlider.Value.ToString("0.0", CultureInfo.InvariantCulture) + " s"; }
         private void UpdateIntervalLabel() { if (_intervalValue != null && _intervalSlider != null) _intervalValue.Text = ((int)Math.Round(_intervalSlider.Value)).ToString(CultureInfo.InvariantCulture) + " s"; }
         private void UpdateImageFadeLabel() { if (_imageFadeValue != null && _imageFadeSlider != null) _imageFadeValue.Text = _imageFadeSlider.Value.ToString("0.0", CultureInfo.InvariantCulture) + " s"; }
+
+        private void UpdateScreensaverHideEnabled()
+        {
+            bool enabled = _screensaverVideoBg != null && _screensaverVideoBg.IsChecked == true;
+            if (_screensaverHidePanel != null)
+            {
+                _screensaverHidePanel.IsEnabled = enabled;
+                _screensaverHidePanel.Opacity = enabled ? 1.0 : 0.45;
+            }
+        }
+
+        private static string FormatHideDelay(int seconds)
+        {
+            if (seconds < 60) return seconds.ToString(CultureInfo.InvariantCulture) + " seconds";
+            if (seconds % 60 == 0)
+            {
+                int minutes = seconds / 60;
+                return minutes.ToString(CultureInfo.InvariantCulture) + (minutes == 1 ? " minute" : " minutes");
+            }
+            return seconds.ToString(CultureInfo.InvariantCulture) + " seconds";
+        }
+
+        private void UpdateScreensaverHideLabel()
+        {
+            if (_screensaverHideValue == null) return;
+            int idx = 0;
+            if (_screensaverHideSlider != null) idx = (int)Math.Round(_screensaverHideSlider.Value);
+            if (idx < 0) idx = 0;
+            if (idx >= ScreensaverHidePresets.Length) idx = ScreensaverHidePresets.Length - 1;
+            _screensaverHideValue.Text = FormatHideDelay(ScreensaverHidePresets[idx]);
+        }
+
+        private void SetScreensaverHideSeconds(int seconds)
+        {
+            if (_screensaverHideSlider == null) return;
+            int best = 4; // default 5 minutes
+            int bestDiff = int.MaxValue;
+            for (int i = 0; i < ScreensaverHidePresets.Length; i++)
+            {
+                int diff = Math.Abs(ScreensaverHidePresets[i] - seconds);
+                if (diff < bestDiff) { bestDiff = diff; best = i; }
+            }
+            _screensaverHideSlider.Value = best;
+            UpdateScreensaverHideLabel();
+        }
+
+        private int GetScreensaverHideSeconds()
+        {
+            int idx = 0;
+            if (_screensaverHideSlider != null) idx = (int)Math.Round(_screensaverHideSlider.Value);
+            if (idx < 0) idx = 0;
+            if (idx >= ScreensaverHidePresets.Length) idx = ScreensaverHidePresets.Length - 1;
+            return ScreensaverHidePresets[idx];
+        }
 
         private static TextBlock Header(string text) { return new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 0, 0, 2) }; }
         private static TextBlock Muted(string text) { return new TextBlock { Text = text, Foreground = new SolidColorBrush(Color.FromRgb(167, 176, 188)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) }; }
@@ -552,11 +633,7 @@ namespace LiveBackground
             catch (Exception ex) { try { Log.Warn("could not open " + folder + ": " + ex.Message); } catch { } }
         }
 
-        private static void OpenScreensaverSettings()
-        {
-            try { Process.Start("control.exe", "desk.cpl,,@screensaver"); }
-            catch (Exception ex) { try { Log.Warn("could not open screensaver settings: " + ex.Message); } catch { } }
-        }
+
 
         private static void OpenWindowsDisplaySettings()
         {
@@ -641,6 +718,8 @@ namespace LiveBackground
             _screensaverDimLock.IsChecked = _config.ScreensaverActive;
             _screensaverVideoBg.IsChecked = _config.ScreensaverVideo;
             if (_screensaverDimLock.IsChecked == true && _screensaverVideoBg.IsChecked == true) _screensaverVideoBg.IsChecked = false;
+            SetScreensaverHideSeconds(_config.ScreensaverHideSeconds);
+            UpdateScreensaverHideEnabled();
 
             string lockMode = (_config.LockScreenMode ?? "frame").ToLowerInvariant();
             _lockFrame.IsChecked = lockMode == "frame";
@@ -1047,6 +1126,7 @@ namespace LiveBackground
             updated.LockScreenImage = lockImage;
             updated.ScreensaverActive = _screensaverDimLock.IsChecked == true;
             updated.ScreensaverVideo = _screensaverVideoBg.IsChecked == true;
+            updated.ScreensaverHideSeconds = GetScreensaverHideSeconds();
 
             if (!imagesMode)
             {

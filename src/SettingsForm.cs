@@ -60,6 +60,10 @@ namespace LiveBackground
         private CheckBox _desktopWallpaper;
         private CheckBox _screensaverActive;
         private CheckBox _screensaverVideo;
+        private TrackBar _screensaverHideTrackBar;
+        private Label _screensaverHideValueLabel;
+        private Label _screensaverHideCaptionLabel;
+        private static readonly int[] ScreensaverHidePresets = new[] { 30, 60, 120, 180, 240, 300, 600, 900, 1200, 1500, 1800, 2700, 3600, 5400, 7200 };
         private GroupBox _desktopGroup;
         private RadioButton _desktopFrame;
         private RadioButton _desktopCustom;
@@ -1712,23 +1716,29 @@ namespace LiveBackground
 
             _screensaverActive = new CheckBox();
             _screensaverActive.Text = "Screensaver Dim and Lock";
-            _screensaverActive.SetBounds(16, 420, 310, 24);
+            _screensaverActive.SetBounds(16, 420, 360, 24);
             _screensaverActive.CheckedChanged += ScreensaverChoiceChanged;
             page.Controls.Add(_screensaverActive);
 
             _screensaverVideo = new CheckBox();
-            _screensaverVideo.Text = "Screensaver Video Background";
-            _screensaverVideo.SetBounds(16, 448, 310, 24);
+            _screensaverVideo.Text = "Hide taskbar and desktop icons after idle";
+            _screensaverVideo.SetBounds(16, 448, 360, 24);
             _screensaverVideo.CheckedChanged += ScreensaverChoiceChanged;
             page.Controls.Add(_screensaverVideo);
 
-            // The Windows screen-saver page is where the idle timeout for the
-            // video option is configured, so put a shortcut right here.
-            Button screensaverButton = new Button();
-            screensaverButton.Text = "Screensaver settings...";
-            screensaverButton.SetBounds(340, 433, 190, 27);
-            screensaverButton.Click += delegate { OpenScreensaverSettings(); };
-            page.Controls.Add(screensaverButton);
+            _screensaverHideCaptionLabel = MakeLabel(page, "Hide after:", 36, 476, 70);
+            _screensaverHideValueLabel = MakeLabel(page, "5 minutes", 110, 476, 120);
+            _screensaverHideValueLabel.Font = new Font(Font, FontStyle.Bold);
+            _screensaverHideTrackBar = new TrackBar();
+            _screensaverHideTrackBar.SetBounds(36, 498, 320, 45);
+            _screensaverHideTrackBar.Minimum = 0;
+            _screensaverHideTrackBar.Maximum = ScreensaverHidePresets.Length - 1;
+            _screensaverHideTrackBar.TickFrequency = 1;
+            _screensaverHideTrackBar.SmallChange = 1;
+            _screensaverHideTrackBar.LargeChange = 1;
+            _screensaverHideTrackBar.ValueChanged += delegate { UpdateScreensaverHideUi(); };
+            page.Controls.Add(_screensaverHideTrackBar);
+            UpdateScreensaverHideUi();
 
             BuildScreenFadeTabs(page);
         }
@@ -1748,18 +1758,51 @@ namespace LiveBackground
             {
                 _screensaverActive.Checked = false;
             }
+            UpdateScreensaverHideUi();
         }
 
-        private static void OpenScreensaverSettings()
+        private void UpdateScreensaverHideUi()
         {
-            try
+            bool enabled = _screensaverVideo != null && _screensaverVideo.Checked;
+            if (_screensaverHideTrackBar != null) _screensaverHideTrackBar.Enabled = enabled;
+            if (_screensaverHideCaptionLabel != null) _screensaverHideCaptionLabel.Enabled = enabled;
+            if (_screensaverHideValueLabel != null) _screensaverHideValueLabel.Enabled = enabled;
+            if (_screensaverHideTrackBar != null && _screensaverHideValueLabel != null)
             {
-                Process.Start("control.exe", "desk.cpl,,@screensaver");
+                int idx = _screensaverHideTrackBar.Value;
+                if (idx < 0) idx = 0;
+                if (idx >= ScreensaverHidePresets.Length) idx = ScreensaverHidePresets.Length - 1;
+                int seconds = ScreensaverHidePresets[idx];
+                if (seconds < 60) _screensaverHideValueLabel.Text = seconds.ToString(CultureInfo.InvariantCulture) + " seconds";
+                else
+                {
+                    int minutes = seconds / 60;
+                    _screensaverHideValueLabel.Text = minutes.ToString(CultureInfo.InvariantCulture) + (minutes == 1 ? " minute" : " minutes");
+                }
             }
-            catch (Exception ex)
+        }
+
+        private int GetScreensaverHideSeconds()
+        {
+            if (_screensaverHideTrackBar == null) return 300;
+            int idx = _screensaverHideTrackBar.Value;
+            if (idx < 0) idx = 0;
+            if (idx >= ScreensaverHidePresets.Length) idx = ScreensaverHidePresets.Length - 1;
+            return ScreensaverHidePresets[idx];
+        }
+
+        private void SetScreensaverHideSeconds(int seconds)
+        {
+            if (_screensaverHideTrackBar == null) return;
+            int best = 4;
+            int bestDiff = int.MaxValue;
+            for (int i = 0; i < ScreensaverHidePresets.Length; i++)
             {
-                Log.Warn("could not open the Windows screen-saver settings: " + ex.Message);
+                int diff = Math.Abs(ScreensaverHidePresets[i] - seconds);
+                if (diff < bestDiff) { bestDiff = diff; best = i; }
             }
+            _screensaverHideTrackBar.Value = best;
+            UpdateScreensaverHideUi();
         }
 
         private void BuildImagesTab(TabPage page)
@@ -2439,6 +2482,8 @@ namespace LiveBackground
             // A hand-edited config with both set is resolved in favour of the
             // video option, which is also what the UI enforces.
             if (_screensaverVideo.Checked) _screensaverActive.Checked = false;
+            SetScreensaverHideSeconds(_config.ScreensaverHideSeconds);
+            UpdateScreensaverHideUi();
             bool customWallpaper = string.Equals(_config.DesktopWallpaperMode, "custom",
                 StringComparison.OrdinalIgnoreCase);
             _desktopCustom.Checked = customWallpaper;
@@ -3945,6 +3990,7 @@ namespace LiveBackground
                 : _config.DesktopWallpaperImage;
             updated.ScreensaverActive = _screensaverActive.Checked;
             updated.ScreensaverVideo = _screensaverVideo.Checked;
+            updated.ScreensaverHideSeconds = GetScreensaverHideSeconds();
 
             // Each connected extra screen keeps its own entry, matched by
             // device name. Both video and image settings are captured so an
