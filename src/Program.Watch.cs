@@ -948,9 +948,10 @@ namespace LiveBackground
         }
 
         // Runs the selected screensaver action after the configured idle delay
-        // (shared by both options): hide taskbar/desktop icons, or dim and lock
-        // the workstation. Restores hidden chrome on input. Runs on its own
-        // thread so the wallpaper watchdog is never held up by window calls.
+        // (shared by both options): hide taskbar/desktop icons and show only the
+        // video wallpaper, or dim and lock the workstation. Restores on input.
+        // Runs on its own thread so the wallpaper watchdog is never held up by
+        // window calls.
         private static void StartScreensaverWorker()
         {
             Thread thread = new Thread(delegate()
@@ -959,6 +960,7 @@ namespace LiveBackground
                 // not needed until the user has been away for minutes anyway.
                 Thread.Sleep(4000);
                 bool hidden = false;
+                bool desktopHiddenByUs = false;
                 bool lockFired = false;
                 while (true)
                 {
@@ -975,9 +977,14 @@ namespace LiveBackground
 
                         if (hideMode && due)
                         {
-                            // Re-apply every tick: an Explorer restart would
-                            // otherwise bring a fresh taskbar back unnoticed.
+                            // Re-apply chrome hide every tick: an Explorer restart
+                            // would otherwise bring a fresh taskbar back unnoticed.
                             ShellChrome.Hide();
+                            if (!desktopHiddenByUs)
+                            {
+                                ToggleDesktop();
+                                desktopHiddenByUs = true;
+                            }
                             hidden = true;
                             lockFired = false;
                         }
@@ -987,6 +994,11 @@ namespace LiveBackground
                             {
                                 ShellChrome.Show();
                                 hidden = false;
+                            }
+                            if (desktopHiddenByUs)
+                            {
+                                ToggleDesktop();
+                                desktopHiddenByUs = false;
                             }
                             if (dimLockMode && due)
                             {
@@ -1013,6 +1025,28 @@ namespace LiveBackground
             thread.IsBackground = true;
             thread.Name = "livebackground-screensaver";
             thread.Start();
+        }
+
+        private static void ToggleDesktop()
+        {
+            try
+            {
+                Type shellType = Type.GetTypeFromProgID("Shell.Application");
+                if (shellType == null) return;
+                object shell = Activator.CreateInstance(shellType);
+                try
+                {
+                    shellType.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, shell, null, CultureInfo.InvariantCulture);
+                }
+                finally
+                {
+                    try { Marshal.FinalReleaseComObject(shell); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                try { Log.Warn("could not toggle desktop: " + ex.Message); } catch { }
+            }
         }
 
 
