@@ -47,6 +47,7 @@ namespace LiveBackground
         private static DateTime _lastWatcherEvent = DateTime.MinValue;
         private static string _lastMissingLog = "";
         private static volatile bool _paused;
+        private static volatile bool _shuttingDown;
         private static volatile bool _resumeFromPause;
         private static volatile bool _forceBuild;
         private static volatile int _buildGeneration;
@@ -259,6 +260,7 @@ namespace LiveBackground
         public static void RequestExit()
         {
             Log.Info("exit requested from the tray");
+            _shuttingDown = true;
             try { File.WriteAllText(Installer.QuitFlag(_appRoot), "quit"); }
             catch { /* best-effort; the stop flag below is the fallback */ }
             try { File.WriteAllText(Installer.StopFlag(_appRoot), "stop"); }
@@ -589,6 +591,7 @@ namespace LiveBackground
                 }
                 finally
                 {
+                    _shuttingDown = true;
                     // A graceful exit must never leave the shell hidden by the
                     // video screensaver. A hard kill is covered at startup and
                     // by the watchdog, both of which call Show() as well.

@@ -954,7 +954,9 @@ namespace LiveBackground
         {
             var items = _clipList.ItemsSource as ObservableCollection<ClipItem>;
             if (items == null) return;
-            var sorted = items.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var names = items.Select(x => x.Name).ToList();
+            var order = PlaylistState.SortedOrder(names);
+            var sorted = order.Select(i => items[i]).ToList();
             items.Clear();
             foreach (var it in sorted) items.Add(it);
         }
@@ -962,16 +964,18 @@ namespace LiveBackground
         {
             var items = _imageList.ItemsSource as ObservableCollection<ImageItem>;
             if (items == null) return;
-            var sorted = items.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var names = items.Select(x => x.Name).ToList();
+            var order = PlaylistState.SortedOrder(names);
+            var sorted = order.Select(i => items[i]).ToList();
             items.Clear();
             foreach (var it in sorted) items.Add(it);
         }
 
-        private void UpdateMonitorState()
+        private void UpdateMonitorState(bool reloadValues = true)
         {
             RefreshScreens();
-            if (_slot2 != null) _slot2.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout);
-            if (_slot3 != null) _slot3.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout);
+            if (_slot2 != null) _slot2.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
+            if (_slot3 != null) _slot3.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
             UpdateMonitorTabEnabled();
             if (_monitorStatus != null)
             {
@@ -991,7 +995,7 @@ namespace LiveBackground
         protected override void OnActivated(EventArgs e)
         {
             base.OnActivated(e);
-            UpdateMonitorState();
+            UpdateMonitorState(false);
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -1152,14 +1156,14 @@ namespace LiveBackground
                 updated.SingleClip = checkedClipsSave[0].Name;
             else if (checkedClipsSave.Count > 0 && string.IsNullOrEmpty(updated.SingleClip))
                 updated.SingleClip = checkedClipsSave[0].Name;
-            updated.Playlist = clipItems.Select(c => new PlaylistEntry(c.Name, c.Enabled)).ToList();
+            updated.Playlist = MergeMissingSavedEntries(clipItems.Select(c => new PlaylistEntry(c.Name, c.Enabled)).ToList(), _config.Playlist);
 
             updated.ImageMode = _imageModeSingle.IsChecked == true ? "single" : "slideshow";
             var imageItems = GetImageItems();
             var checkedImages = imageItems.Where(i => i.Enabled).ToList();
             if (_imageModeSingle.IsChecked == true && checkedImages.Count > 0) updated.ImageSingle = checkedImages[0].Name;
             else if (checkedImages.Count > 0 && string.IsNullOrEmpty(updated.ImageSingle)) updated.ImageSingle = checkedImages[0].Name;
-            updated.ImagePlaylist = imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList();
+            updated.ImagePlaylist = MergeMissingSavedEntries(imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList(), _config.ImagePlaylist);
 
             updated.ImageIntervalSeconds = (int)Math.Round(_intervalSlider.Value);
             updated.ImageCrossfadeSeconds = _imageFadeSlider.Value;
@@ -1205,16 +1209,32 @@ namespace LiveBackground
 
         private static string ImportImageRelative(string sourceFullPath, string kind)
         {
-            // Copy into app data images area and return a path relative to app root if possible.
+            // Copy into app data images area with a stable name so repeated Apply
+            // overwrites the same file instead of accumulating timestamped copies.
             try
             {
-                string name = Path.GetFileNameWithoutExtension(sourceFullPath);
                 string ext = Path.GetExtension(sourceFullPath);
                 string destDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "LiveBackground", "images");
                 Directory.CreateDirectory(destDir);
-                string safe = (kind ?? "image") + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + ext;
+                string hash = "copy";
+                try
+                {
+                    using (var sha = System.Security.Cryptography.SHA256.Create())
+                    using (var stream = File.OpenRead(sourceFullPath))
+                    {
+                        byte[] bytes = sha.ComputeHash(stream);
+                        hash = BitConverter.ToString(bytes).Replace("-", "").Substring(0, 16).ToLowerInvariant();
+                    }
+                }
+                catch { /* best-effort: fall back to a stable kind-based name */ hash = (kind ?? "image").ToLowerInvariant(); }
+                string safe = (kind ?? "image") + "-" + hash + ext;
                 string dest = Path.Combine(destDir, safe);
-                File.Copy(sourceFullPath, dest, true);
+                string srcFull = Path.GetFullPath(sourceFullPath);
+                string dstFull = Path.GetFullPath(dest);
+                if (!string.Equals(srcFull, dstFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(sourceFullPath, dest, true);
+                }
                 return dest;
             }
             catch { return sourceFullPath; }
@@ -1230,6 +1250,33 @@ namespace LiveBackground
             }
             catch { }
             return fullPath;
+        }
+
+        private static List<PlaylistEntry> MergeMissingSavedEntries(List<PlaylistEntry> visible, List<PlaylistEntry> saved)
+        {
+            var merged = new List<PlaylistEntry>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (visible != null)
+            {
+                foreach (var e in visible)
+                {
+                    if (e == null || string.IsNullOrEmpty(e.Name)) continue;
+                    string name = e.Name.Trim();
+                    if (name.Length == 0 || !seen.Add(name)) continue;
+                    merged.Add(new PlaylistEntry(name, e.Enabled));
+                }
+            }
+            if (saved != null)
+            {
+                foreach (var e in saved)
+                {
+                    if (e == null || string.IsNullOrEmpty(e.Name)) continue;
+                    string name = e.Name.Trim();
+                    if (name.Length == 0 || !seen.Add(name)) continue;
+                    merged.Add(new PlaylistEntry(name, e.Enabled));
+                }
+            }
+            return merged;
         }
 
 
@@ -1661,10 +1708,12 @@ namespace LiveBackground
             private CheckBox _sameVideo;
             private TextBox _videoFolder;
             private ComboBox _videoMode;
+            private ComboBox _videoSingleClip;
             private Border _videoDrop;
             private CheckBox _sameImages;
             private TextBox _imageFolder;
             private ComboBox _imageMode;
+            private ComboBox _imageSingle;
             private Border _imageDrop;
             private string _device = "";
 
@@ -1685,6 +1734,7 @@ namespace LiveBackground
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _videoFolder = new TextBox();
+                _videoFolder.TextChanged += delegate { RefreshVideoSingleChoices(); };
                 Grid.SetColumn(_videoFolder, 0);
                 var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
@@ -1694,10 +1744,15 @@ namespace LiveBackground
                 Grid.SetColumn(_videoDrop, 2);
                 vrow.Children.Add(_videoFolder); vrow.Children.Add(vb); vrow.Children.Add(_videoDrop);
                 sp.Children.Add(vrow);
-                var vmRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 12) };
+                var vmRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
                 vmRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _videoMode = new ComboBox { Width = 180 }; _videoMode.Items.Add("Playlist"); _videoMode.Items.Add("Single clip");
+                _videoMode.SelectionChanged += delegate { UpdateEnabled(); };
                 vmRow.Children.Add(_videoMode); sp.Children.Add(vmRow);
+                var vsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 12) };
+                vsRow.Children.Add(new TextBlock { Text = "Single clip:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+                _videoSingleClip = new ComboBox { MinWidth = 260 };
+                vsRow.Children.Add(_videoSingleClip); sp.Children.Add(vsRow);
 
                 sp.Children.Add(Header("Images"));
                 _sameImages = new CheckBox { Content = "Same as main screen", Margin = new Thickness(0, 6, 0, 6), IsChecked = true };
@@ -1707,6 +1762,7 @@ namespace LiveBackground
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _imageFolder = new TextBox();
+                _imageFolder.TextChanged += delegate { RefreshImageSingleChoices(); };
                 Grid.SetColumn(_imageFolder, 0);
                 var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
@@ -1716,10 +1772,15 @@ namespace LiveBackground
                 Grid.SetColumn(_imageDrop, 2);
                 irow.Children.Add(_imageFolder); irow.Children.Add(ib); irow.Children.Add(_imageDrop);
                 sp.Children.Add(irow);
-                var imRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
+                var imRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
                 imRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _imageMode = new ComboBox { Width = 180 }; _imageMode.Items.Add("Slideshow"); _imageMode.Items.Add("One image");
+                _imageMode.SelectionChanged += delegate { UpdateEnabled(); };
                 imRow.Children.Add(_imageMode); sp.Children.Add(imRow);
+                var isRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
+                isRow.Children.Add(new TextBlock { Text = "One image:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+                _imageSingle = new ComboBox { MinWidth = 260 };
+                isRow.Children.Add(_imageSingle); sp.Children.Add(isRow);
 
                 _sameVideo.Checked += delegate { UpdateEnabled(); };
                 _sameVideo.Unchecked += delegate { UpdateEnabled(); };
@@ -1761,19 +1822,89 @@ namespace LiveBackground
                 catch { }
             }
 
+            private void RefreshVideoSingleChoices()
+            {
+                if (_videoSingleClip == null) return;
+                string current = _videoSingleClip.SelectedItem as string;
+                _videoSingleClip.Items.Clear();
+                try
+                {
+                    string folder = Util.ResolvePath(_owner._appRoot, (_videoFolder != null ? _videoFolder.Text : "") ?? "");
+                    if (Directory.Exists(folder))
+                    {
+                        foreach (var f in MediaPipeline.ScanVideos(folder))
+                        {
+                            _videoSingleClip.Items.Add(Path.GetFileName(f));
+                        }
+                    }
+                }
+                catch { }
+                if (!string.IsNullOrEmpty(current))
+                {
+                    for (int i = 0; i < _videoSingleClip.Items.Count; i++)
+                    {
+                        if (string.Equals(_videoSingleClip.Items[i] as string, current, StringComparison.OrdinalIgnoreCase))
+                        { _videoSingleClip.SelectedIndex = i; return; }
+                    }
+                }
+                if (_videoSingleClip.Items.Count > 0 && _videoSingleClip.SelectedIndex < 0) _videoSingleClip.SelectedIndex = 0;
+            }
+
+            private void RefreshImageSingleChoices()
+            {
+                if (_imageSingle == null) return;
+                string current = _imageSingle.SelectedItem as string;
+                _imageSingle.Items.Clear();
+                try
+                {
+                    string folder = Util.ResolvePath(_owner._appRoot, (_imageFolder != null ? _imageFolder.Text : "") ?? "");
+                    if (Directory.Exists(folder))
+                    {
+                        foreach (var f in MediaPipeline.ScanImages(folder))
+                        {
+                            _imageSingle.Items.Add(Path.GetFileName(f));
+                        }
+                    }
+                }
+                catch { }
+                if (!string.IsNullOrEmpty(current))
+                {
+                    for (int i = 0; i < _imageSingle.Items.Count; i++)
+                    {
+                        if (string.Equals(_imageSingle.Items[i] as string, current, StringComparison.OrdinalIgnoreCase))
+                        { _imageSingle.SelectedIndex = i; return; }
+                    }
+                }
+                if (_imageSingle.Items.Count > 0 && _imageSingle.SelectedIndex < 0) _imageSingle.SelectedIndex = 0;
+            }
+
+            private static void SelectComboByName(ComboBox combo, string name)
+            {
+                if (combo == null || string.IsNullOrEmpty(name)) return;
+                for (int i = 0; i < combo.Items.Count; i++)
+                {
+                    if (string.Equals(combo.Items[i] as string, name, StringComparison.OrdinalIgnoreCase))
+                    { combo.SelectedIndex = i; return; }
+                }
+            }
+
             private void UpdateEnabled()
             {
                 bool has = !string.IsNullOrEmpty(_device);
                 ApplyReviewEnabled(_tab, has);
                 bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
+                bool singleVideo = _videoMode != null && _videoMode.SelectedIndex == 1;
+                bool singleImage = _imageMode != null && _imageMode.SelectedIndex == 1;
                 ApplyReviewChildEnabled(_sameVideo, has, has);
                 ApplyReviewChildEnabled(_sameImages, has, has);
                 ApplyReviewChildEnabled(_videoFolder, has, has && !sv);
                 ApplyReviewChildEnabled(_videoMode, has, has && !sv);
+                ApplyReviewChildEnabled(_videoSingleClip, has, has && !sv && singleVideo);
                 ApplyReviewChildEnabled(_videoDrop, has, has && !sv);
                 ApplyReviewChildEnabled(_imageFolder, has, has && !si);
                 ApplyReviewChildEnabled(_imageMode, has, has && !si);
+                ApplyReviewChildEnabled(_imageSingle, has, has && !si && singleImage);
                 ApplyReviewChildEnabled(_imageDrop, has, has && !si);
             }
 
@@ -1782,10 +1913,10 @@ namespace LiveBackground
             public void LoadFromConfig(AppConfig config, List<ScreenInfo> screens, bool hasSecond, bool duplicate)
             {
                 _ = hasSecond; _ = duplicate;
-                RefreshBinding(config, screens, hasSecond, duplicate);
+                RefreshBinding(config, screens, hasSecond, duplicate, true);
             }
 
-            public void RefreshBinding(AppConfig config, List<ScreenInfo> screens, bool hasSecond, bool duplicate)
+            public void RefreshBinding(AppConfig config, List<ScreenInfo> screens, bool hasSecond, bool duplicate, bool reloadValues = true)
             {
                 _ = hasSecond; _ = duplicate;
                 string dev = "";
@@ -1800,16 +1931,24 @@ namespace LiveBackground
                     }
                 }
                 catch { dev = ""; }
+                bool deviceChanged = !string.Equals(_device, dev, StringComparison.OrdinalIgnoreCase);
                 _device = dev;
                 bool has = _device.Length > 0;
                 if (_deviceLabel != null) _deviceLabel.Text = has ? ("Monitor: " + _device) : "No screen detected for this slot.";
-                ScreenSettings s = config.ScreenFor(_device);
-                if (_sameVideo != null) _sameVideo.IsChecked = s.SameAsMain;
-                if (_videoFolder != null) _videoFolder.Text = s.Folder ?? "";
-                if (_videoMode != null) _videoMode.SelectedIndex = string.Equals(s.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-                if (_sameImages != null) _sameImages.IsChecked = s.ImagesSameAsMain;
-                if (_imageFolder != null) _imageFolder.Text = s.ImageFolder ?? "";
-                if (_imageMode != null) _imageMode.SelectedIndex = string.Equals(s.ImageMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                if (reloadValues || deviceChanged)
+                {
+                    ScreenSettings s = config.ScreenFor(_device);
+                    if (_sameVideo != null) _sameVideo.IsChecked = s.SameAsMain;
+                    if (_videoFolder != null) _videoFolder.Text = s.Folder ?? "";
+                    if (_videoMode != null) _videoMode.SelectedIndex = string.Equals(s.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                    if (_sameImages != null) _sameImages.IsChecked = s.ImagesSameAsMain;
+                    if (_imageFolder != null) _imageFolder.Text = s.ImageFolder ?? "";
+                    if (_imageMode != null) _imageMode.SelectedIndex = string.Equals(s.ImageMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                    RefreshVideoSingleChoices();
+                    SelectComboByName(_videoSingleClip, s.SingleClip);
+                    RefreshImageSingleChoices();
+                    SelectComboByName(_imageSingle, s.ImageSingle);
+                }
                 UpdateEnabled();
             }
 
@@ -1822,8 +1961,18 @@ namespace LiveBackground
                 s.ImagesSameAsMain = _sameImages != null && _sameImages.IsChecked == true;
                 if (_videoFolder != null && !s.SameAsMain) s.Folder = (_videoFolder.Text ?? "").Trim();
                 if (_videoMode != null && !s.SameAsMain) s.PlaybackMode = _videoMode.SelectedIndex == 1 ? "single" : "playlist";
+                if (_videoSingleClip != null && !s.SameAsMain)
+                {
+                    string sel = _videoSingleClip.SelectedItem as string;
+                    if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
+                }
                 if (_imageFolder != null && !s.ImagesSameAsMain) s.ImageFolder = (_imageFolder.Text ?? "").Trim();
                 if (_imageMode != null && !s.ImagesSameAsMain) s.ImageMode = _imageMode.SelectedIndex == 1 ? "single" : "slideshow";
+                if (_imageSingle != null && !s.ImagesSameAsMain)
+                {
+                    string sel = _imageSingle.SelectedItem as string;
+                    if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
+                }
                 return true;
             }
         }

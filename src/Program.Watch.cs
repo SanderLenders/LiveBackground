@@ -964,6 +964,12 @@ namespace LiveBackground
                 bool lockFired = false;
                 while (true)
                 {
+                    if (_shuttingDown)
+                    {
+                        try { if (hidden) ShellChrome.Show(); } catch { }
+                        try { if (windowsMinimizedByUs) UndoMinimizeAllWindows(); } catch { }
+                        break;
+                    }
                     AppConfig config = _config;
                     try
                     {
@@ -1004,7 +1010,13 @@ namespace LiveBackground
                                 if (!lockFired)
                                 {
                                     lockFired = true;
-                                    try { Native.LockWorkStation(); }
+                                    try
+                                    {
+                                        if (!Native.LockWorkStation())
+                                        {
+                                            Log.Warn("could not lock workstation: LockWorkStation returned false");
+                                        }
+                                    }
                                     catch (Exception ex) { Log.Warn("could not lock workstation: " + ex.Message); }
                                 }
                             }
