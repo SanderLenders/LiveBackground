@@ -979,6 +979,7 @@ namespace LiveBackground
                         bool running = WallpaperRunning();
                         long idle = IdleMilliseconds();
                         bool due = ScreensaverIdle.IsDue(_paused, running, idle, timeout);
+                        if (due && IsForegroundFullscreen()) due = false;
 
                         if (hideMode && due)
                         {
@@ -1084,6 +1085,40 @@ namespace LiveBackground
         }
 
 
+
+        private static bool IsForegroundFullscreen()
+        {
+            try
+            {
+                IntPtr fg = Native.GetForegroundWindow();
+                if (fg == IntPtr.Zero) return false;
+                var sb = new StringBuilder(256);
+                if (Native.GetClassName(fg, sb, sb.Capacity) > 0)
+                {
+                    string cls = sb.ToString();
+                    if (string.Equals(cls, "Progman", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(cls, "WorkerW", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(cls, "Shell_TrayWnd", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(cls, "Shell_SecondaryTrayWnd", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+
+                Native.RECT wr;
+                if (!Native.GetWindowRect(fg, out wr)) return false;
+
+                IntPtr mon = Native.MonitorFromWindow(fg, 2); // MONITOR_DEFAULTTONEAREST
+                if (mon == IntPtr.Zero) return false;
+                Native.MONITORINFOEX mi = new Native.MONITORINFOEX();
+                mi.cbSize = Marshal.SizeOf<Native.MONITORINFOEX>();
+                if (!Native.GetMonitorInfo(mon, ref mi)) return false;
+
+                Native.RECT mr = mi.rcMonitor;
+                return wr.Left <= mr.Left && wr.Top <= mr.Top && wr.Right >= mr.Right && wr.Bottom >= mr.Bottom;
+            }
+            catch { return false; }
+        }
 
         private static long IdleMilliseconds()
         {
