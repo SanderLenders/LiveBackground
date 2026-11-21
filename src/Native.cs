@@ -245,6 +245,9 @@ namespace LiveBackground
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool CloseHandle(IntPtr hObject);
 
+        [DllImport("kernel32.dll")]
+        public static extern ulong GetTickCount64();
+
         public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         [DllImport("kernel32.dll", SetLastError = true)]

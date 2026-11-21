@@ -85,6 +85,14 @@ namespace LiveBackground
         private static readonly Random ImageRandom = new Random();
         private static bool _cleanupDone;
         private static DateTime _processStartUtc;
+        private static Stopwatch _startupSw;
+        private static int _firstFrameProbeStarted;
+
+        private static long StartupElapsedMs()
+        {
+            if (_startupSw != null) return _startupSw.ElapsedMilliseconds;
+            return (long)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds;
+        }
 
         // A settings save applies on its own thread, because the work (folder
         // signature scans and waiting for the image layers to come up) can
@@ -504,6 +512,7 @@ namespace LiveBackground
 
         public static int Main(string[] args)
         {
+            _startupSw = Stopwatch.StartNew();
             Util.UseEnglishUiCulture();
             _processStartUtc = DateTime.UtcNow;
             try { _processStartUtc = Process.GetCurrentProcess().StartTime.ToUniversalTime(); } catch { /* best-effort: fall back to the time we started */ }
@@ -512,6 +521,8 @@ namespace LiveBackground
             Paths.Init(programRoot);
             _appRoot = Paths.DataRoot;
             Log.Init(_appRoot);
+            Log.Info("startup: Main entered " + _startupSw.ElapsedMilliseconds + " ms after process timer start; " +
+                "process start " + _processStartUtc.ToString("o") + "; tickCount64 " + Native.GetTickCount64() + " ms");
 
             // Leave a readable trace if anything escapes the normal paths.
             AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e)
@@ -608,6 +619,54 @@ namespace LiveBackground
             }
         }
 
+        private static void StartFirstFrameProbe(MpvPlayer player)
+        {
+            if (player == null) return;
+            if (Interlocked.CompareExchange(ref _firstFrameProbeStarted, 1, 0) != 0) return;
+            string logPath = player.LogPath;
+            DateTime startedUtc = player.StartedUtc;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    Stopwatch wait = Stopwatch.StartNew();
+                    long lastLength = -1;
+                    while (wait.ElapsedMilliseconds < 15000)
+                    {
+                        try
+                        {
+                            if (File.Exists(logPath))
+                            {
+                                using (FileStream fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                                {
+                                    if (fs.Length != lastLength)
+                                    {
+                                        lastLength = fs.Length;
+                                        fs.Position = 0;
+                                        using (StreamReader reader = new StreamReader(fs, Encoding.UTF8, true))
+                                        {
+                                            string text = reader.ReadToEnd();
+                                            if (text.IndexOf("first video frame", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                text.IndexOf("shown", StringComparison.OrdinalIgnoreCase) >= 0)
+                                            {
+                                                int msAfterMpv = (int)(DateTime.UtcNow - startedUtc).TotalMilliseconds;
+                                                Log.Info("startup: mpv first video frame shown " + msAfterMpv +
+                                                    " ms after mpv start (" + StartupElapsedMs() + " ms after process timer start)");
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { /* best-effort: probe must never affect playback */ }
+                        Thread.Sleep(200);
+                    }
+                }
+                catch { /* best-effort */ }
+            });
+        }
+
         // Runs from the scheduled watchdog task. Does nothing when the app is
         // healthy or when the user exited from the tray on purpose.
         private static int RunWatchdog()
@@ -663,9 +722,12 @@ namespace LiveBackground
             // Recover from a previous run that was killed while "Screensaver
             // Video Background" had the shell hidden. Show() is a no-op when
             // the taskbar and icons are already visible.
+            long shellChromeMs = _startupSw != null ? _startupSw.ElapsedMilliseconds : -1;
             ShellChrome.Show();
+            long shellChromeDoneMs = _startupSw != null ? _startupSw.ElapsedMilliseconds : -1;
 
-            Log.Info("=== LiveBackground starting === (" + (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds + " ms after process start)");
+            Log.Info("=== LiveBackground starting === (" + StartupElapsedMs() + " ms after process timer start)");
+            Log.Info("startup: ShellChrome.Show " + (shellChromeDoneMs - shellChromeMs) + " ms (started " + shellChromeMs + " ms)");
             // Win the logon race: the early startup work below (config, displays,
             // process reap) is CPU-bound, so run it at High and outrank the other
             // logon apps. Dropped back to Normal once the wallpaper is up.
@@ -678,12 +740,12 @@ namespace LiveBackground
             _jobHandle = Native.CreateKillOnCloseJob();
             if (_jobHandle != IntPtr.Zero) Log.Info("child-process job created (mpv is reaped even on a hard kill)");
             else Log.Warn("child-process job unavailable; orphans are only reaped at startup");
-            DateTime startupStepUtc = DateTime.UtcNow;
+            Stopwatch startupStep = Stopwatch.StartNew();
             // A previous run that was killed hard can leave its mpv behind.
             // Reap it before we start our own, so only one video is ever shown.
             int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
             if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
-            Log.Info("startup: orphan mpv scan " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
+            Log.Info("startup: orphan mpv scan " + startupStep.ElapsedMilliseconds + " ms");
             // Prepare loops for the other clips only after the wallpaper is up,
             // so the prefetch never competes with logon.
             _prefetchAfter = DateTime.UtcNow.AddSeconds(60);
@@ -695,10 +757,10 @@ namespace LiveBackground
             // "the user closed it on purpose" marker.
             Util.SafeDelete(Installer.QuitFlag(_appRoot));
 
-            startupStepUtc = DateTime.UtcNow;
+            startupStep.Restart();
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
             _config = ConfigStore.LoadOrCreate(_appRoot);
-            Log.Info("startup: config load " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
+            Log.Info("startup: config load " + startupStep.ElapsedMilliseconds + " ms");
             // A config that could not be read silently resets everything the
             // user configured; say so once instead of letting them think the
             // app forgot their settings. Ui.Notify holds the message until the
@@ -708,11 +770,11 @@ namespace LiveBackground
                 Log.Warn("config warning: " + ConfigStore.LoadWarning);
                 Ui.Notify("LiveBackground", ConfigStore.LoadWarning);
             }
-            startupStepUtc = DateTime.UtcNow;
+            startupStep.Restart();
             _screens = Screens.Enumerate();
             _screensSignature = Screens.Signature(_screens);
             Log.Info("displays: " + ScreenText.DescribeAll(_screens, Screens.IsDuplicate(_screens)));
-            Log.Info("startup: screen enumeration " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
+            Log.Info("startup: screen enumeration " + startupStep.ElapsedMilliseconds + " ms");
             // An old config's single second-screen block becomes the settings
             // for the first extra monitor, remembered by its device name from
             // then on.
@@ -776,8 +838,8 @@ namespace LiveBackground
                 Log.Info("no loop yet, building in the background");
             }
 
-            Log.Info("startup: cache/manifest ready " + (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds + " ms after process start");
-            startupStepUtc = DateTime.UtcNow;
+            Log.Info("startup: cache/manifest ready " + StartupElapsedMs() + " ms after process timer start");
+            startupStep.Restart();
             _player = new MpvPlayer(_appRoot, _config);
 
             // Each extra display gets its own player. A screen mirrors the main
@@ -785,7 +847,7 @@ namespace LiveBackground
             // mode drives every target from one desktop monitor, so it never
             // gets extra players.
             RebuildScreenPlayers();
-            Log.Info("startup: players initialized " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
+            Log.Info("startup: players initialized " + startupStep.ElapsedMilliseconds + " ms");
 
             // The lock screen and tray are not needed for the first wallpaper
             // frame. Starting them later keeps them from competing with the

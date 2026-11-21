@@ -538,12 +538,13 @@ namespace LiveBackground
                             if (!startDeltaLogged)
                             {
                                 message += " (" +
-                                    (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds +
-                                    " ms after process start)";
+                                    StartupElapsedMs() +
+                                    " ms after process timer start)";
                                 startDeltaLogged = true;
                             }
                             Log.Info(message);
                             firstPlacementLogged = true;
+                            StartFirstFrameProbe(_player);
                         }
 
                         // Old loop/frame files are not urgent. Clean them up
