@@ -13,6 +13,8 @@ namespace LiveBackground
         private static string _logDir;
         private static StreamWriter _writer;
         private static long _written;
+        private static int _infoSinceFlush;
+        private static DateTime _lastFlushUtc = DateTime.MinValue;
 
         public static void Init(string appRoot)
         {
@@ -82,6 +84,15 @@ namespace LiveBackground
 
                     _writer.Write(line);
                     _written += line.Length;
+                    bool flushNow = level != "INFO" || _infoSinceFlush >= 25 ||
+                        (DateTime.UtcNow - _lastFlushUtc).TotalSeconds >= 5;
+                    if (level == "INFO") _infoSinceFlush++;
+                    if (flushNow)
+                    {
+                        _writer.Flush();
+                        _infoSinceFlush = 0;
+                        _lastFlushUtc = DateTime.UtcNow;
+                    }
                 }
                 catch
                 {
@@ -99,8 +110,10 @@ namespace LiveBackground
                 Directory.CreateDirectory(_logDir);
                 FileStream stream = new FileStream(_logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                 _writer = new StreamWriter(stream, new UTF8Encoding(false));
-                _writer.AutoFlush = true;
+                _writer.AutoFlush = false;
                 _written = stream.Length;
+                _infoSinceFlush = 0;
+                _lastFlushUtc = DateTime.UtcNow;
             }
             catch
             {

@@ -521,8 +521,12 @@ namespace LiveBackground
             Paths.Init(programRoot);
             _appRoot = Paths.DataRoot;
             Log.Init(_appRoot);
+            ulong tickCount64 = Native.GetTickCount64();
+            DateTime approxBootUtc = DateTime.UtcNow.AddMilliseconds(-(double)tickCount64);
             Log.Info("startup: Main entered " + _startupSw.ElapsedMilliseconds + " ms after process timer start; " +
-                "process start " + _processStartUtc.ToString("o") + "; tickCount64 " + Native.GetTickCount64() + " ms");
+                "process start " + _processStartUtc.ToString("o") + "; tickCount64 " + tickCount64 +
+                " ms; approx boot " + approxBootUtc.ToString("o"));
+            StartBootContextProbe();
 
             // Leave a readable trace if anything escapes the normal paths.
             AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e)
@@ -617,6 +621,47 @@ namespace LiveBackground
                     try { mutex.ReleaseMutex(); } catch { /* best-effort: the mutex is released on exit regardless */ }
                 }
             }
+        }
+
+        private static void StartBootContextProbe()
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    using (EventLog log = new EventLog("System"))
+                    {
+                        EventLogEntryCollection entries = log.Entries;
+                        int count = entries.Count;
+                        int start = Math.Max(0, count - 50);
+                        for (int i = count - 1; i >= start; i--)
+                        {
+                            EventLogEntry entry = null;
+                            try { entry = entries[i]; } catch { continue; }
+                            if (entry == null) continue;
+                            try
+                            {
+                                // Kernel-Boot 27 indicates resume/boot type; 0x1 is hiberfile/Fast Startup.
+                                if ((entry.InstanceId & 0xFFFF) == 27 &&
+                                    string.Equals(entry.Source, "Microsoft-Windows-Kernel-Boot", StringComparison.OrdinalIgnoreCase) &&
+                                    (DateTime.UtcNow - entry.TimeGenerated.ToUniversalTime()).TotalMinutes < 15)
+                                {
+                                    string msg = entry.Message;
+                                    if (!string.IsNullOrEmpty(msg) && msg.Length > 200) msg = msg.Substring(0, 200) + "...";
+                                    Log.Info("startup: boot context Kernel-Boot/27 at " +
+                                        entry.TimeGenerated.ToUniversalTime().ToString("o") + ": " + (msg ?? ""));
+                                    return;
+                                }
+                            }
+                            finally
+                            {
+                                try { entry.Dispose(); } catch { }
+                            }
+                        }
+                    }
+                }
+                catch { /* best-effort: boot context must never affect startup */ }
+            });
         }
 
         private static void StartFirstFrameProbe(MpvPlayer player)
