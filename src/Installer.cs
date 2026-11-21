@@ -434,17 +434,59 @@ namespace LiveBackground
             try { candidates = Process.GetProcessesByName(name); }
             catch { return matches; }
 
+            int currentSession = -1;
+            try { currentSession = Process.GetCurrentProcess().SessionId; } catch { /* best-effort: keep scanning all sessions */ }
+
             foreach (Process process in candidates)
             {
                 try
                 {
-                    string path = process.MainModule.FileName;
-                    if (string.Equals(path, exePath, StringComparison.OrdinalIgnoreCase)) matches.Add(process);
-                    else process.Dispose();
+                    if (currentSession >= 0)
+                    {
+                        try { if (process.SessionId != currentSession) { process.Dispose(); continue; } }
+                        catch { /* best-effort: fall through to path check */ }
+                    }
+
+                    string path = TryGetProcessPath(process);
+                    if (!string.IsNullOrEmpty(path) &&
+                        string.Equals(path, exePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches.Add(process);
+                    }
+                    else
+                    {
+                        process.Dispose();
+                    }
                 }
                 catch { process.Dispose(); }
             }
             return matches;
+        }
+
+        private static string TryGetProcessPath(Process process)
+        {
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)process.Id);
+                if (handle != IntPtr.Zero)
+                {
+                    var sb = new System.Text.StringBuilder(1024);
+                    uint size = (uint)sb.Capacity;
+                    if (Native.QueryFullProcessImageName(handle, 0, sb, ref size) && size > 0)
+                    {
+                        return sb.ToString();
+                    }
+                }
+            }
+            catch { /* fall back below */ }
+            finally
+            {
+                if (handle != IntPtr.Zero) try { Native.CloseHandle(handle); } catch { }
+            }
+
+            try { return process.MainModule.FileName; }
+            catch { return null; }
         }
 
         public static void CreateStartup(string appRoot, AppConfig config, InstallState state, Action<string> log)

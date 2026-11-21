@@ -665,7 +665,7 @@ namespace LiveBackground
             // the taskbar and icons are already visible.
             ShellChrome.Show();
 
-            Log.Info("=== LiveBackground starting ===");
+            Log.Info("=== LiveBackground starting === (" + (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds + " ms after process start)");
             // Win the logon race: the early startup work below (config, displays,
             // process reap) is CPU-bound, so run it at High and outrank the other
             // logon apps. Dropped back to Normal once the wallpaper is up.
@@ -678,10 +678,12 @@ namespace LiveBackground
             _jobHandle = Native.CreateKillOnCloseJob();
             if (_jobHandle != IntPtr.Zero) Log.Info("child-process job created (mpv is reaped even on a hard kill)");
             else Log.Warn("child-process job unavailable; orphans are only reaped at startup");
+            DateTime startupStepUtc = DateTime.UtcNow;
             // A previous run that was killed hard can leave its mpv behind.
             // Reap it before we start our own, so only one video is ever shown.
             int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
             if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
+            Log.Info("startup: orphan mpv scan " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
             // Prepare loops for the other clips only after the wallpaper is up,
             // so the prefetch never competes with logon.
             _prefetchAfter = DateTime.UtcNow.AddSeconds(60);
@@ -693,8 +695,10 @@ namespace LiveBackground
             // "the user closed it on purpose" marker.
             Util.SafeDelete(Installer.QuitFlag(_appRoot));
 
+            startupStepUtc = DateTime.UtcNow;
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
             _config = ConfigStore.LoadOrCreate(_appRoot);
+            Log.Info("startup: config load " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
             // A config that could not be read silently resets everything the
             // user configured; say so once instead of letting them think the
             // app forgot their settings. Ui.Notify holds the message until the
@@ -704,9 +708,11 @@ namespace LiveBackground
                 Log.Warn("config warning: " + ConfigStore.LoadWarning);
                 Ui.Notify("LiveBackground", ConfigStore.LoadWarning);
             }
+            startupStepUtc = DateTime.UtcNow;
             _screens = Screens.Enumerate();
             _screensSignature = Screens.Signature(_screens);
             Log.Info("displays: " + ScreenText.DescribeAll(_screens, Screens.IsDuplicate(_screens)));
+            Log.Info("startup: screen enumeration " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
             // An old config's single second-screen block becomes the settings
             // for the first extra monitor, remembered by its device name from
             // then on.
@@ -770,6 +776,8 @@ namespace LiveBackground
                 Log.Info("no loop yet, building in the background");
             }
 
+            Log.Info("startup: cache/manifest ready " + (int)(DateTime.UtcNow - _processStartUtc).TotalMilliseconds + " ms after process start");
+            startupStepUtc = DateTime.UtcNow;
             _player = new MpvPlayer(_appRoot, _config);
 
             // Each extra display gets its own player. A screen mirrors the main
@@ -777,6 +785,7 @@ namespace LiveBackground
             // mode drives every target from one desktop monitor, so it never
             // gets extra players.
             RebuildScreenPlayers();
+            Log.Info("startup: players initialized " + (int)(DateTime.UtcNow - startupStepUtc).TotalMilliseconds + " ms");
 
             // The lock screen and tray are not needed for the first wallpaper
             // frame. Starting them later keeps them from competing with the
