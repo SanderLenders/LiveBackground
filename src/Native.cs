@@ -185,6 +185,9 @@ namespace LiveBackground
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool LockWorkStation();
 
+        [DllImport("user32.dll")]
+        public static extern int ShowCursor(bool bShow);
+
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool DestroyIcon(IntPtr hIcon);
 

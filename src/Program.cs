@@ -819,6 +819,7 @@ namespace LiveBackground
             long shellChromeMs = _startupSw != null ? _startupSw.ElapsedMilliseconds : -1;
             ShellChrome.Show();
             long shellChromeDoneMs = _startupSw != null ? _startupSw.ElapsedMilliseconds : -1;
+            RecoverScreensaverCursor();
 
             Log.Info("=== LiveBackground starting === (" + StartupElapsedMs() + " ms after process timer start)");
             Log.Info("startup: ShellChrome.Show " + (shellChromeDoneMs - shellChromeMs) + " ms (started " + shellChromeMs + " ms)");

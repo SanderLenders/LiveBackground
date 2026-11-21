@@ -948,6 +948,55 @@ namespace LiveBackground
             thread.Start();
         }
 
+        private static string CursorHiddenMarkerPath()
+        {
+            try { return Path.Combine(Paths.DataRoot, "cursor-hidden.flag"); }
+            catch { return ""; }
+        }
+
+        private static void WriteCursorHiddenMarker()
+        {
+            string path = CursorHiddenMarkerPath();
+            if (string.IsNullOrEmpty(path)) return;
+            try { File.WriteAllText(path, "hidden"); } catch { /* best-effort */ }
+        }
+
+        private static void DeleteCursorHiddenMarker()
+        {
+            string path = CursorHiddenMarkerPath();
+            if (string.IsNullOrEmpty(path)) return;
+            try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
+        }
+
+        private static void HideScreensaverCursor(ref bool cursorHidden)
+        {
+            if (cursorHidden) return;
+            WriteCursorHiddenMarker();
+            Native.ShowCursor(false);
+            cursorHidden = true;
+        }
+
+        private static void ShowScreensaverCursor(ref bool cursorHidden)
+        {
+            if (!cursorHidden && !File.Exists(CursorHiddenMarkerPath())) return;
+            try { Native.ShowCursor(true); } catch { /* best-effort */ }
+            cursorHidden = false;
+            DeleteCursorHiddenMarker();
+        }
+
+        private static void RecoverScreensaverCursor()
+        {
+            string path = CursorHiddenMarkerPath();
+            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                if (!File.Exists(path)) return;
+                Native.ShowCursor(true);
+                File.Delete(path);
+            }
+            catch { /* best-effort */ }
+        }
+
         // Runs the selected screensaver action after the configured idle delay
         // (shared by both options): hide taskbar/desktop icons and open windows so
         // only the video wallpaper is visible, or dim and lock the workstation.
@@ -962,6 +1011,7 @@ namespace LiveBackground
                 Thread.Sleep(4000);
                 bool hidden = false;
                 bool windowsMinimizedByUs = false;
+                bool cursorHidden = false;
                 bool lockFired = false;
                 while (true)
                 {
@@ -969,6 +1019,7 @@ namespace LiveBackground
                     {
                         try { if (hidden) ShellChrome.Show(); } catch { }
                         try { if (windowsMinimizedByUs) UndoMinimizeAllWindows(); } catch { }
+                        try { ShowScreensaverCursor(ref cursorHidden); } catch { }
                         break;
                     }
                     AppConfig config = _config;
@@ -992,11 +1043,13 @@ namespace LiveBackground
                                 MinimizeAllWindows();
                                 windowsMinimizedByUs = true;
                             }
+                            HideScreensaverCursor(ref cursorHidden);
                             hidden = true;
                             lockFired = false;
                         }
                         else
                         {
+                            ShowScreensaverCursor(ref cursorHidden);
                             if (hidden)
                             {
                                 ShellChrome.Show();
