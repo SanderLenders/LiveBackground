@@ -969,11 +969,10 @@ namespace LiveBackground
                     {
                         bool hideMode = config != null && config.ScreensaverVideo;
                         bool dimLockMode = config != null && config.ScreensaverActive && !config.ScreensaverVideo;
-                        int timeout = config != null ? config.ScreensaverHideSeconds : ScreensaverIdle.DefaultTimeoutSeconds;
-                        if (timeout <= 0) timeout = ScreensaverIdle.DefaultTimeoutSeconds;
+                        int timeout = ScreensaverIdle.NormalizeTimeout(config != null ? config.ScreensaverHideSeconds : 0);
                         bool running = WallpaperRunning();
                         long idle = IdleMilliseconds();
-                        bool due = !_paused && running && timeout > 0 && idle >= (long)timeout * 1000L;
+                        bool due = ScreensaverIdle.IsDue(_paused, running, idle, timeout);
 
                         if (hideMode && due)
                         {

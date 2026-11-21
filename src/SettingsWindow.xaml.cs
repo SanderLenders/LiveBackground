@@ -51,8 +51,9 @@ namespace LiveBackground
         private CheckBox _imageShuffle;
 
         private CheckBox _startWithWindows;
-        private CheckBox _screensaverDimLock;
-        private CheckBox _screensaverVideoBg;
+        private System.Windows.Controls.RadioButton _screensaverNone;
+        private System.Windows.Controls.RadioButton _screensaverVideoBg;
+        private System.Windows.Controls.RadioButton _screensaverDimLock;
         private Slider _screensaverHideSlider;
         private TextBlock _screensaverHideValue;
         private StackPanel _screensaverHidePanel;
@@ -222,7 +223,8 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_videoFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _clipHint = null;
+            _clipHint = Muted("");
+            panel.Children.Add(_clipHint);
         }
 
         private void BuildPlaybackTab()
@@ -306,7 +308,8 @@ namespace LiveBackground
             btns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); RefreshLockImageChoices(); }));
             btns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(Resolve(_imageFolderBox.Text)); }));
             panel.Children.Add(btns);
-            _imageHint = null;
+            _imageHint = Muted("");
+            panel.Children.Add(_imageHint);
         }
 
         private void BuildSlideshowTab()
@@ -360,12 +363,15 @@ namespace LiveBackground
             panel.Children.Add(_startWithWindows);
 
             panel.Children.Add(Header("Screensaver"));
-            _screensaverDimLock = new CheckBox { Content = "Screensaver Dim and Lock", Margin = new Thickness(0, 6, 0, 4) };
-            _screensaverVideoBg = new CheckBox { Content = "Hide taskbar and desktop icons after idle", Margin = new Thickness(0, 0, 0, 6) };
-            _screensaverDimLock.Checked += delegate { if (_screensaverDimLock.IsChecked == true) _screensaverVideoBg.IsChecked = false; };
-            _screensaverVideoBg.Checked += delegate { if (_screensaverVideoBg.IsChecked == true) _screensaverDimLock.IsChecked = false; };
-            panel.Children.Add(_screensaverDimLock);
+            _screensaverNone = new System.Windows.Controls.RadioButton { Content = "No screensaver", GroupName = "screensaverMode", Margin = new Thickness(0, 6, 0, 4) };
+            _screensaverVideoBg = new System.Windows.Controls.RadioButton { Content = "Hide taskbar and desktop icons after idle", GroupName = "screensaverMode", Margin = new Thickness(0, 0, 0, 4) };
+            _screensaverDimLock = new System.Windows.Controls.RadioButton { Content = "Screensaver Dim and Lock", GroupName = "screensaverMode", Margin = new Thickness(0, 0, 0, 6) };
+            _screensaverNone.Checked += delegate { UpdateScreensaverIdleEnabled(); };
+            _screensaverVideoBg.Checked += delegate { UpdateScreensaverIdleEnabled(); };
+            _screensaverDimLock.Checked += delegate { UpdateScreensaverIdleEnabled(); };
+            panel.Children.Add(_screensaverNone);
             panel.Children.Add(_screensaverVideoBg);
+            panel.Children.Add(_screensaverDimLock);
 
             _screensaverHidePanel = new StackPanel { Margin = new Thickness(20, 0, 0, 16) };
             var hideRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
@@ -511,6 +517,27 @@ namespace LiveBackground
 
         private static TextBlock Header(string text) { return new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 14, Margin = new Thickness(0, 0, 0, 2) }; }
         private static TextBlock Muted(string text) { return new TextBlock { Text = text, Foreground = new SolidColorBrush(Color.FromRgb(167, 176, 188)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) }; }
+
+        // Temporary review mode: keep not-functional controls visually greyed but
+        // clickable so behavior/layout can be reviewed. Set to false to restore
+        // normal disabled behavior.
+        private static readonly bool ReviewDisabledControlsClickable = true;
+        private static void ApplyReviewEnabled(System.Windows.UIElement element, bool functional)
+        {
+            if (element == null) return;
+            if (ReviewDisabledControlsClickable)
+            {
+                var control = element as System.Windows.Controls.Control;
+                if (control != null) control.IsEnabled = true;
+                element.Opacity = functional ? 1.0 : 0.45;
+            }
+            else
+            {
+                var control = element as System.Windows.Controls.Control;
+                if (control != null) control.IsEnabled = functional;
+                element.Opacity = 1.0;
+            }
+        }
         private static Button ActionButton(string text, Action action) { var b = new Button { Content = text, Margin = new Thickness(0, 0, 8, 8), MinWidth = 90 }; b.Click += delegate { action(); }; return b; }
 
         private DataTemplate ClipCheckCellTemplate()
@@ -651,20 +678,53 @@ namespace LiveBackground
         private void UpdateDesktopEnabled()
         {
             bool images = IsImagesMode();
+            bool sectionFunctional = !images;
             if (_desktopSection != null)
             {
-                _desktopSection.IsEnabled = !images;
-                _desktopSection.Opacity = images ? 0.45 : 1.0;
+                if (ReviewDisabledControlsClickable)
+                {
+                    _desktopSection.IsEnabled = true;
+                    _desktopSection.Opacity = sectionFunctional ? 1.0 : 0.45;
+                }
+                else
+                {
+                    _desktopSection.IsEnabled = sectionFunctional;
+                    _desktopSection.Opacity = 1.0;
+                }
             }
-            if (!images && _desktopWallpaper != null)
+            if (_desktopWallpaper != null)
             {
-                bool enabled = _desktopWallpaper.IsChecked == true;
-                if (_desktopFrame != null) _desktopFrame.IsEnabled = enabled;
-                if (_desktopCustom != null) _desktopCustom.IsEnabled = enabled;
-                if (_desktopCustomPath != null) _desktopCustomPath.IsEnabled = enabled;
-                if (_desktopBrowseBtn != null) _desktopBrowseBtn.IsEnabled = enabled;
-                if (_desktopDropZone != null) _desktopDropZone.IsEnabled = enabled;
+                bool childrenFunctional = sectionFunctional && _desktopWallpaper.IsChecked == true;
+                ApplyReviewChildEnabled(_desktopFrame, sectionFunctional, childrenFunctional);
+                ApplyReviewChildEnabled(_desktopCustom, sectionFunctional, childrenFunctional);
+                ApplyReviewChildEnabled(_desktopCustomPath, sectionFunctional, childrenFunctional);
+                ApplyReviewChildEnabled(_desktopBrowseBtn, sectionFunctional, childrenFunctional);
+                ApplyReviewChildEnabled(_desktopDropZone, sectionFunctional, childrenFunctional);
             }
+        }
+
+        private static void ApplyReviewChildEnabled(System.Windows.UIElement element, bool sectionFunctional, bool functional)
+        {
+            if (element == null) return;
+            if (ReviewDisabledControlsClickable)
+            {
+                var control = element as System.Windows.Controls.Control;
+                if (control != null) control.IsEnabled = true;
+                // Parent section already dims when section is not functional.
+                element.Opacity = sectionFunctional ? (functional ? 1.0 : 0.45) : 1.0;
+            }
+            else
+            {
+                var control = element as System.Windows.Controls.Control;
+                if (control != null) control.IsEnabled = functional;
+                element.Opacity = 1.0;
+            }
+        }
+
+        private void UpdateScreensaverIdleEnabled()
+        {
+            bool functional = _screensaverNone == null || _screensaverNone.IsChecked != true;
+            ApplyReviewEnabled(_screensaverHidePanel, functional);
         }
 
         private void ModeToggleBtn_Click(object sender, RoutedEventArgs e) { ApplyModeUi(); }
@@ -698,11 +758,14 @@ namespace LiveBackground
             UpdateIntervalLabel(); UpdateImageFadeLabel();
 
             _startWithWindows.IsChecked = IsStartupEnabled(_config.TaskName);
-            _screensaverDimLock.IsChecked = _config.ScreensaverActive;
-            _screensaverVideoBg.IsChecked = _config.ScreensaverVideo;
-            if (_screensaverDimLock.IsChecked == true && _screensaverVideoBg.IsChecked == true) _screensaverVideoBg.IsChecked = false;
-            if (_screensaverDimLock.IsChecked != true && _screensaverVideoBg.IsChecked != true) _screensaverVideoBg.IsChecked = true;
+            bool ssVideo = _config.ScreensaverVideo;
+            bool ssDimLock = _config.ScreensaverActive && !ssVideo;
+            bool ssNone = !ssVideo && !_config.ScreensaverActive;
+            if (_screensaverNone != null) _screensaverNone.IsChecked = ssNone;
+            if (_screensaverVideoBg != null) _screensaverVideoBg.IsChecked = ssVideo;
+            if (_screensaverDimLock != null) _screensaverDimLock.IsChecked = ssDimLock;
             SetScreensaverHideSeconds(_config.ScreensaverHideSeconds);
+            UpdateScreensaverIdleEnabled();
 
             string lockMode = (_config.LockScreenMode ?? "frame").ToLowerInvariant();
             _lockFrame.IsChecked = lockMode == "frame";
@@ -773,7 +836,7 @@ namespace LiveBackground
                 {
                     string name = Path.GetFileName(f);
                     bool en;
-                    if (!enabledMap.TryGetValue(name, out en)) en = true;
+                    if (!enabledMap.TryGetValue(name, out en)) en = false;
                     items.Add(new ClipItem { Name = name, Path = f, Enabled = en, Length = "", Duration = -1 });
                 }
             }
@@ -808,13 +871,11 @@ namespace LiveBackground
 
                 var enabledMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                 if (sourceList != null) foreach (var e in sourceList) if (e != null && !string.IsNullOrEmpty(e.Name)) enabledMap[e.Name.Trim()] = e.Enabled;
-                bool hasPlaylist = sourceList != null && sourceList.Count > 0;
-
                 foreach (var f in ordered)
                 {
                     string name = Path.GetFileName(f);
                     bool en;
-                    if (!enabledMap.TryGetValue(name, out en)) en = !hasPlaylist;
+                    if (!enabledMap.TryGetValue(name, out en)) en = true;
                     items.Add(new ImageItem { Name = name, Path = f, Enabled = en });
                 }
             }
@@ -923,8 +984,8 @@ namespace LiveBackground
         private void UpdateMonitorTabEnabled()
         {
             bool available = _hasSecondScreen || _duplicateLayout;
-            TabMultiMonitor.IsEnabled = available;
-            if (!available && MainTabs.SelectedItem == TabMultiMonitor) MainTabs.SelectedItem = IsImagesMode() ? TabImages : TabVideos;
+            ApplyReviewEnabled(TabMultiMonitor, available);
+            if (!ReviewDisabledControlsClickable && !available && MainTabs.SelectedItem == TabMultiMonitor) MainTabs.SelectedItem = IsImagesMode() ? TabImages : TabVideos;
         }
 
         protected override void OnActivated(EventArgs e)
@@ -1703,15 +1764,17 @@ namespace LiveBackground
             private void UpdateEnabled()
             {
                 bool has = !string.IsNullOrEmpty(_device);
-                if (_tab != null) _tab.IsEnabled = has;
+                ApplyReviewEnabled(_tab, has);
                 bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
-                if (_videoFolder != null) _videoFolder.IsEnabled = has && !sv;
-                if (_videoMode != null) _videoMode.IsEnabled = has && !sv;
-                if (_videoDrop != null) _videoDrop.IsEnabled = has && !sv;
-                if (_imageFolder != null) _imageFolder.IsEnabled = has && !si;
-                if (_imageMode != null) _imageMode.IsEnabled = has && !si;
-                if (_imageDrop != null) _imageDrop.IsEnabled = has && !si;
+                ApplyReviewChildEnabled(_sameVideo, has, has);
+                ApplyReviewChildEnabled(_sameImages, has, has);
+                ApplyReviewChildEnabled(_videoFolder, has, has && !sv);
+                ApplyReviewChildEnabled(_videoMode, has, has && !sv);
+                ApplyReviewChildEnabled(_videoDrop, has, has && !sv);
+                ApplyReviewChildEnabled(_imageFolder, has, has && !si);
+                ApplyReviewChildEnabled(_imageMode, has, has && !si);
+                ApplyReviewChildEnabled(_imageDrop, has, has && !si);
             }
 
             public void SetMode(bool imagesMode) { _ = imagesMode; UpdateEnabled(); }

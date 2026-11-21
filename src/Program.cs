@@ -317,10 +317,9 @@ namespace LiveBackground
             ResetRestartBackoff();
             ResetBuildFailureBackoff();
             bool wasImages = IsImagesMode;
-            // The screen-power option is an mpv argument, so a changed value
-            // needs a player restart rather than a new loop.
-            bool screenChanged = _config.ScreensaverActive != updated.ScreensaverActive ||
-                _config.ScreensaverVideo != updated.ScreensaverVideo;
+            // Idle/screensaver actions are app-managed (mpv always uses
+            // --stop-screensaver=yes), so toggling them does not require
+            // restarting the video player.
             bool lockChanged = !string.Equals(_config.LockScreenMode, updated.LockScreenMode,
                 StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(_config.LockScreenImage ?? "", updated.LockScreenImage ?? "",
@@ -400,7 +399,7 @@ namespace LiveBackground
             }
             // Switching back from Images mode has to start the cached loop
             // again; the player was stopped when images mode took over.
-            if (screenChanged || wasImages) _restartPlayer = true;
+            if (wasImages) _restartPlayer = true;
             // A build for exactly this configuration may already be running
             // ("Rebuild now" in the settings window followed by "Save and
             // apply"); cancelling it would throw away its encode, so let it
