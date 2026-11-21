@@ -613,6 +613,33 @@ namespace LiveBackground
         private const string TaskbarClass = "Shell_TrayWnd";
         private const string SecondaryTaskbarClass = "Shell_SecondaryTrayWnd";
 
+        private static string MarkerPath()
+        {
+            try { return Path.Combine(Paths.DataRoot, "shell-hidden.flag"); }
+            catch { return ""; }
+        }
+
+        private static void WriteMarker()
+        {
+            string path = MarkerPath();
+            if (string.IsNullOrEmpty(path)) return;
+            try { File.WriteAllText(path, "hidden"); } catch { /* best-effort */ }
+        }
+
+        private static void DeleteMarker()
+        {
+            string path = MarkerPath();
+            if (string.IsNullOrEmpty(path)) return;
+            try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
+        }
+
+        private static bool MarkerExists()
+        {
+            string path = MarkerPath();
+            if (string.IsNullOrEmpty(path)) return true;
+            try { return File.Exists(path); } catch { return true; }
+        }
+
         private static void SetTaskbars(int show)
         {
             Native.EnumWindows(delegate(IntPtr handle, IntPtr lParam)
@@ -639,14 +666,20 @@ namespace LiveBackground
 
         public static void Hide()
         {
+            // Marker first: a crash after hiding must be recovered on next start.
+            WriteMarker();
             SetTaskbars(Native.SW_HIDE);
             SetDesktopIcons(Native.SW_HIDE);
         }
 
         public static void Show()
         {
+            // Common case: shell is visible and no marker exists. Skip the
+            // EnumWindows scan, which is expensive on boot.
+            if (!MarkerExists()) return;
             SetTaskbars(Native.SW_SHOW);
             SetDesktopIcons(Native.SW_SHOW);
+            DeleteMarker();
         }
     }
 }
