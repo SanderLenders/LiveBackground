@@ -3,7 +3,7 @@
 ## 1.8.6
 - Modernized the settings window with a Windows 11-style WPF interface (grey/black theme, top-tab layout) on .NET Framework 4.8 while keeping existing settings behavior and instant-startup philosophy intact.
 - Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
-- Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48) when available, with framework compiler fallback preserved.
+- Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48). The legacy csc/Roslyn fallback is no longer supported because the WPF settings UI requires XAML compilation.
 
 ### Housekeeping and display scaling
 
@@ -23,11 +23,11 @@
   `dotnet test` project, a small unit-test suite and a GitHub Actions workflow
   now cover the same code. The app itself still runs on .NET Framework 4.8. See
   `BUILDING.md`.
-- **The shipping build now uses the modern C# compiler.** `build.ps1` compiles
-  the app with the .NET SDK's Roslyn compiler at C# 7.3 (the newest version the
-  .NET Framework supports) when the SDK is installed, and falls back to the
-  older .NET Framework `csc` (C# 5) with a warning when it is not. The shipped
-  binaries still target .NET Framework 4.8 and behave exactly as before.
+- **The shipping build uses MSBuild/dotnet build for WPF.** `build.ps1`
+  compiles through `dotnet build` (net48) because the WPF settings UI requires
+  XAML compilation. The legacy csc/Roslyn fallback is not supported; the script
+  fails with a clear error when the .NET SDK/MSBuild is unavailable. The shipped
+  binaries still target .NET Framework 4.8.
 - **The four media lists in the settings window now share one tested
   implementation.** The main Videos and Images panes and the two per-screen
   editors used to carry four hand-copied versions of the same tick, sort, move
@@ -89,23 +89,20 @@
 
 ### Screensaver
 
-- **A new "Screensaver Video Background" choice on the Playback tab.** The old
-  checkbox is now called "Screensaver Dim and Lock"; the two choices are
-  mutually exclusive. With the new choice the screen stays on and, once the
-  Windows screen-saver timeout passes with no user input, the taskbar and
-  desktop icons are hidden so only the video is visible. Any mouse move or key
-  press brings them straight back. The "Screensaver settings..." button opens
-  the Windows screen-saver page, which is where the idle timeout is set; if
-  that page has no usable timeout, the app uses five minutes. Nothing is
-  terminated - the shell windows are only hidden and shown again, and they are
-  restored on exit, at startup and by the watchdog, so a crash cannot leave the
-  taskbar hidden.
+- **Screensaver choices are explicit and mutually exclusive.** The Playback tab
+  now offers "No screensaver", "Hide taskbar and desktop icons after idle", and
+  "Screensaver Dim and Lock". The idle delay is shared by the idle actions. Any
+  mouse move or key press restores the desktop. While a real fullscreen
+  foreground app is detected, disruptive screensaver actions are skipped.
+  Nothing is terminated - hidden shell windows are restored on exit, at startup
+  and by the watchdog, so a crash cannot leave the taskbar hidden.
 
 ### Settings window
 
 - **"Single clip" now comes before "All clips in this order"**, and "One image"
   before "Slideshow", so the narrower choice leads on every tab and per-screen
-  pane, including the 2nd and 3rd Screen sub-tabs.
+  pane, including extra-screen sub-tabs. Extra-screen Single clip/One image
+  modes now let you pick the specific clip or image for that screen.
 - **The "Pick one clip in the list below" hint is gone** from the Videos tab and
   the per-screen tabs; the clip list sits right under the choice.
 - **The per-screen mirror switch now names what it mirrors.** On the Multi
@@ -394,14 +391,14 @@
   clip selection. A screen that is not connected keeps its settings untouched
   when another screen is saved.
 - **A screen mirrors the main loop until you change it**, so a freshly connected
-  monitor shows the main video right away. Up to three screens are supported;
-  any screen beyond the third mirrors the main loop.
+  monitor shows the main video right away. Up to four screens are supported;
+  any screen beyond the fourth mirrors the main loop.
 - **Each extra screen gets its own cached loop** when it is not mirroring, built
   in the background and stored per monitor (`cache\screens\`), so two screens can
   play different clips at the same time.
-- **Untested on real three-monitor hardware.** The three-screen path is designed
-  to stay inert on a two-screen PC, but it has only been exercised on two
-  screens; the third screen's own-loop build has not been run on real hardware.
+- **Untested on real three/four-monitor hardware.** The extra-screen path has
+  only been exercised on limited hardware; a fourth screen's own-loop/image path
+  may still need real-hardware validation.
 
 ## 1.6.5
 

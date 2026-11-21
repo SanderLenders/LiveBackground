@@ -1,9 +1,10 @@
 # Building LiveBackground
 
-The application users install is built by `build.ps1`, which compiles `src\*.cs`
-and then packages the result with Inno Setup. It prefers the .NET SDK's Roslyn
-compiler (C# 7.3) and falls back to the .NET Framework `csc` (C# 5) when the SDK
-is not installed. That path is the single source of truth for what ships.
+The application users install is built by `build.ps1`, which compiles the WPF
+app via `dotnet build` / MSBuild (net48) and then packages the result with Inno
+Setup. A .NET SDK (or Visual Studio Build Tools with .NET desktop build tools)
+is required because the settings UI uses WPF/XAML. That path is the single
+source of truth for what ships.
 
 Next to it, the repository carries a small modern tooling layer so the same
 sources can be built, analysed and unit-tested quickly:
@@ -23,11 +24,10 @@ Framework, so the tests exercise the exact code `build.ps1` compiles.
 
 ## Prerequisites
 
-- The .NET SDK 10 (or newer). The SDK builds the projects, and `build.ps1`
-  prefers its Roslyn compiler for the shipping binaries so they can use C# 7.3.
-  Without the SDK, `build.ps1` still works but falls back to the C# 5 framework
-  `csc`. The app itself always runs on .NET Framework 4.8, which is part of
-  Windows.
+- The .NET SDK 10 (or newer), or Visual Studio Build Tools with .NET desktop
+  build tools. `build.ps1` requires MSBuild/dotnet build for WPF XAML
+  compilation. The app itself always runs on .NET Framework 4.8, which is part
+  of Windows.
 - The .NET Framework 4.8 reference assemblies are restored automatically from
   NuGet (`Microsoft.NETFramework.ReferenceAssemblies`), so the targeting pack
   does not need to be installed.
@@ -63,14 +63,10 @@ needs mpv and ffmpeg and takes several minutes; CI instead runs
 `build.ps1 -CompileOnly` to compile both executables the same way and catch a
 change that would break the real build.
 
-`build.ps1` picks its compiler in this order:
-
-- the .NET SDK's Roslyn `csc`, with `/langversion:7.3` (the newest language
-  version the .NET Framework supports);
-- the .NET Framework `csc` (C# 5) when the SDK is absent, with a warning.
-
-Pass `-FrameworkCsc` to force the fallback, or `-CompileOnly` to compile both
-executables and stop before packaging.
+`build.ps1` compiles through `dotnet build` / MSBuild because the settings UI
+requires WPF XAML compilation. If the .NET SDK / MSBuild is unavailable, the
+script fails with a clear error. Pass `-CompileOnly` to compile both executables
+and stop before packaging.
 
 ## Analysers
 
@@ -87,10 +83,10 @@ Warnings are errors in this build (`TreatWarningsAsErrors`), so a new issue fail
 that are genuinely deliberate carry a `SuppressMessage` attribute with a
 justification.
 
-Analysers run in the developer / CI build only: `build.ps1` compiles with plain
-`csc` and does not run them. Suppressions use `[SuppressMessage]` rather than
-`#pragma warning`, because the C# 5 fallback compiler rejects analyser IDs in a
-pragma (`CS1692`) and the same sources feed both builds.
+Analysers run in the developer / CI build only: `build.ps1` compiles through
+`dotnet build`/MSBuild for packaging and does not treat analyser warnings as the
+shipping gate the same way the CI SDK build does. Suppressions use
+`[SuppressMessage]` rather than `#pragma warning` for consistency.
 
 ## Continuous integration
 

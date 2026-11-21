@@ -15,7 +15,7 @@ What you need
 -------------
 - Windows 11, 64-bit
 - .NET Framework 4.8 (already part of Windows 11)
-- Up to three monitors (the main screen plus up to two more; a fourth or
+- Up to four monitors (the main screen plus up to three more; a fifth or
   later screen mirrors the main one)
 - Video files stored on a local drive
 
@@ -77,7 +77,7 @@ The pill replaces the first two; Multi Monitor and Other stay in place:
                       quality and screensaver; or picture interval, crossfade
                       and Shuffle
   Multi Monitor       extra screens: Extended/Duplicate mode and per-screen
-                      video or image settings, with 2nd/3rd Screen sub-tabs
+                      video or image settings, with 2nd/3rd/4th Screen sub-tabs
   Other               start at sign-in, lock-screen and desktop wallpaper image
 
 Every editor stays alive while the pill switches, so unsaved edits are kept.
@@ -191,11 +191,11 @@ either neighbouring clip), so a 5-second clip does not turn into a blur.
 
 Multiple monitors
 -----------------
-LiveBackground supports up to three monitors. The Multi Monitor tab has a
-2nd Screen and, when a third monitor is connected, a 3rd Screen sub-tab. A
-fourth or later monitor mirrors the main screen. Settings are remembered by
-monitor device name, so unplugging, replugging and reordering screens does not
-mix them up. A disconnected screen keeps its saved settings.
+LiveBackground supports up to four monitors. The Multi Monitor tab has 2nd,
+3rd and 4th Screen sub-tabs for connected extra screens. A fifth or later
+monitor mirrors the main screen. Settings are remembered by monitor device
+name, so unplugging, replugging and reordering screens does not mix them up. A
+disconnected screen keeps its saved settings.
 
 The top of the tab shows the Windows display mode: Extended (separate screens)
 or Duplicate (every screen shows the same). The radio buttons show what Windows
@@ -206,18 +206,20 @@ explanation.
 
 The tab follows the Video/Images switch. In Video mode, each extra screen
 mirrors the main clip by default. Turn off "Use the same video as the main
-screen" to choose its own folder, playlist or single clip; its loop is rendered
-once and cached. Rebuild now is available whenever that screen is attached.
+screen" to choose its own folder, playlist or single clip and pick which clip
+plays in Single clip mode; its loop is rendered once and cached. Rebuild now is
+available whenever that screen is attached.
 
 In Images mode, each extra screen likewise mirrors the main picture or
 slideshow by default. Turn off "Use the same image as the main screen" (it says
 "images" while the main screen is a slideshow) to give it an independent image
-folder, one image or slideshow, interval, picture crossfade and Shuffle
-setting. Each independent slideshow has its own folder watcher and timer.
+folder, one image or slideshow, pick which image is used in One image mode, and
+set interval, picture crossfade and Shuffle. Each independent slideshow has its
+own folder watcher and timer.
 
-Playback contains 2nd Screen and 3rd Screen crossfade tabs for independent
-video loops. They are greyed out while the corresponding screen mirrors the
-main clip, is disconnected, or Windows is duplicating. Other -> Desktop
+Playback contains 2nd, 3rd and 4th Screen crossfade tabs for independent video
+loops. They are greyed out while the corresponding screen mirrors the main
+clip, is disconnected, or Windows is duplicating. Other -> Desktop
 wallpaper image also has per-screen tabs: an independent screen can use the
 first frame of its own loop or a custom fallback image while its video is
 paused, stopped or being built. Mirroring screens use the main fallback.
@@ -293,14 +295,14 @@ What appears where
 - Lock screen: the first frame of the video loop, a custom image you pick, or
   one of your image wallpapers. Windows has no public API for a synced
   lock-screen slideshow, so the lock screen is always one still picture.
-- Power: the video does not keep the display awake by default. The screen dims,
-  turns off and locks according to your Windows power settings, exactly as it
-  did before the app was installed. The Playback tab has two mutually exclusive
-  choices: "Screensaver Dim and Lock" (the default, as above) and "Screensaver
-  Video Background", which keeps the screen on and hides the taskbar and
-  desktop icons after the idle time configured in Windows, leaving only the
-  video visible. Any mouse move or key press brings them back. The "Screensaver
-  settings..." button opens that Windows page.
+- Power: the video does not keep the display awake by default. The Playback tab
+  has three mutually exclusive screensaver choices: "No screensaver" (the app
+  does nothing after idle), "Screensaver Dim and Lock" (minimizes windows and
+  locks the workstation after the configured idle delay), and "Hide taskbar and
+  desktop icons after idle" (keeps the video visible and hides the shell after
+  the configured idle delay). The delay slider is shared by the idle actions.
+  Any mouse move or key press restores the desktop. The app does not suppress
+  normal Windows screen/power behavior unless you choose an idle action.
 
 To use a custom desktop wallpaper, open the Other tab and choose "Use a
 custom image" under "Desktop wallpaper image". To use a custom lock-screen
@@ -382,9 +384,11 @@ Useful fields:
     desktopWallpaper   turn the still desktop wallpaper on/off (default true)
     desktopWallpaperMode  "frame" (first loop frame) or "custom"
     desktopWallpaperImage path used when desktopWallpaperMode is "custom"
-    screensaverActive  let Windows dim/lock the screen (default true)
-    screensaverVideo   keep the screen on and hide the shell after the
-                       Windows idle timeout (default false)
+    screensaverActive  dim-and-lock idle action (default false)
+    screensaverVideo   hide taskbar and desktop icons after idle
+                       (default true)
+    screensaverHideSeconds  idle delay in seconds for the selected
+                       screensaver action (default 300)
     extraScreens       per-monitor settings keyed by device name: video and
                        image mirror switches (both default true), folders,
                        playlists, optional video crossfade, slideshow settings

@@ -18,9 +18,10 @@
             LiveBackgroundSetup.exe   official Windows installer (Inno Setup)
 
     Compiling:
-        Prefers the .NET SDK's Roslyn compiler (C# 7.3, the last version fully
-        supported on .NET Framework). Falls back to the .NET Framework csc
-        (C# 5) when the SDK is not installed.
+        Uses dotnet build / MSBuild (net48) because the settings UI is WPF and
+        requires XAML compilation. The old csc/Roslyn fallback cannot build WPF
+        XAML and is no longer supported. Install the .NET SDK (or Visual Studio
+        Build Tools with .NET desktop build tools) to build from source.
 
     Run from a normal PowerShell window:
         .\build.ps1
@@ -42,7 +43,7 @@ param(
     [switch]$SkipSign,
     [switch]$SkipInstaller,
     [switch]$CompileOnly,
-    [switch]$FrameworkCsc
+    [switch]$FrameworkCsc # kept for compatibility; WPF builds require dotnet/MSBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -234,6 +235,10 @@ $dotnetExe = $dotnet
 if (-not $dotnetExe) { $dotnetExe = Find-Dotnet }
 $projectPath = Join-Path $root 'src\LiveBackground.csproj'
 
+if ($FrameworkCsc) {
+    throw 'WPF settings UI requires dotnet build/MSBuild (XAML compilation). -FrameworkCsc is not supported.'
+}
+
 if ($dotnetExe -and (Test-Path $projectPath)) {
     Write-Host ("  compiler: dotnet build (MSBuild, net48) via " + $dotnetExe)
 
@@ -266,19 +271,7 @@ if ($dotnetExe -and (Test-Path $projectPath)) {
     Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe
 }
 else {
-    if ($roslynCsc) {
-        Write-Host ("  compiler: Roslyn (C# 7.3) via " + $dotnet)
-    } elseif ($FrameworkCsc) {
-        Write-Host '  compiler: .NET Framework csc (C# 5), forced by -FrameworkCsc.'
-    } else {
-        Write-Warning 'The .NET SDK was not found; compiling with the .NET Framework csc (C# 5).'
-    }
-
-    Write-Step "Compiling LiveBackground.exe"
-    Compile-Exe 'winexe' 'LiveBackground.Program' $appExe
-
-    Write-Step "Compiling LiveBackgroundCli.exe"
-    Compile-Exe 'exe' 'LiveBackground.SetupProgram' $cliExe
+    throw 'WPF settings UI requires dotnet build/MSBuild (XAML compilation). Install the .NET SDK or Visual Studio Build Tools with .NET desktop build tools, then rerun build.ps1.'
 }
 
 if ($CompileOnly) {
