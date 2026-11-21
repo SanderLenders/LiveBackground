@@ -253,6 +253,11 @@ namespace LiveBackground
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
 
+        public const uint TOKEN_QUERY = 0x0008;
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
         // Creates a job whose children are killed when its last handle closes,
         // and puts this process in it. Every process the wallpaper starts after
         // this (the bundled mpv, ffmpeg) is therefore reaped by the OS when the

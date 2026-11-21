@@ -96,11 +96,11 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 
 [Run]
 ; The installer already runs elevated, so clearing any logon/watchdog task left
-; by an earlier run costs no extra prompt. The unelevated install-task below can
-; then create the tasks fresh - a normal user may create a new task but not
-; overwrite one an elevated run created - so an update no longer asks for
-; permission a second time. If this delete is refused, install-task still falls
-; back to its own elevation prompt.
+; by an earlier run costs no extra prompt. install-task also runs elevated here
+; (not runasoriginaluser) to avoid Inno Setup's CallSpawnServer failure mode;
+; InstallTask resolves the signed-in desktop user so the task still belongs to
+; the right account. If this delete is refused, install-task still falls back to
+; its own elevation prompt when run outside the installer.
 ;
 ; Deliberately NOT gated on the autostart task: on an upgrade where the user
 ; unticked "Start when I sign in", the old tasks must still be removed or the
@@ -108,12 +108,12 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 ; already a no-op (StartupTask.Delete treats "not found" as success), so this is
 ; safe on a fresh install too.
 Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
-Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Description: "Start LiveBackground now"
+Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
+Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early startup)"""; WorkingDir: "{app}"; Flags: runhidden nowait postinstall skipifsilent; Description: "Start LiveBackground now"; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{app}\README.txt"; Description: "View the README"; Flags: postinstall shellexec skipifsilent unchecked nowait
 ; Silent installs skip the finish page/postinstall checkbox, so start the
 ; app explicitly there too (unless startup was deselected).
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait skipifnotsilent; Tasks: autostart; Check: ShouldInstallAutostartTask
+Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early startup)"""; WorkingDir: "{app}"; Flags: runhidden nowait skipifnotsilent; Tasks: autostart; Check: ShouldInstallAutostartTask
 
 [UninstallRun]
 ; Runs the full uninstall command: stops the wallpaper, removes the logon

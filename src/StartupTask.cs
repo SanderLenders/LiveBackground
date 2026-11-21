@@ -225,7 +225,7 @@ namespace LiveBackground
         // wallpaper is up. High needs no elevation (only Realtime does).
         private static string BuildXml(string taskName, string appExe, string userId)
         {
-            string user = Xml(string.IsNullOrEmpty(userId) ? Util.CurrentUser() : userId);
+            string user = Xml(string.IsNullOrEmpty(userId) ? Util.InteractiveUser() : userId);
             string command = Xml(appExe);
             return
                 "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + Environment.NewLine +
@@ -277,7 +277,7 @@ namespace LiveBackground
 
         private static string BuildWatchdogXml(string taskName, string appExe, string userId)
         {
-            string user = Xml(string.IsNullOrEmpty(userId) ? Util.CurrentUser() : userId);
+            string user = Xml(string.IsNullOrEmpty(userId) ? Util.InteractiveUser() : userId);
             string command = Xml(appExe);
             return
                 "<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + Environment.NewLine +

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Security.Principal;
@@ -63,6 +64,52 @@ namespace LiveBackground
         {
             try { return WindowsIdentity.GetCurrent().Name; }
             catch { return Environment.UserDomainName + "\\" + Environment.UserName; }
+        }
+
+        // The signed-in desktop user for this session. When this process is
+        // elevated via UAC, CurrentUser() is the administrator; the logon task
+        // must still belong to the user who signed in. Fall back to CurrentUser.
+        public static string InteractiveUser()
+        {
+            try
+            {
+                if (!IsElevated()) return CurrentUser();
+                int sessionId = Process.GetCurrentProcess().SessionId;
+                Process[] explorers = Process.GetProcessesByName("explorer");
+                try
+                {
+                    foreach (Process process in explorers)
+                    {
+                        try
+                        {
+                            if (process.SessionId != sessionId) continue;
+                            IntPtr token = IntPtr.Zero;
+                            try
+                            {
+                                if (Native.OpenProcessToken(process.Handle, Native.TOKEN_QUERY, out token))
+                                {
+                                    using (WindowsIdentity identity = new WindowsIdentity(token))
+                                    {
+                                        string name = identity.Name;
+                                        if (!string.IsNullOrEmpty(name)) return name;
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                if (token != IntPtr.Zero) try { Native.CloseHandle(token); } catch { }
+                            }
+                        }
+                        catch { /* best-effort: try other explorer processes */ }
+                    }
+                }
+                finally
+                {
+                    foreach (Process process in explorers) try { process.Dispose(); } catch { }
+                }
+            }
+            catch { /* best-effort: fall back to current user */ }
+            return CurrentUser();
         }
 
         // True when this process runs with an administrator token. Used to
