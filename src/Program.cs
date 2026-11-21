@@ -761,6 +761,55 @@ namespace LiveBackground
             }
         }
 
+        private static string StartupHintPath()
+        {
+            return Path.Combine(_appRoot, "startup-hint.txt");
+        }
+
+        private static void SaveStartupHint(bool imagesMode, string mediaPath)
+        {
+            try
+            {
+                string path = StartupHintPath();
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                string content = (imagesMode ? "images" : "video") + "\n" + (mediaPath ?? "") + "\n";
+                File.WriteAllText(path, content, Encoding.UTF8);
+            }
+            catch { /* best-effort: hint is an optimization */ }
+        }
+
+        private static bool TryReadStartupHint(out bool imagesMode, out string mediaPath)
+        {
+            imagesMode = false;
+            mediaPath = "";
+            try
+            {
+                string path = StartupHintPath();
+                if (!File.Exists(path)) return false;
+                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+                if (lines.Length < 2) return false;
+                string mode = (lines[0] ?? "").Trim().ToLowerInvariant();
+                string media = (lines[1] ?? "").Trim();
+                if (mode != "video" && mode != "images") return false;
+                imagesMode = mode == "images";
+                if (imagesMode)
+                {
+                    mediaPath = media;
+                    return true;
+                }
+                if (string.IsNullOrEmpty(media) || !File.Exists(media)) return false;
+                mediaPath = media;
+                return true;
+            }
+            catch { /* best-effort: fall back to normal startup */ }
+            imagesMode = false;
+            mediaPath = "";
+            return false;
+        }
+
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+            Justification = "earlyStartDone is disposed on normal return paths; a fatal Run exception already tears down the process.")]
         private static int Run()
         {
             DesktopHost.EnablePerMonitorDpi();
@@ -801,6 +850,42 @@ namespace LiveBackground
             // A normal start (logon task, tray restart or watchdog) cancels the
             // "the user closed it on purpose" marker.
             Util.SafeDelete(Installer.QuitFlag(_appRoot));
+
+            // Early-start: if we have a last-known-good video loop, start mpv
+            // while config/manifest load continues. Reconciled below once the
+            // real config is known; any mismatch falls back to the normal path.
+            bool earlyHintImages = false;
+            string earlyHintMedia = "";
+            ManualResetEvent earlyStartDone = null;
+            bool earlyVideoStarted = TryReadStartupHint(out earlyHintImages, out earlyHintMedia) && !earlyHintImages;
+            if (earlyVideoStarted)
+            {
+                Log.Info("startup: early hint video " + earlyHintMedia);
+                _mediaPath = earlyHintMedia;
+                _player = new MpvPlayer(_appRoot, new AppConfig());
+                string hintMedia = earlyHintMedia;
+                earlyStartDone = new ManualResetEvent(false);
+                ManualResetEvent done = earlyStartDone;
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try
+                    {
+                        IntPtr progman = DesktopHost.WaitForProgman(30000);
+                        if (progman == IntPtr.Zero)
+                        {
+                            Log.Warn("startup: early Progman not found");
+                            return;
+                        }
+                        lock (Sync) { if (_progman == IntPtr.Zero) _progman = progman; }
+                        if (_player != null && _player.Start(progman, hintMedia))
+                        {
+                            Log.Info("startup: early mpv started (" + StartupElapsedMs() + " ms after process timer start)");
+                        }
+                    }
+                    catch (Exception ex) { Log.Warn("startup: early mpv start failed: " + ex.Message); }
+                    finally { try { done.Set(); } catch { } }
+                });
+            }
 
             startupStep.Restart();
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
@@ -885,7 +970,18 @@ namespace LiveBackground
 
             Log.Info("startup: cache/manifest ready " + StartupElapsedMs() + " ms after process timer start");
             startupStep.Restart();
-            _player = new MpvPlayer(_appRoot, _config);
+            bool earlyMainMatches = earlyVideoStarted && !imagesMode &&
+                !string.IsNullOrEmpty(_mediaPath) &&
+                string.Equals(_mediaPath, earlyHintMedia, StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrEmpty(_config.ExtraMpvArgs) &&
+                string.Equals((_config.MpvPath ?? "").Trim(), @"mpv\mpv.exe", StringComparison.OrdinalIgnoreCase);
+            if (_player == null) _player = new MpvPlayer(_appRoot, _config);
+            else _player.Reconfigure(_config);
+            if (earlyVideoStarted && !earlyMainMatches)
+            {
+                Log.Info("startup: early mpv hint mismatch, using normal startup");
+                try { _player.Stop(); } catch { /* best-effort */ }
+            }
 
             // Each extra display gets its own player. A screen mirrors the main
             // loop by default; an independent loop is built on demand. Duplicate
@@ -916,13 +1012,15 @@ namespace LiveBackground
                 _imageActive = true;
                 Log.Info("images mode: showing " +
                     (string.IsNullOrEmpty(_currentImage) ? "no picture" : Path.GetFileName(_currentImage)));
+                SaveStartupHint(true, _currentImage ?? "");
                 SetStartupPriority(false);
                 Log.Info("startup priority restored to Normal");
                 Ui.Start(_appRoot);
+                if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
                 return WatchLoop();
             }
 
-            _progman = DesktopHost.WaitForProgman(30000);
+            if (_progman == IntPtr.Zero) _progman = DesktopHost.WaitForProgman(30000);
             if (_progman == IntPtr.Zero)
             {
                 Log.Error("Progman not found, the desktop is not ready");
@@ -930,7 +1028,17 @@ namespace LiveBackground
             else
             {
                 Log.Info("Progman = 0x" + _progman.ToString("X"));
-                if (!string.IsNullOrEmpty(_mediaPath))
+                bool mainStartedEarly = false;
+                if (earlyMainMatches)
+                {
+                    if (earlyStartDone != null)
+                    {
+                        try { earlyStartDone.WaitOne(30000); } catch { /* best-effort */ }
+                    }
+                    mainStartedEarly = _player.IsRunning;
+                    if (mainStartedEarly) Log.Info("startup: reusing early-started mpv");
+                }
+                if (!string.IsNullOrEmpty(_mediaPath) && !mainStartedEarly)
                 {
                     _player.Start(_progman, _mediaPath);
                 }
@@ -954,11 +1062,13 @@ namespace LiveBackground
                 ThreadPool.QueueUserWorkItem(delegate { DesktopHost.SetDesktopWallpaper(path); });
             }
 
+            SaveStartupHint(false, _mediaPath ?? "");
             SetStartupPriority(false);
             Log.Info("startup priority restored to Normal");
             StartWatcher(folder);
             StartImageWatcher(imageFolder);
             Ui.Start(_appRoot);
+            if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
             return WatchLoop();
         }
 
