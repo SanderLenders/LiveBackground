@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -1712,16 +1712,23 @@ namespace LiveBackground
             private readonly int _number;
             private TabItem _tab;
             private TextBlock _deviceLabel;
+            private StackPanel _videoSection;
+            private StackPanel _imageSection;
             private CheckBox _sameVideo;
             private TextBox _videoFolder;
             private ComboBox _videoMode;
             private ComboBox _videoSingleClip;
             private Border _videoDrop;
+            private ListView _clipList;
+            private TextBlock _clipHint;
             private CheckBox _sameImages;
             private TextBox _imageFolder;
             private ComboBox _imageMode;
             private ComboBox _imageSingle;
             private Border _imageDrop;
+            private ListView _imageList;
+            private TextBlock _imageHint;
+            private bool _imagesMode;
             private string _device = "";
 
             public MonitorSlotUi(SettingsWindow owner, int number) { _owner = owner; _number = number; }
@@ -1734,70 +1741,173 @@ namespace LiveBackground
                 _deviceLabel = Muted("No screen detected for this slot.");
                 sp.Children.Add(_deviceLabel);
 
-                sp.Children.Add(Header("Video"));
+                _videoSection = new StackPanel();
+                _videoSection.Children.Add(Header("Video"));
                 _sameVideo = new CheckBox { Content = "Same as main screen", Margin = new Thickness(0, 6, 0, 6), IsChecked = true };
-                sp.Children.Add(_sameVideo);
+                _videoSection.Children.Add(_sameVideo);
                 var vrow = new Grid { Margin = new Thickness(20, 0, 0, 6) };
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _videoFolder = new TextBox();
-                _videoFolder.TextChanged += delegate { RefreshVideoSingleChoices(); };
+                _videoFolder.TextChanged += delegate { RefreshVideoSingleChoices(); RefreshClipList(); };
                 Grid.SetColumn(_videoFolder, 0);
                 var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
                 Grid.SetColumn(vb, 1);
-                _videoDrop = CreateDropZone("Drop videos", delegate(string[] files) { if (_sameVideo == null || _sameVideo.IsChecked == true) return; _owner.CopyVideosToFolder(_videoFolder.Text, files); }, BrowseAndAddVideosToSlot, false);
+                _videoDrop = CreateDropZone("Drop videos", delegate(string[] files) { if (_sameVideo == null || _sameVideo.IsChecked == true) return; _owner.CopyVideosToFolder(_videoFolder.Text, files); RefreshClipList(); }, BrowseAndAddVideosToSlot, false);
                 _videoDrop.MinWidth = 120; _videoDrop.MinHeight = 0; _videoDrop.Margin = new Thickness(8, 0, 0, 0); _videoDrop.VerticalAlignment = VerticalAlignment.Stretch;
                 Grid.SetColumn(_videoDrop, 2);
                 vrow.Children.Add(_videoFolder); vrow.Children.Add(vb); vrow.Children.Add(_videoDrop);
-                sp.Children.Add(vrow);
+                _videoSection.Children.Add(vrow);
+
                 var vmRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
                 vmRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _videoMode = new ComboBox { Width = 180 }; _videoMode.Items.Add("Playlist"); _videoMode.Items.Add("Single clip");
-                _videoMode.SelectionChanged += delegate { UpdateEnabled(); };
-                vmRow.Children.Add(_videoMode); sp.Children.Add(vmRow);
-                var vsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 12) };
+                _videoMode.SelectionChanged += delegate { UpdateEnabled(); UpdateClipListMode(); };
+                vmRow.Children.Add(_videoMode); _videoSection.Children.Add(vmRow);
+
+                var vsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
                 vsRow.Children.Add(new TextBlock { Text = "Single clip:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _videoSingleClip = new ComboBox { MinWidth = 260 };
-                vsRow.Children.Add(_videoSingleClip); sp.Children.Add(vsRow);
+                vsRow.Children.Add(_videoSingleClip); _videoSection.Children.Add(vsRow);
 
-                sp.Children.Add(Header("Images"));
+                _clipList = new ListView { Height = 220, Margin = new Thickness(20, 0, 0, 8) };
+                var vgv = new GridView();
+                vgv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotClipCheckCellTemplate() });
+                vgv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 300, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
+                vgv.Columns.Add(new GridViewColumn { Header = "Length", Width = 80, DisplayMemberBinding = new System.Windows.Data.Binding("Length") });
+                _clipList.View = vgv;
+                _videoSection.Children.Add(_clipList);
+                var vbtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 8) };
+                vbtns.Children.Add(ActionButton("Move up", delegate { MoveSelected(_clipList, -1); }));
+                vbtns.Children.Add(ActionButton("Move down", delegate { MoveSelected(_clipList, 1); }));
+                vbtns.Children.Add(ActionButton("Sort A-Z", delegate { SortSlotClipItems(); }));
+                vbtns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
+                vbtns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(ResolveSlotPath(_videoFolder)); }));
+                _videoSection.Children.Add(vbtns);
+                _clipHint = Muted(""); _clipHint.Margin = new Thickness(20, 0, 0, 8);
+                _videoSection.Children.Add(_clipHint);
+
+                _imageSection = new StackPanel();
+                _imageSection.Children.Add(Header("Images"));
                 _sameImages = new CheckBox { Content = "Same as main screen", Margin = new Thickness(0, 6, 0, 6), IsChecked = true };
-                sp.Children.Add(_sameImages);
+                _imageSection.Children.Add(_sameImages);
                 var irow = new Grid { Margin = new Thickness(20, 0, 0, 6) };
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _imageFolder = new TextBox();
-                _imageFolder.TextChanged += delegate { RefreshImageSingleChoices(); };
+                _imageFolder.TextChanged += delegate { RefreshImageSingleChoices(); RefreshImageList(); };
                 Grid.SetColumn(_imageFolder, 0);
                 var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
                 Grid.SetColumn(ib, 1);
-                _imageDrop = CreateDropZone("Drop images", delegate(string[] files) { if (_sameImages == null || _sameImages.IsChecked == true) return; _owner.CopyImagesToFolder(_imageFolder.Text, files); }, BrowseAndAddImagesToSlot, true);
+                _imageDrop = CreateDropZone("Drop images", delegate(string[] files) { if (_sameImages == null || _sameImages.IsChecked == true) return; _owner.CopyImagesToFolder(_imageFolder.Text, files); RefreshImageList(); }, BrowseAndAddImagesToSlot, true);
                 _imageDrop.MinWidth = 120; _imageDrop.MinHeight = 0; _imageDrop.Margin = new Thickness(8, 0, 0, 0); _imageDrop.VerticalAlignment = VerticalAlignment.Stretch;
                 Grid.SetColumn(_imageDrop, 2);
                 irow.Children.Add(_imageFolder); irow.Children.Add(ib); irow.Children.Add(_imageDrop);
-                sp.Children.Add(irow);
+                _imageSection.Children.Add(irow);
+
                 var imRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
                 imRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _imageMode = new ComboBox { Width = 180 }; _imageMode.Items.Add("Slideshow"); _imageMode.Items.Add("One image");
-                _imageMode.SelectionChanged += delegate { UpdateEnabled(); };
-                imRow.Children.Add(_imageMode); sp.Children.Add(imRow);
+                _imageMode.SelectionChanged += delegate { UpdateEnabled(); UpdateImageListMode(); };
+                imRow.Children.Add(_imageMode); _imageSection.Children.Add(imRow);
+
                 var isRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
                 isRow.Children.Add(new TextBlock { Text = "One image:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 _imageSingle = new ComboBox { MinWidth = 260 };
-                isRow.Children.Add(_imageSingle); sp.Children.Add(isRow);
+                isRow.Children.Add(_imageSingle); _imageSection.Children.Add(isRow);
+
+                _imageList = new ListView { Height = 220, Margin = new Thickness(20, 0, 0, 8) };
+                var igv = new GridView();
+                igv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotImageCheckCellTemplate() });
+                igv.Columns.Add(new GridViewColumn { Header = "Image", Width = 380, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
+                _imageList.View = igv;
+                _imageSection.Children.Add(_imageList);
+                var ibtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 8) };
+                ibtns.Children.Add(ActionButton("Move up", delegate { MoveSelected(_imageList, -1); }));
+                ibtns.Children.Add(ActionButton("Move down", delegate { MoveSelected(_imageList, 1); }));
+                ibtns.Children.Add(ActionButton("Sort A-Z", delegate { SortSlotImageItems(); }));
+                ibtns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); }));
+                ibtns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(ResolveSlotPath(_imageFolder)); }));
+                _imageSection.Children.Add(ibtns);
+                _imageHint = Muted(""); _imageHint.Margin = new Thickness(20, 0, 0, 8);
+                _imageSection.Children.Add(_imageHint);
 
                 _sameVideo.Checked += delegate { UpdateEnabled(); };
                 _sameVideo.Unchecked += delegate { UpdateEnabled(); };
                 _sameImages.Checked += delegate { UpdateEnabled(); };
                 _sameImages.Unchecked += delegate { UpdateEnabled(); };
 
+                sp.Children.Add(_videoSection);
+                sp.Children.Add(_imageSection);
                 _tab.Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp };
                 UpdateEnabled();
                 return _tab;
+            }
+
+            private DataTemplate SlotClipCheckCellTemplate()
+            {
+                var fef = new FrameworkElementFactory(typeof(CheckBox));
+                fef.SetBinding(ToggleButton.IsCheckedProperty, new System.Windows.Data.Binding("Enabled") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+                fef.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+                fef.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(SlotClipCheckBox_Checked));
+                return new DataTemplate { VisualTree = fef };
+            }
+
+            private DataTemplate SlotImageCheckCellTemplate()
+            {
+                var fef = new FrameworkElementFactory(typeof(CheckBox));
+                fef.SetBinding(ToggleButton.IsCheckedProperty, new System.Windows.Data.Binding("Enabled") { Mode = System.Windows.Data.BindingMode.TwoWay, UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged });
+                fef.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+                fef.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(SlotImageCheckBox_Checked));
+                return new DataTemplate { VisualTree = fef };
+            }
+
+            private void SlotClipCheckBox_Checked(object sender, RoutedEventArgs e)
+            {
+                if (_videoMode == null || _videoMode.SelectedIndex != 1) return;
+                var cb = sender as System.Windows.Controls.CheckBox;
+                var current = cb != null ? cb.DataContext as ClipItem : null;
+                if (current == null) return;
+                var items = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
+                if (items == null) return;
+                bool changed = false;
+                foreach (var item in items)
+                {
+                    bool should = object.ReferenceEquals(item, current);
+                    if (item.Enabled != should) { item.Enabled = should; changed = true; }
+                }
+                if (changed)
+                {
+                    var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
+                    if (view != null) view.Refresh();
+                }
+                SelectComboByName(_videoSingleClip, current.Name);
+            }
+
+            private void SlotImageCheckBox_Checked(object sender, RoutedEventArgs e)
+            {
+                if (_imageMode == null || _imageMode.SelectedIndex != 1) return;
+                var cb = sender as System.Windows.Controls.CheckBox;
+                var current = cb != null ? cb.DataContext as ImageItem : null;
+                if (current == null) return;
+                var items = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
+                if (items == null) return;
+                bool changed = false;
+                foreach (var item in items)
+                {
+                    bool should = object.ReferenceEquals(item, current);
+                    if (item.Enabled != should) { item.Enabled = should; changed = true; }
+                }
+                if (changed)
+                {
+                    var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
+                    if (view != null) view.Refresh();
+                }
+                SelectComboByName(_imageSingle, current.Name);
             }
 
             private void BrowseAndAddVideosToSlot()
@@ -1810,7 +1920,7 @@ namespace LiveBackground
                     dlg.Filter = "Video files|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.m4v;*.wmv;*.mpg;*.mpeg;*.ts;*.m2ts;*.flv;*.ogv;*.3gp|All files|*.*";
                     dlg.Multiselect = true;
                     dlg.CheckFileExists = true;
-                    if (dlg.ShowDialog(_owner) == true) _owner.CopyVideosToFolder(_videoFolder != null ? _videoFolder.Text : "", dlg.FileNames);
+                    if (dlg.ShowDialog(_owner) == true) { _owner.CopyVideosToFolder(_videoFolder != null ? _videoFolder.Text : "", dlg.FileNames); RefreshClipList(); }
                 }
                 catch { }
             }
@@ -1825,9 +1935,165 @@ namespace LiveBackground
                     dlg.Filter = "Image files|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp|All files|*.*";
                     dlg.Multiselect = true;
                     dlg.CheckFileExists = true;
-                    if (dlg.ShowDialog(_owner) == true) _owner.CopyImagesToFolder(_imageFolder != null ? _imageFolder.Text : "", dlg.FileNames);
+                    if (dlg.ShowDialog(_owner) == true) { _owner.CopyImagesToFolder(_imageFolder != null ? _imageFolder.Text : "", dlg.FileNames); RefreshImageList(); }
                 }
                 catch { }
+            }
+
+            private string ResolveSlotPath(TextBox box)
+            {
+                try { return Util.ResolvePath(_owner._appRoot, (box != null ? box.Text : "") ?? ""); }
+                catch { return ""; }
+            }
+
+            private void RefreshClipList()
+            {
+                if (_clipList == null) return;
+                var items = new ObservableCollection<ClipItem>();
+                try
+                {
+                    string folder = ResolveSlotPath(_videoFolder);
+                    var files = MediaPipeline.ScanVideos(folder);
+                    var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var f in files) byName[Path.GetFileName(f)] = f;
+                    var ordered = new List<string>();
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var saved = GetSavedScreenSettings();
+                    var sourceList = saved != null ? saved.Playlist : null;
+                    if (sourceList != null)
+                    {
+                        foreach (var e in sourceList)
+                        {
+                            if (e == null || string.IsNullOrEmpty(e.Name)) continue;
+                            string n = e.Name.Trim();
+                            if (!seen.Add(n)) continue;
+                            string f; if (byName.TryGetValue(n, out f)) ordered.Add(f);
+                        }
+                    }
+                    foreach (var f in files) { string n = Path.GetFileName(f); if (seen.Add(n)) ordered.Add(f); }
+                    var enabledMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    if (sourceList != null) foreach (var e in sourceList) if (e != null && !string.IsNullOrEmpty(e.Name)) enabledMap[e.Name.Trim()] = e.Enabled;
+                    foreach (var f in ordered)
+                    {
+                        string name = Path.GetFileName(f);
+                        bool en;
+                        if (!enabledMap.TryGetValue(name, out en)) en = false;
+                        items.Add(new ClipItem { Name = name, Path = f, Enabled = en, Length = "", Duration = -1 });
+                    }
+                }
+                catch { }
+                _clipList.ItemsSource = items;
+                UpdateClipListMode();
+            }
+
+            private void RefreshImageList()
+            {
+                if (_imageList == null) return;
+                var items = new ObservableCollection<ImageItem>();
+                try
+                {
+                    string folder = ResolveSlotPath(_imageFolder);
+                    var files = MediaPipeline.ScanImages(folder);
+                    var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var f in files) byName[Path.GetFileName(f)] = f;
+                    var ordered = new List<string>();
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var saved = GetSavedScreenSettings();
+                    var sourceList = saved != null ? saved.ImagePlaylist : null;
+                    if (sourceList != null)
+                    {
+                        foreach (var e in sourceList)
+                        {
+                            if (e == null || string.IsNullOrEmpty(e.Name)) continue;
+                            string n = e.Name.Trim();
+                            if (!seen.Add(n)) continue;
+                            string f; if (byName.TryGetValue(n, out f)) ordered.Add(f);
+                        }
+                    }
+                    foreach (var f in files) { string n = Path.GetFileName(f); if (seen.Add(n)) ordered.Add(f); }
+                    var enabledMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    if (sourceList != null) foreach (var e in sourceList) if (e != null && !string.IsNullOrEmpty(e.Name)) enabledMap[e.Name.Trim()] = e.Enabled;
+                    foreach (var f in ordered)
+                    {
+                        string name = Path.GetFileName(f);
+                        bool en;
+                        if (!enabledMap.TryGetValue(name, out en)) en = true;
+                        items.Add(new ImageItem { Name = name, Path = f, Enabled = en });
+                    }
+                }
+                catch { }
+                _imageList.ItemsSource = items;
+                UpdateImageListMode();
+            }
+
+            private ScreenSettings GetSavedScreenSettings()
+            {
+                try { return _owner._config != null ? _owner._config.ScreenFor(_device) : null; }
+                catch { return null; }
+            }
+
+            private void UpdateClipListMode()
+            {
+                bool single = _videoMode != null && _videoMode.SelectedIndex == 1;
+                if (_videoSingleClip != null) _videoSingleClip.IsEnabled = !(_sameVideo != null && _sameVideo.IsChecked == true) && single;
+                if (!single || _clipList == null) return;
+                var items = _clipList.ItemsSource as ObservableCollection<ClipItem>;
+                if (items == null) return;
+                var checkedItems = items.Where(i => i.Enabled).ToList();
+                if (checkedItems.Count <= 1)
+                {
+                    if (checkedItems.Count == 1) SelectComboByName(_videoSingleClip, checkedItems[0].Name);
+                    return;
+                }
+                ClipItem keep = _clipList.SelectedItem as ClipItem;
+                if (keep == null || !keep.Enabled) keep = checkedItems[0];
+                foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
+                var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
+                if (view != null) view.Refresh();
+                SelectComboByName(_videoSingleClip, keep.Name);
+            }
+
+            private void UpdateImageListMode()
+            {
+                bool single = _imageMode != null && _imageMode.SelectedIndex == 1;
+                if (_imageSingle != null) _imageSingle.IsEnabled = !(_sameImages != null && _sameImages.IsChecked == true) && single;
+                if (!single || _imageList == null) return;
+                var items = _imageList.ItemsSource as ObservableCollection<ImageItem>;
+                if (items == null) return;
+                var checkedItems = items.Where(i => i.Enabled).ToList();
+                if (checkedItems.Count <= 1)
+                {
+                    if (checkedItems.Count == 1) SelectComboByName(_imageSingle, checkedItems[0].Name);
+                    return;
+                }
+                ImageItem keep = _imageList.SelectedItem as ImageItem;
+                if (keep == null || !keep.Enabled) keep = checkedItems[0];
+                foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
+                var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
+                if (view != null) view.Refresh();
+                SelectComboByName(_imageSingle, keep.Name);
+            }
+
+            private void SortSlotClipItems()
+            {
+                var items = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
+                if (items == null) return;
+                var names = items.Select(x => x.Name).ToList();
+                var order = PlaylistState.SortedOrder(names);
+                var sorted = order.Select(i => items[i]).ToList();
+                items.Clear();
+                foreach (var it in sorted) items.Add(it);
+            }
+
+            private void SortSlotImageItems()
+            {
+                var items = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
+                if (items == null) return;
+                var names = items.Select(x => x.Name).ToList();
+                var order = PlaylistState.SortedOrder(names);
+                var sorted = order.Select(i => items[i]).ToList();
+                items.Clear();
+                foreach (var it in sorted) items.Add(it);
             }
 
             private void RefreshVideoSingleChoices()
@@ -1837,7 +2103,7 @@ namespace LiveBackground
                 _videoSingleClip.Items.Clear();
                 try
                 {
-                    string folder = Util.ResolvePath(_owner._appRoot, (_videoFolder != null ? _videoFolder.Text : "") ?? "");
+                    string folder = ResolveSlotPath(_videoFolder);
                     if (Directory.Exists(folder))
                     {
                         foreach (var f in MediaPipeline.ScanVideos(folder))
@@ -1865,7 +2131,7 @@ namespace LiveBackground
                 _imageSingle.Items.Clear();
                 try
                 {
-                    string folder = Util.ResolvePath(_owner._appRoot, (_imageFolder != null ? _imageFolder.Text : "") ?? "");
+                    string folder = ResolveSlotPath(_imageFolder);
                     if (Directory.Exists(folder))
                     {
                         foreach (var f in MediaPipeline.ScanImages(folder))
@@ -1904,19 +2170,27 @@ namespace LiveBackground
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
                 bool singleVideo = _videoMode != null && _videoMode.SelectedIndex == 1;
                 bool singleImage = _imageMode != null && _imageMode.SelectedIndex == 1;
+
+                if (_videoSection != null) _videoSection.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
+                if (_imageSection != null) _imageSection.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
+                if (_videoSingleClip != null && _videoSingleClip.Parent is StackPanel vsr) vsr.Visibility = singleVideo ? Visibility.Visible : Visibility.Collapsed;
+                if (_imageSingle != null && _imageSingle.Parent is StackPanel isr) isr.Visibility = singleImage ? Visibility.Visible : Visibility.Collapsed;
+
                 ApplyReviewChildEnabled(_sameVideo, has, has);
                 ApplyReviewChildEnabled(_sameImages, has, has);
                 ApplyReviewChildEnabled(_videoFolder, has, has && !sv);
                 ApplyReviewChildEnabled(_videoMode, has, has && !sv);
                 ApplyReviewChildEnabled(_videoSingleClip, has, has && !sv && singleVideo);
                 ApplyReviewChildEnabled(_videoDrop, has, has && !sv);
+                ApplyReviewChildEnabled(_clipList, has, has && !sv);
                 ApplyReviewChildEnabled(_imageFolder, has, has && !si);
                 ApplyReviewChildEnabled(_imageMode, has, has && !si);
                 ApplyReviewChildEnabled(_imageSingle, has, has && !si && singleImage);
                 ApplyReviewChildEnabled(_imageDrop, has, has && !si);
+                ApplyReviewChildEnabled(_imageList, has, has && !si);
             }
 
-            public void SetMode(bool imagesMode) { _ = imagesMode; UpdateEnabled(); }
+            public void SetMode(bool imagesMode) { _imagesMode = imagesMode; UpdateEnabled(); }
 
             public void LoadFromConfig(AppConfig config, List<ScreenInfo> screens, bool hasSecond, bool duplicate)
             {
@@ -1956,6 +2230,8 @@ namespace LiveBackground
                     SelectComboByName(_videoSingleClip, s.SingleClip);
                     RefreshImageSingleChoices();
                     SelectComboByName(_imageSingle, s.ImageSingle);
+                    RefreshClipList();
+                    RefreshImageList();
                 }
                 UpdateEnabled();
             }
@@ -1969,17 +2245,51 @@ namespace LiveBackground
                 s.ImagesSameAsMain = _sameImages != null && _sameImages.IsChecked == true;
                 if (_videoFolder != null && !s.SameAsMain) s.Folder = (_videoFolder.Text ?? "").Trim();
                 if (_videoMode != null && !s.SameAsMain) s.PlaybackMode = _videoMode.SelectedIndex == 1 ? "single" : "playlist";
-                if (_videoSingleClip != null && !s.SameAsMain)
+
+                if (!s.SameAsMain)
                 {
-                    string sel = _videoSingleClip.SelectedItem as string;
-                    if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
+                    var clipItems = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
+                    if (clipItems != null)
+                    {
+                        var checkedClips = clipItems.Where(c => c.Enabled).ToList();
+                        if (s.PlaybackMode == "single" && checkedClips.Count > 0) s.SingleClip = checkedClips[0].Name;
+                        else if (_videoSingleClip != null)
+                        {
+                            string sel = _videoSingleClip.SelectedItem as string;
+                            if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
+                        }
+                        else if (checkedClips.Count > 0 && string.IsNullOrEmpty(s.SingleClip)) s.SingleClip = checkedClips[0].Name;
+                        s.Playlist = MergeMissingSavedEntries(clipItems.Select(c => new PlaylistEntry(c.Name, c.Enabled)).ToList(), s.Playlist);
+                    }
+                    else if (_videoSingleClip != null)
+                    {
+                        string sel = _videoSingleClip.SelectedItem as string;
+                        if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
+                    }
                 }
+
                 if (_imageFolder != null && !s.ImagesSameAsMain) s.ImageFolder = (_imageFolder.Text ?? "").Trim();
                 if (_imageMode != null && !s.ImagesSameAsMain) s.ImageMode = _imageMode.SelectedIndex == 1 ? "single" : "slideshow";
-                if (_imageSingle != null && !s.ImagesSameAsMain)
+                if (!s.ImagesSameAsMain)
                 {
-                    string sel = _imageSingle.SelectedItem as string;
-                    if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
+                    var imageItems = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
+                    if (imageItems != null)
+                    {
+                        var checkedImages = imageItems.Where(i => i.Enabled).ToList();
+                        if (s.ImageMode == "single" && checkedImages.Count > 0) s.ImageSingle = checkedImages[0].Name;
+                        else if (_imageSingle != null)
+                        {
+                            string sel = _imageSingle.SelectedItem as string;
+                            if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
+                        }
+                        else if (checkedImages.Count > 0 && string.IsNullOrEmpty(s.ImageSingle)) s.ImageSingle = checkedImages[0].Name;
+                        s.ImagePlaylist = MergeMissingSavedEntries(imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList(), s.ImagePlaylist);
+                    }
+                    else if (_imageSingle != null)
+                    {
+                        string sel = _imageSingle.SelectedItem as string;
+                        if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
+                    }
                 }
                 return true;
             }
