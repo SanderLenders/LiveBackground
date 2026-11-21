@@ -809,7 +809,7 @@ namespace LiveBackground
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-            Justification = "earlyStartDone is disposed on normal return paths; a fatal Run exception already tears down the process.")]
+            Justification = "earlyStartDone/orphanScanDone are disposed on normal return paths; a fatal Run exception already tears down the process.")]
         private static int Run()
         {
             DesktopHost.EnablePerMonitorDpi();
@@ -836,11 +836,22 @@ namespace LiveBackground
             if (_jobHandle != IntPtr.Zero) Log.Info("child-process job created (mpv is reaped even on a hard kill)");
             else Log.Warn("child-process job unavailable; orphans are only reaped at startup");
             Stopwatch startupStep = Stopwatch.StartNew();
-            // A previous run that was killed hard can leave its mpv behind.
-            // Reap it before we start our own, so only one video is ever shown.
-            int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
-            if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
-            Log.Info("startup: orphan mpv scan " + startupStep.ElapsedMilliseconds + " ms");
+            // Reap orphaned mpv from a hard-killed previous run in the
+            // background. Any path that starts our own mpv waits for this scan
+            // so we never show two videos and never kill our own early start.
+            ManualResetEvent orphanScanDone = new ManualResetEvent(false);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    Stopwatch s = Stopwatch.StartNew();
+                    int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
+                    if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
+                    Log.Info("startup: orphan mpv scan " + s.ElapsedMilliseconds + " ms");
+                }
+                catch (Exception ex) { Log.Warn("startup: orphan mpv scan failed: " + ex.Message); }
+                finally { try { orphanScanDone.Set(); } catch { } }
+            });
             // Prepare loops for the other clips only after the wallpaper is up,
             // so the prefetch never competes with logon.
             _prefetchAfter = DateTime.UtcNow.AddSeconds(60);
@@ -878,6 +889,7 @@ namespace LiveBackground
                             return;
                         }
                         lock (Sync) { if (_progman == IntPtr.Zero) _progman = progman; }
+                        try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
                         if (_player != null && _player.Start(progman, hintMedia))
                         {
                             Log.Info("startup: early mpv started (" + StartupElapsedMs() + " ms after process timer start)");
@@ -1018,6 +1030,7 @@ namespace LiveBackground
                 Log.Info("startup priority restored to Normal");
                 Ui.Start(_appRoot);
                 if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
+                try { orphanScanDone.Dispose(); } catch { }
                 return WatchLoop();
             }
 
@@ -1039,6 +1052,7 @@ namespace LiveBackground
                     mainStartedEarly = _player.IsRunning;
                     if (mainStartedEarly) Log.Info("startup: reusing early-started mpv");
                 }
+                try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
                 if (!string.IsNullOrEmpty(_mediaPath) && !mainStartedEarly)
                 {
                     _player.Start(_progman, _mediaPath);
@@ -1070,6 +1084,7 @@ namespace LiveBackground
             StartImageWatcher(imageFolder);
             Ui.Start(_appRoot);
             if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
+            try { orphanScanDone.Dispose(); } catch { }
             return WatchLoop();
         }
 
