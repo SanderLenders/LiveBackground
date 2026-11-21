@@ -36,11 +36,12 @@ namespace LiveBackground
             Log.Info("display layout changed: " + ScreenText.DescribeAll(now, Screens.IsDuplicate(now)));
         }
 
-        // Creates, keeps or retires one player per extra screen (at most two),
+        // Creates, keeps or retires one player per extra screen (at most three),
         // so the player list always matches the connected monitors. Players are
         // matched by device name, so a re-ordered monitor keeps its settings.
         private static void RebuildScreenPlayers()
         {
+            const int maxExtraScreens = 3;
             bool duplicate = _screens != null && Screens.IsDuplicate(_screens);
             List<ScreenInfo> extras = new List<ScreenInfo>();
             if (!duplicate && _screens != null)
@@ -48,7 +49,7 @@ namespace LiveBackground
                 foreach (ScreenInfo screen in _screens)
                 {
                     if (screen.Primary) continue;
-                    if (extras.Count >= 2) break;
+                    if (extras.Count >= maxExtraScreens) break;
                     extras.Add(screen);
                 }
             }

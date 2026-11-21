@@ -74,6 +74,7 @@ namespace LiveBackground
         private TabControl _monitorTabs;
         private MonitorSlotUi _slot2;
         private MonitorSlotUi _slot3;
+        private MonitorSlotUi _slot4;
         private TextBlock _monitorStatus;
 
         private sealed class ClipItem
@@ -351,8 +352,10 @@ namespace LiveBackground
             panel.Children.Add(_monitorTabs);
             _slot2 = new MonitorSlotUi(this, 2);
             _slot3 = new MonitorSlotUi(this, 3);
+            _slot4 = new MonitorSlotUi(this, 4);
             _monitorTabs.Items.Add(_slot2.BuildTabItem());
             _monitorTabs.Items.Add(_slot3.BuildTabItem());
+            _monitorTabs.Items.Add(_slot4.BuildTabItem());
         }
 
         private void BuildOtherTab()
@@ -672,6 +675,7 @@ namespace LiveBackground
             UpdateDesktopEnabled();
             if (_slot2 != null) _slot2.SetMode(images);
             if (_slot3 != null) _slot3.SetMode(images);
+            if (_slot4 != null) _slot4.SetMode(images);
             UpdateMonitorTabEnabled();
         }
 
@@ -790,6 +794,7 @@ namespace LiveBackground
 
             if (_slot2 != null) _slot2.LoadFromConfig(_config, _screens, _hasSecondScreen, _duplicateLayout);
             if (_slot3 != null) _slot3.LoadFromConfig(_config, _screens, _hasSecondScreen, _duplicateLayout);
+            if (_slot4 != null) _slot4.LoadFromConfig(_config, _screens, _hasSecondScreen, _duplicateLayout);
         }
 
         private void SetQualityCombo(int crf)
@@ -976,6 +981,7 @@ namespace LiveBackground
             RefreshScreens();
             if (_slot2 != null) _slot2.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
             if (_slot3 != null) _slot3.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
+            if (_slot4 != null) _slot4.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
             UpdateMonitorTabEnabled();
             if (_monitorStatus != null)
             {
@@ -1185,6 +1191,7 @@ namespace LiveBackground
 
             if (_slot2 != null && !_slot2.CaptureInto(updated)) return null;
             if (_slot3 != null && !_slot3.CaptureInto(updated)) return null;
+            if (_slot4 != null && !_slot4.CaptureInto(updated)) return null;
 
             updated.Normalize();
             return updated;
@@ -1721,7 +1728,8 @@ namespace LiveBackground
 
             public TabItem BuildTabItem()
             {
-                _tab = new TabItem { Header = _number == 2 ? "2nd Screen" : "3rd Screen" };
+                string header = _number == 2 ? "2nd Screen" : _number == 3 ? "3rd Screen" : _number == 4 ? "4th Screen" : "Screen " + _number;
+                _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
                 _deviceLabel = Muted("No screen detected for this slot.");
                 sp.Children.Add(_deviceLabel);

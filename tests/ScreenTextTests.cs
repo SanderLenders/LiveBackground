@@ -12,8 +12,9 @@ namespace LiveBackground.Tests
         {
             Assert.Equal("second screen", ScreenText.LabelForIndex(1));
             Assert.Equal("third screen", ScreenText.LabelForIndex(2));
+            Assert.Equal("fourth screen", ScreenText.LabelForIndex(3));
             Assert.Equal("screen 1", ScreenText.LabelForIndex(0));
-            Assert.Equal("screen 4", ScreenText.LabelForIndex(3));
+            Assert.Equal("screen 5", ScreenText.LabelForIndex(4));
         }
 
         [Fact]
@@ -56,7 +57,7 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
-        public void DescribeAll_notes_when_more_than_three_screens()
+        public void DescribeAll_notes_when_more_than_four_screens()
         {
             List<ScreenInfo> screens = new List<ScreenInfo>
             {
@@ -66,9 +67,13 @@ namespace LiveBackground.Tests
                 Screen("D", 300, 100, false)
             };
             string text = ScreenText.DescribeAll(screens, false);
-            Assert.EndsWith(" (only the first three are used)", text);
+            Assert.DoesNotContain("only the first", text);
+
+            screens.Add(Screen("E", 400, 100, false));
+            text = ScreenText.DescribeAll(screens, false);
+            Assert.EndsWith(" (only the first four are used)", text);
             // Every screen is still described; only the note changes.
-            Assert.Contains("D 100x1080", text);
+            Assert.Contains("E 100x1080", text);
         }
 
         private static ScreenInfo Screen(string device, int x, int width, bool primary)

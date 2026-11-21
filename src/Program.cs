@@ -75,9 +75,9 @@ namespace LiveBackground
         // moment the user saves, so both sides take this lock.
         private static readonly object ImageSync = new object();
         private static readonly List<ImageSurface> _imageSurfaces = new List<ImageSurface>();
-        // Independent slideshow state for the first two extra screens. Other
-        // extra surfaces simply follow the main image. The same surfaces are
-        // reused for per-screen desktop fallback images in Video mode.
+        // Independent slideshow state for supported extra screens. The same
+        // surfaces are reused for per-screen desktop fallback images in Video
+        // mode.
         private static readonly List<ScreenImageState> _screenImages = new List<ScreenImageState>();
         private static string _mainFramePath = "";
         private static IntPtr _imageProgman = IntPtr.Zero;
@@ -106,9 +106,9 @@ namespace LiveBackground
         private static int _buildFailures;
         private static bool _buildFailureStopped;
 
-        // Display layout. _screens[0] is the primary screen and _screens[1] and
-        // _screens[2] the optional extra ones; the list is refreshed when
-        // Windows reports a change. The list is only ever replaced (never
+        // Display layout. _screens[0] is the primary screen and _screens[1..3]
+        // are optional extra ones (up to 4 screens total); the list is refreshed
+        // when Windows reports a change. The list is only ever replaced (never
         // mutated) after Screens.Enumerate returns it, so a reader that reads
         // the field once always sees a complete layout. volatile makes the
         // replacement visible to the watchdog and UI threads promptly.
@@ -118,12 +118,12 @@ namespace LiveBackground
         private static bool _layoutChanged;
         private static bool _screenCountChanged;
 
-        // One player per extra screen, at most two (the second and third
-        // monitors). Each is remembered by monitor device name, so its settings
-        // survive replugging and reordering. _screensDirty is set by a settings
-        // save that touched any screen. The list is copy-on-write: the watchdog
-        // builds a new list and swaps it in, so a UI thread iterating the old
-        // one can never hit a "collection was modified" exception.
+        // One player per extra screen, at most three (the second, third and
+        // fourth monitors). Each is remembered by monitor device name, so its
+        // settings survive replugging and reordering. _screensDirty is set by a
+        // settings save that touched any screen. The list is copy-on-write: the
+        // watchdog builds a new list and swaps it in, so a UI thread iterating
+        // the old one can never hit a "collection was modified" exception.
         private static volatile List<ScreenPlayer> _screenPlayers = new List<ScreenPlayer>();
         // volatile for the same reason as _screens and _screenPlayers: it is
         // written on the UI thread (a settings save) and read/cleared by the

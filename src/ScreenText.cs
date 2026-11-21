@@ -9,12 +9,13 @@ namespace LiveBackground
     // or any running state, so the whole of it runs under unit test.
     public static class ScreenText
     {
-        // "second screen" / "third screen" for the log and the progress card,
-        // matching the names the settings window uses.
+        // "second screen" / "third screen" / "fourth screen" for the log and the
+        // progress card, matching the names the settings window uses.
         public static string LabelForIndex(int index)
         {
             if (index == 1) return "second screen";
             if (index == 2) return "third screen";
+            if (index == 3) return "fourth screen";
             return "screen " + (index + 1);
         }
 
@@ -46,7 +47,7 @@ namespace LiveBackground
                 if (i > 0) sb.Append(", ");
                 sb.Append(screens[i].Describe());
             }
-            if (screens.Count > 3) sb.Append(" (only the first three are used)");
+            if (screens.Count > 4) sb.Append(" (only the first four are used)");
             if (windowsIsDuplicating) sb.Append(" (Windows is duplicating)");
             return sb.ToString();
         }

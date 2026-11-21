@@ -235,10 +235,11 @@ namespace LiveBackground
             bool duplicate = _screens != null && Screens.IsDuplicate(_screens);
             if (!duplicate && _screens != null)
             {
+                const int maxExtraScreens = 3;
                 foreach (ScreenInfo screen in _screens)
                 {
                     if (screen.Primary) continue;
-                    if (extras.Count >= 2) break;
+                    if (extras.Count >= maxExtraScreens) break;
                     extras.Add(screen);
                 }
             }
