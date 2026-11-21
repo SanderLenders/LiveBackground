@@ -76,38 +76,47 @@ namespace LiveBackground
             string logDir = Path.GetDirectoryName(LogPath);
             try { Directory.CreateDirectory(logDir); } catch { /* best-effort: the log directory is optional */ }
 
-            // mpv writes a verbose log and only truncates it when it starts.
-            // Keep one previous run instead of letting the file grow forever;
-            // mpv's log file is always written at debug level, so rotation is
-            // the only bound we get.
-            try
-            {
-                if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 4 * 1024 * 1024)
-                {
-                    string old = Path.Combine(logDir, _logName.Replace(".log", ".old.log"));
-                    if (File.Exists(old)) File.Delete(old);
-                    File.Move(LogPath, old);
-                }
-            }
-            catch { /* best-effort: a log that cannot be rotated keeps appending */ }
-
             // Read the settings once from a single snapshot, so a settings apply
             // during start-up cannot mix two config objects into one command.
             AppConfig config = _config;
+            string extra = config.ExtraMpvArgs ?? "";
+            bool verboseMpvLog = extra.IndexOf("--log-file", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // mpv's debug log is useful for diagnostics but expensive on cold start.
+            // Default off for speed; users can add --log-file in ExtraMpvArgs.
+            if (verboseMpvLog)
+            {
+                try
+                {
+                    if (File.Exists(LogPath) && new FileInfo(LogPath).Length > 4 * 1024 * 1024)
+                    {
+                        string old = Path.Combine(logDir, _logName.Replace(".log", ".old.log"));
+                        if (File.Exists(old)) File.Delete(old);
+                        File.Move(LogPath, old);
+                    }
+                }
+                catch { /* best-effort: a log that cannot be rotated keeps appending */ }
+            }
+
+            string shaderCacheDir = Path.Combine(_appRoot, "cache", "mpv-shaders");
+            try { Directory.CreateDirectory(shaderCacheDir); } catch { /* best-effort: shader cache is an optimization */ }
+
             string args = string.Format(CultureInfo.InvariantCulture,
                 "--wid={0} --loop-file=inf --no-config --load-scripts=no --media-controls=no --no-audio " +
-                "--no-osc --no-osd-bar --no-input-default-bindings --no-border --hwdec=auto --panscan=1.0 " +
+                "--no-osc --no-osd-bar --no-input-default-bindings --no-border --gpu-api=d3d11 --hwdec=auto --panscan=1.0 " +
                 "--force-window=yes --terminal=no --no-resume-playback --sub-auto=no --audio-file-auto=no " +
                 // Inhibit the OS screensaver while the app manages idle actions
                 // (hide chrome or lock) on its own timer.
                 "--stop-screensaver=yes" +
                 " --cache=no --priority=abovenormal " +
                 "--demuxer-lavf-analyzeduration=0 --demuxer-lavf-probesize=32768 " +
-                "--log-file={1} {2}{3}",
+                "--gpu-shader-cache=yes --gpu-shader-cache-dir={1}" +
+                "{2} {3}{4}",
                 progman.ToInt64(),
-                Util.Quote(LogPath),
+                Util.Quote(shaderCacheDir),
+                verboseMpvLog ? " --log-file=" + Util.Quote(LogPath) : "",
                 Util.Quote(mediaPath),
-                string.IsNullOrEmpty(config.ExtraMpvArgs) ? "" : " " + config.ExtraMpvArgs);
+                string.IsNullOrEmpty(extra) ? "" : " " + extra);
 
             Log.Info("starting mpv: " + args);
             Process started = ProcessRunner.StartDetached(MpvExe, args, Path.GetDirectoryName(MpvExe));

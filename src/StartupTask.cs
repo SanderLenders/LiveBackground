@@ -290,6 +290,7 @@ namespace LiveBackground
                 "    <LogonTrigger>" + Environment.NewLine +
                 "      <Enabled>true</Enabled>" + Environment.NewLine +
                 "      <UserId>" + user + "</UserId>" + Environment.NewLine +
+                "      <Delay>PT2M</Delay>" + Environment.NewLine +
                 "      <Repetition>" + Environment.NewLine +
                 "        <Interval>PT5M</Interval>" + Environment.NewLine +
                 "        <StopAtDurationEnd>false</StopAtDurationEnd>" + Environment.NewLine +
