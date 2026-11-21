@@ -1714,15 +1714,15 @@ namespace LiveBackground
             private StackPanel _imageSection;
             private CheckBox _sameVideo;
             private TextBox _videoFolder;
-            private ComboBox _videoMode;
-            private ComboBox _videoSingleClip;
+            private RadioButton _videoModeSingle;
+            private RadioButton _videoModePlaylist;
             private Border _videoDrop;
             private ListView _clipList;
             private TextBlock _clipHint;
             private CheckBox _sameImages;
             private TextBox _imageFolder;
-            private ComboBox _imageMode;
-            private ComboBox _imageSingle;
+            private RadioButton _imageModeSingle;
+            private RadioButton _imageModeSlideshow;
             private Border _imageDrop;
             private ListView _imageList;
             private TextBlock _imageHint;
@@ -1748,7 +1748,7 @@ namespace LiveBackground
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 vrow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _videoFolder = new TextBox();
-                _videoFolder.TextChanged += delegate { RefreshVideoSingleChoices(); RefreshClipList(); };
+                _videoFolder.TextChanged += delegate { RefreshClipList(); };
                 Grid.SetColumn(_videoFolder, 0);
                 var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
@@ -1760,31 +1760,30 @@ namespace LiveBackground
                 _videoSection.Children.Add(vrow);
 
                 var vmRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
-                vmRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-                _videoMode = new ComboBox { Width = 180 }; _videoMode.Items.Add("Playlist"); _videoMode.Items.Add("Single clip");
-                _videoMode.SelectionChanged += delegate { UpdateEnabled(); UpdateClipListMode(); };
-                vmRow.Children.Add(_videoMode); _videoSection.Children.Add(vmRow);
+                string vgroup = "vmode" + _number;
+                _videoModeSingle = new RadioButton { Content = "Single clip", GroupName = vgroup, Margin = new Thickness(0, 0, 16, 0) };
+                _videoModePlaylist = new RadioButton { Content = "All clips in this order", GroupName = vgroup, IsChecked = true };
+                _videoModeSingle.Checked += delegate { UpdateClipListMode(); };
+                _videoModePlaylist.Checked += delegate { UpdateClipListMode(); };
+                vmRow.Children.Add(_videoModeSingle);
+                vmRow.Children.Add(_videoModePlaylist);
+                _videoSection.Children.Add(vmRow);
 
-                var vsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
-                vsRow.Children.Add(new TextBlock { Text = "Single clip:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-                _videoSingleClip = new ComboBox { MinWidth = 260 };
-                vsRow.Children.Add(_videoSingleClip); _videoSection.Children.Add(vsRow);
-
-                _clipList = new ListView { Height = 220, Margin = new Thickness(20, 0, 0, 8) };
+                _clipList = new ListView { Height = 150, Margin = new Thickness(20, 0, 0, 6) };
                 var vgv = new GridView();
                 vgv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotClipCheckCellTemplate() });
                 vgv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 300, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
                 vgv.Columns.Add(new GridViewColumn { Header = "Length", Width = 80, DisplayMemberBinding = new System.Windows.Data.Binding("Length") });
                 _clipList.View = vgv;
                 _videoSection.Children.Add(_clipList);
-                var vbtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 8) };
+                var vbtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 4) };
                 vbtns.Children.Add(ActionButton("Move up", delegate { MoveSelected(_clipList, -1); }));
                 vbtns.Children.Add(ActionButton("Move down", delegate { MoveSelected(_clipList, 1); }));
                 vbtns.Children.Add(ActionButton("Sort A-Z", delegate { SortSlotClipItems(); }));
                 vbtns.Children.Add(ActionButton("Refresh", delegate { RefreshClipList(); }));
                 vbtns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(ResolveSlotPath(_videoFolder)); }));
                 _videoSection.Children.Add(vbtns);
-                _clipHint = Muted(""); _clipHint.Margin = new Thickness(20, 0, 0, 8);
+                _clipHint = Muted(""); _clipHint.Margin = new Thickness(20, 0, 0, 4);
                 _videoSection.Children.Add(_clipHint);
 
                 _imageSection = new StackPanel();
@@ -1796,7 +1795,7 @@ namespace LiveBackground
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 irow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _imageFolder = new TextBox();
-                _imageFolder.TextChanged += delegate { RefreshImageSingleChoices(); RefreshImageList(); };
+                _imageFolder.TextChanged += delegate { RefreshImageList(); };
                 Grid.SetColumn(_imageFolder, 0);
                 var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
@@ -1808,30 +1807,29 @@ namespace LiveBackground
                 _imageSection.Children.Add(irow);
 
                 var imRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 6) };
-                imRow.Children.Add(new TextBlock { Text = "Mode:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-                _imageMode = new ComboBox { Width = 180 }; _imageMode.Items.Add("Slideshow"); _imageMode.Items.Add("One image");
-                _imageMode.SelectionChanged += delegate { UpdateEnabled(); UpdateImageListMode(); };
-                imRow.Children.Add(_imageMode); _imageSection.Children.Add(imRow);
+                string igroup = "imode" + _number;
+                _imageModeSingle = new RadioButton { Content = "One image", GroupName = igroup, Margin = new Thickness(0, 0, 16, 0) };
+                _imageModeSlideshow = new RadioButton { Content = "Slideshow", GroupName = igroup, IsChecked = true };
+                _imageModeSingle.Checked += delegate { UpdateImageListMode(); };
+                _imageModeSlideshow.Checked += delegate { UpdateImageListMode(); };
+                imRow.Children.Add(_imageModeSingle);
+                imRow.Children.Add(_imageModeSlideshow);
+                _imageSection.Children.Add(imRow);
 
-                var isRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 0, 0, 8) };
-                isRow.Children.Add(new TextBlock { Text = "One image:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-                _imageSingle = new ComboBox { MinWidth = 260 };
-                isRow.Children.Add(_imageSingle); _imageSection.Children.Add(isRow);
-
-                _imageList = new ListView { Height = 220, Margin = new Thickness(20, 0, 0, 8) };
+                _imageList = new ListView { Height = 150, Margin = new Thickness(20, 0, 0, 6) };
                 var igv = new GridView();
                 igv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotImageCheckCellTemplate() });
                 igv.Columns.Add(new GridViewColumn { Header = "Image", Width = 380, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
                 _imageList.View = igv;
                 _imageSection.Children.Add(_imageList);
-                var ibtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 8) };
+                var ibtns = new WrapPanel { Margin = new Thickness(20, 0, 0, 4) };
                 ibtns.Children.Add(ActionButton("Move up", delegate { MoveSelected(_imageList, -1); }));
                 ibtns.Children.Add(ActionButton("Move down", delegate { MoveSelected(_imageList, 1); }));
                 ibtns.Children.Add(ActionButton("Sort A-Z", delegate { SortSlotImageItems(); }));
                 ibtns.Children.Add(ActionButton("Refresh", delegate { RefreshImageList(); }));
                 ibtns.Children.Add(ActionButton("Open folder", delegate { OpenFolderSafe(ResolveSlotPath(_imageFolder)); }));
                 _imageSection.Children.Add(ibtns);
-                _imageHint = Muted(""); _imageHint.Margin = new Thickness(20, 0, 0, 8);
+                _imageHint = Muted(""); _imageHint.Margin = new Thickness(20, 0, 0, 4);
                 _imageSection.Children.Add(_imageHint);
 
                 _sameVideo.Checked += delegate { UpdateEnabled(); };
@@ -1866,7 +1864,7 @@ namespace LiveBackground
 
             private void SlotClipCheckBox_Checked(object sender, RoutedEventArgs e)
             {
-                if (_videoMode == null || _videoMode.SelectedIndex != 1) return;
+                if (_videoModeSingle == null || _videoModeSingle.IsChecked != true) return;
                 var cb = sender as System.Windows.Controls.CheckBox;
                 var current = cb != null ? cb.DataContext as ClipItem : null;
                 if (current == null) return;
@@ -1883,12 +1881,11 @@ namespace LiveBackground
                     var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
                     if (view != null) view.Refresh();
                 }
-                SelectComboByName(_videoSingleClip, current.Name);
             }
 
             private void SlotImageCheckBox_Checked(object sender, RoutedEventArgs e)
             {
-                if (_imageMode == null || _imageMode.SelectedIndex != 1) return;
+                if (_imageModeSingle == null || _imageModeSingle.IsChecked != true) return;
                 var cb = sender as System.Windows.Controls.CheckBox;
                 var current = cb != null ? cb.DataContext as ImageItem : null;
                 if (current == null) return;
@@ -1905,7 +1902,6 @@ namespace LiveBackground
                     var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
                     if (view != null) view.Refresh();
                 }
-                SelectComboByName(_imageSingle, current.Name);
             }
 
             private void BrowseAndAddVideosToSlot()
@@ -2032,44 +2028,32 @@ namespace LiveBackground
 
             private void UpdateClipListMode()
             {
-                bool single = _videoMode != null && _videoMode.SelectedIndex == 1;
-                if (_videoSingleClip != null) _videoSingleClip.IsEnabled = !(_sameVideo != null && _sameVideo.IsChecked == true) && single;
+                bool single = _videoModeSingle != null && _videoModeSingle.IsChecked == true;
                 if (!single || _clipList == null) return;
                 var items = _clipList.ItemsSource as ObservableCollection<ClipItem>;
                 if (items == null) return;
                 var checkedItems = items.Where(i => i.Enabled).ToList();
-                if (checkedItems.Count <= 1)
-                {
-                    if (checkedItems.Count == 1) SelectComboByName(_videoSingleClip, checkedItems[0].Name);
-                    return;
-                }
+                if (checkedItems.Count <= 1) return;
                 ClipItem keep = _clipList.SelectedItem as ClipItem;
                 if (keep == null || !keep.Enabled) keep = checkedItems[0];
                 foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
                 var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_clipList.ItemsSource);
                 if (view != null) view.Refresh();
-                SelectComboByName(_videoSingleClip, keep.Name);
             }
 
             private void UpdateImageListMode()
             {
-                bool single = _imageMode != null && _imageMode.SelectedIndex == 1;
-                if (_imageSingle != null) _imageSingle.IsEnabled = !(_sameImages != null && _sameImages.IsChecked == true) && single;
+                bool single = _imageModeSingle != null && _imageModeSingle.IsChecked == true;
                 if (!single || _imageList == null) return;
                 var items = _imageList.ItemsSource as ObservableCollection<ImageItem>;
                 if (items == null) return;
                 var checkedItems = items.Where(i => i.Enabled).ToList();
-                if (checkedItems.Count <= 1)
-                {
-                    if (checkedItems.Count == 1) SelectComboByName(_imageSingle, checkedItems[0].Name);
-                    return;
-                }
+                if (checkedItems.Count <= 1) return;
                 ImageItem keep = _imageList.SelectedItem as ImageItem;
                 if (keep == null || !keep.Enabled) keep = checkedItems[0];
                 foreach (var item in items) item.Enabled = object.ReferenceEquals(item, keep);
                 var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_imageList.ItemsSource);
                 if (view != null) view.Refresh();
-                SelectComboByName(_imageSingle, keep.Name);
             }
 
             private void SortSlotClipItems()
@@ -2094,96 +2078,26 @@ namespace LiveBackground
                 foreach (var it in sorted) items.Add(it);
             }
 
-            private void RefreshVideoSingleChoices()
-            {
-                if (_videoSingleClip == null) return;
-                string current = _videoSingleClip.SelectedItem as string;
-                _videoSingleClip.Items.Clear();
-                try
-                {
-                    string folder = ResolveSlotPath(_videoFolder);
-                    if (Directory.Exists(folder))
-                    {
-                        foreach (var f in MediaPipeline.ScanVideos(folder))
-                        {
-                            _videoSingleClip.Items.Add(Path.GetFileName(f));
-                        }
-                    }
-                }
-                catch { }
-                if (!string.IsNullOrEmpty(current))
-                {
-                    for (int i = 0; i < _videoSingleClip.Items.Count; i++)
-                    {
-                        if (string.Equals(_videoSingleClip.Items[i] as string, current, StringComparison.OrdinalIgnoreCase))
-                        { _videoSingleClip.SelectedIndex = i; return; }
-                    }
-                }
-                if (_videoSingleClip.Items.Count > 0 && _videoSingleClip.SelectedIndex < 0) _videoSingleClip.SelectedIndex = 0;
-            }
-
-            private void RefreshImageSingleChoices()
-            {
-                if (_imageSingle == null) return;
-                string current = _imageSingle.SelectedItem as string;
-                _imageSingle.Items.Clear();
-                try
-                {
-                    string folder = ResolveSlotPath(_imageFolder);
-                    if (Directory.Exists(folder))
-                    {
-                        foreach (var f in MediaPipeline.ScanImages(folder))
-                        {
-                            _imageSingle.Items.Add(Path.GetFileName(f));
-                        }
-                    }
-                }
-                catch { }
-                if (!string.IsNullOrEmpty(current))
-                {
-                    for (int i = 0; i < _imageSingle.Items.Count; i++)
-                    {
-                        if (string.Equals(_imageSingle.Items[i] as string, current, StringComparison.OrdinalIgnoreCase))
-                        { _imageSingle.SelectedIndex = i; return; }
-                    }
-                }
-                if (_imageSingle.Items.Count > 0 && _imageSingle.SelectedIndex < 0) _imageSingle.SelectedIndex = 0;
-            }
-
-            private static void SelectComboByName(ComboBox combo, string name)
-            {
-                if (combo == null || string.IsNullOrEmpty(name)) return;
-                for (int i = 0; i < combo.Items.Count; i++)
-                {
-                    if (string.Equals(combo.Items[i] as string, name, StringComparison.OrdinalIgnoreCase))
-                    { combo.SelectedIndex = i; return; }
-                }
-            }
-
             private void UpdateEnabled()
             {
                 bool has = !string.IsNullOrEmpty(_device);
                 ApplyReviewEnabled(_tab, has);
                 bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
-                bool singleVideo = _videoMode != null && _videoMode.SelectedIndex == 1;
-                bool singleImage = _imageMode != null && _imageMode.SelectedIndex == 1;
 
                 if (_videoSection != null) _videoSection.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
                 if (_imageSection != null) _imageSection.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
-                if (_videoSingleClip != null && _videoSingleClip.Parent is StackPanel vsr) vsr.Visibility = singleVideo ? Visibility.Visible : Visibility.Collapsed;
-                if (_imageSingle != null && _imageSingle.Parent is StackPanel isr) isr.Visibility = singleImage ? Visibility.Visible : Visibility.Collapsed;
 
                 ApplyReviewChildEnabled(_sameVideo, has, has);
                 ApplyReviewChildEnabled(_sameImages, has, has);
                 ApplyReviewChildEnabled(_videoFolder, has, has && !sv);
-                ApplyReviewChildEnabled(_videoMode, has, has && !sv);
-                ApplyReviewChildEnabled(_videoSingleClip, has, has && !sv && singleVideo);
+                ApplyReviewChildEnabled(_videoModeSingle, has, has && !sv);
+                ApplyReviewChildEnabled(_videoModePlaylist, has, has && !sv);
                 ApplyReviewChildEnabled(_videoDrop, has, has && !sv);
                 ApplyReviewChildEnabled(_clipList, has, has && !sv);
                 ApplyReviewChildEnabled(_imageFolder, has, has && !si);
-                ApplyReviewChildEnabled(_imageMode, has, has && !si);
-                ApplyReviewChildEnabled(_imageSingle, has, has && !si && singleImage);
+                ApplyReviewChildEnabled(_imageModeSingle, has, has && !si);
+                ApplyReviewChildEnabled(_imageModeSlideshow, has, has && !si);
                 ApplyReviewChildEnabled(_imageDrop, has, has && !si);
                 ApplyReviewChildEnabled(_imageList, has, has && !si);
             }
@@ -2220,18 +2134,62 @@ namespace LiveBackground
                     ScreenSettings s = config.ScreenFor(_device);
                     if (_sameVideo != null) _sameVideo.IsChecked = s.SameAsMain;
                     if (_videoFolder != null) _videoFolder.Text = s.Folder ?? "";
-                    if (_videoMode != null) _videoMode.SelectedIndex = string.Equals(s.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                    bool singleVideo = string.Equals(s.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase);
+                    if (_videoModeSingle != null) _videoModeSingle.IsChecked = singleVideo;
+                    if (_videoModePlaylist != null) _videoModePlaylist.IsChecked = !singleVideo;
                     if (_sameImages != null) _sameImages.IsChecked = s.ImagesSameAsMain;
                     if (_imageFolder != null) _imageFolder.Text = s.ImageFolder ?? "";
-                    if (_imageMode != null) _imageMode.SelectedIndex = string.Equals(s.ImageMode, "single", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-                    RefreshVideoSingleChoices();
-                    SelectComboByName(_videoSingleClip, s.SingleClip);
-                    RefreshImageSingleChoices();
-                    SelectComboByName(_imageSingle, s.ImageSingle);
+                    bool singleImage = string.Equals(s.ImageMode, "single", StringComparison.OrdinalIgnoreCase);
+                    if (_imageModeSingle != null) _imageModeSingle.IsChecked = singleImage;
+                    if (_imageModeSlideshow != null) _imageModeSlideshow.IsChecked = !singleImage;
                     RefreshClipList();
+                    ApplySingleSelection(_clipList, s.SingleClip, singleVideo);
                     RefreshImageList();
+                    ApplySingleSelection(_imageList, s.ImageSingle, singleImage);
                 }
                 UpdateEnabled();
+            }
+
+            private static void ApplySingleSelection(ListView list, string preferredName, bool singleMode)
+            {
+                if (!singleMode || list == null) return;
+                var items = list.ItemsSource as System.Collections.IEnumerable;
+                if (items == null) return;
+                ClipItem keepClip = null;
+                ImageItem keepImage = null;
+                var clipItems = list.ItemsSource as ObservableCollection<ClipItem>;
+                if (clipItems != null)
+                {
+                    foreach (var it in clipItems)
+                    {
+                        if (!string.IsNullOrEmpty(preferredName) && string.Equals(it.Name, preferredName, StringComparison.OrdinalIgnoreCase)) { keepClip = it; break; }
+                    }
+                    if (keepClip == null) keepClip = clipItems.FirstOrDefault(i => i.Enabled) ?? clipItems.FirstOrDefault();
+                    bool changed = false;
+                    foreach (var it in clipItems)
+                    {
+                        bool should = object.ReferenceEquals(it, keepClip);
+                        if (it.Enabled != should) { it.Enabled = should; changed = true; }
+                    }
+                    if (changed) { var view = System.Windows.Data.CollectionViewSource.GetDefaultView(list.ItemsSource); if (view != null) view.Refresh(); }
+                    return;
+                }
+                var imageItems = list.ItemsSource as ObservableCollection<ImageItem>;
+                if (imageItems != null)
+                {
+                    foreach (var it in imageItems)
+                    {
+                        if (!string.IsNullOrEmpty(preferredName) && string.Equals(it.Name, preferredName, StringComparison.OrdinalIgnoreCase)) { keepImage = it; break; }
+                    }
+                    if (keepImage == null) keepImage = imageItems.FirstOrDefault(i => i.Enabled) ?? imageItems.FirstOrDefault();
+                    bool changed = false;
+                    foreach (var it in imageItems)
+                    {
+                        bool should = object.ReferenceEquals(it, keepImage);
+                        if (it.Enabled != should) { it.Enabled = should; changed = true; }
+                    }
+                    if (changed) { var view = System.Windows.Data.CollectionViewSource.GetDefaultView(list.ItemsSource); if (view != null) view.Refresh(); }
+                }
             }
 
             public bool CaptureInto(AppConfig updated)
@@ -2242,51 +2200,28 @@ namespace LiveBackground
                 s.SameAsMain = _sameVideo != null && _sameVideo.IsChecked == true;
                 s.ImagesSameAsMain = _sameImages != null && _sameImages.IsChecked == true;
                 if (_videoFolder != null && !s.SameAsMain) s.Folder = (_videoFolder.Text ?? "").Trim();
-                if (_videoMode != null && !s.SameAsMain) s.PlaybackMode = _videoMode.SelectedIndex == 1 ? "single" : "playlist";
-
                 if (!s.SameAsMain)
                 {
+                    s.PlaybackMode = _videoModeSingle != null && _videoModeSingle.IsChecked == true ? "single" : "playlist";
                     var clipItems = _clipList != null ? _clipList.ItemsSource as ObservableCollection<ClipItem> : null;
                     if (clipItems != null)
                     {
                         var checkedClips = clipItems.Where(c => c.Enabled).ToList();
-                        if (s.PlaybackMode == "single" && checkedClips.Count > 0) s.SingleClip = checkedClips[0].Name;
-                        else if (_videoSingleClip != null)
-                        {
-                            string sel = _videoSingleClip.SelectedItem as string;
-                            if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
-                        }
-                        else if (checkedClips.Count > 0 && string.IsNullOrEmpty(s.SingleClip)) s.SingleClip = checkedClips[0].Name;
+                        if (checkedClips.Count > 0) s.SingleClip = checkedClips[0].Name;
                         s.Playlist = MergeMissingSavedEntries(clipItems.Select(c => new PlaylistEntry(c.Name, c.Enabled)).ToList(), s.Playlist);
-                    }
-                    else if (_videoSingleClip != null)
-                    {
-                        string sel = _videoSingleClip.SelectedItem as string;
-                        if (!string.IsNullOrEmpty(sel)) s.SingleClip = sel;
                     }
                 }
 
                 if (_imageFolder != null && !s.ImagesSameAsMain) s.ImageFolder = (_imageFolder.Text ?? "").Trim();
-                if (_imageMode != null && !s.ImagesSameAsMain) s.ImageMode = _imageMode.SelectedIndex == 1 ? "single" : "slideshow";
                 if (!s.ImagesSameAsMain)
                 {
+                    s.ImageMode = _imageModeSingle != null && _imageModeSingle.IsChecked == true ? "single" : "slideshow";
                     var imageItems = _imageList != null ? _imageList.ItemsSource as ObservableCollection<ImageItem> : null;
                     if (imageItems != null)
                     {
                         var checkedImages = imageItems.Where(i => i.Enabled).ToList();
-                        if (s.ImageMode == "single" && checkedImages.Count > 0) s.ImageSingle = checkedImages[0].Name;
-                        else if (_imageSingle != null)
-                        {
-                            string sel = _imageSingle.SelectedItem as string;
-                            if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
-                        }
-                        else if (checkedImages.Count > 0 && string.IsNullOrEmpty(s.ImageSingle)) s.ImageSingle = checkedImages[0].Name;
+                        if (checkedImages.Count > 0) s.ImageSingle = checkedImages[0].Name;
                         s.ImagePlaylist = MergeMissingSavedEntries(imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList(), s.ImagePlaylist);
-                    }
-                    else if (_imageSingle != null)
-                    {
-                        string sel = _imageSingle.SelectedItem as string;
-                        if (!string.IsNullOrEmpty(sel)) s.ImageSingle = sel;
                     }
                 }
                 return true;
