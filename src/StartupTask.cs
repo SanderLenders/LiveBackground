@@ -153,7 +153,7 @@ namespace LiveBackground
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";
                 psi.WorkingDirectory = appRoot;
-                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Normal;
+                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
                 using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(psi))
                 {
                     process.WaitForExit();
@@ -193,7 +193,7 @@ namespace LiveBackground
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";
                 psi.WorkingDirectory = appRoot;
-                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Normal;
+                psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
                 using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(psi))
                 {
                     process.WaitForExit();

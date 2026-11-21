@@ -1769,7 +1769,7 @@ namespace LiveBackground
                 vmRow.Children.Add(_videoModePlaylist);
                 _videoSection.Children.Add(vmRow);
 
-                _clipList = new ListView { Height = 150, Margin = new Thickness(20, 0, 0, 6) };
+                _clipList = new ListView { Height = 210, Margin = new Thickness(20, 0, 0, 6) };
                 var vgv = new GridView();
                 vgv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotClipCheckCellTemplate() });
                 vgv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 300, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
@@ -1816,7 +1816,7 @@ namespace LiveBackground
                 imRow.Children.Add(_imageModeSlideshow);
                 _imageSection.Children.Add(imRow);
 
-                _imageList = new ListView { Height = 150, Margin = new Thickness(20, 0, 0, 6) };
+                _imageList = new ListView { Height = 210, Margin = new Thickness(20, 0, 0, 6) };
                 var igv = new GridView();
                 igv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotImageCheckCellTemplate() });
                 igv.Columns.Add(new GridViewColumn { Header = "Image", Width = 380, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
