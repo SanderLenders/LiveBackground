@@ -108,11 +108,11 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 ; already a no-op (StartupTask.Delete treats "not found" as success), so this is
 ; safe on a fresh install too.
 Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
-Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart
+Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Description: "Start LiveBackground now"
 ; Silent installs skip the finish page/postinstall checkbox, so start the
 ; app explicitly there too (unless startup was deselected).
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait skipifnotsilent; Tasks: autostart
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait skipifnotsilent; Tasks: autostart; Check: ShouldInstallAutostartTask
 
 [UninstallRun]
 ; Runs the full uninstall command: stops the wallpaper, removes the logon
@@ -125,15 +125,57 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}";
 Filename: "{app}\{#MyAppCliName}"; Parameters: "uninstall --remove"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallLiveBackground"
 
 [Code]
+var
+  IsUpgradeInstall: Boolean;
+  PreviousAutostartEnabled: Boolean;
+  AutostartTaskAdjusted: Boolean;
+
+function TaskExists(const TaskName: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(ExpandConstant('{sys}\schtasks.exe'),
+    '/query /tn "' + TaskName + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function ShouldInstallAutostartTask: Boolean;
+begin
+  if not WizardIsTaskSelected('autostart') then
+  begin
+    Result := False;
+    Exit;
+  end;
+  if IsUpgradeInstall and not PreviousAutostartEnabled then
+  begin
+    Result := False;
+    Exit;
+  end;
+  Result := True;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpSelectTasks) and IsUpgradeInstall and (not PreviousAutostartEnabled) and (not AutostartTaskAdjusted) then
+  begin
+    WizardSelectTasks('!autostart');
+    AutostartTaskAdjusted := True;
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Cli: String;
   ResultCode: Integer;
 begin
   Result := '';
+  IsUpgradeInstall := False;
+  PreviousAutostartEnabled := False;
+  AutostartTaskAdjusted := False;
   Cli := ExpandConstant('{app}\{#MyAppCliName}');
   if FileExists(Cli) then
   begin
+    IsUpgradeInstall := True;
+    PreviousAutostartEnabled := TaskExists('LiveBackground (early startup)');
     { Stop an older copy before its files are replaced. }
     Exec(Cli, 'stop', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
