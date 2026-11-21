@@ -78,7 +78,7 @@ Source: "{#SourceDir}\tools\ffmpeg\*"; DestDir: "{app}\tools\ffmpeg"; Flags: ign
 Source: "{#SourceDir}\videos\*"; DestDir: "{app}\videos"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\images\*"; DestDir: "{app}\images"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\assets\licenses\*"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\THIRD-PARTY.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LiveBackground.cer"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
@@ -110,6 +110,7 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
 Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Description: "Start LiveBackground now"
+Filename: "{app}\README.txt"; Description: "View the README"; Flags: postinstall shellexec skipifsilent unchecked nowait
 ; Silent installs skip the finish page/postinstall checkbox, so start the
 ; app explicitly there too (unless startup was deselected).
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; Flags: runasoriginaluser nowait skipifnotsilent; Tasks: autostart; Check: ShouldInstallAutostartTask

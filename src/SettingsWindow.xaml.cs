@@ -75,7 +75,6 @@ namespace LiveBackground
         private MonitorSlotUi _slot2;
         private MonitorSlotUi _slot3;
         private MonitorSlotUi _slot4;
-        private TextBlock _monitorStatus;
 
         private sealed class ClipItem
         {
@@ -341,15 +340,20 @@ namespace LiveBackground
         private void BuildMultiMonitorTab()
         {
             var panel = MultiMonitorPanel; panel.Children.Clear();
-            panel.Children.Add(Header("Multiple monitors"));
-            _monitorStatus = Muted("");
-            panel.Children.Add(_monitorStatus);
-            var openDisplay = ActionButton("Open Windows display settings...", OpenWindowsDisplaySettings);
-            openDisplay.Margin = new Thickness(0, 8, 0, 12);
-            panel.Children.Add(openDisplay);
 
+            var tabsGrid = new Grid();
             _monitorTabs = new TabControl { MinHeight = 320 };
-            panel.Children.Add(_monitorTabs);
+            tabsGrid.Children.Add(_monitorTabs);
+
+            var openDisplay = ActionButton("Open Windows display settings...", OpenWindowsDisplaySettings);
+            openDisplay.Margin = new Thickness(0, 2, 2, 0);
+            openDisplay.Padding = new Thickness(10, 2, 10, 2);
+            openDisplay.HorizontalAlignment = HorizontalAlignment.Right;
+            openDisplay.VerticalAlignment = VerticalAlignment.Top;
+            Panel.SetZIndex(openDisplay, 1);
+            tabsGrid.Children.Add(openDisplay);
+
+            panel.Children.Add(tabsGrid);
             _slot2 = new MonitorSlotUi(this, 2);
             _slot3 = new MonitorSlotUi(this, 3);
             _slot4 = new MonitorSlotUi(this, 4);
@@ -983,12 +987,6 @@ namespace LiveBackground
             if (_slot3 != null) _slot3.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
             if (_slot4 != null) _slot4.RefreshBinding(_config, _screens, _hasSecondScreen, _duplicateLayout, reloadValues);
             UpdateMonitorTabEnabled();
-            if (_monitorStatus != null)
-            {
-                if (_screens.Count <= 1 && !_duplicateLayout) _monitorStatus.Text = "Only one screen detected. Connect another screen or enable Duplicate in Windows to configure it here.";
-                else if (_duplicateLayout) _monitorStatus.Text = "Windows is duplicating displays. Multi-monitor per-screen options are limited while duplicating.";
-                else _monitorStatus.Text = "Configure each extra screen separately. Settings are remembered by monitor name.";
-            }
         }
 
         private void UpdateMonitorTabEnabled()
