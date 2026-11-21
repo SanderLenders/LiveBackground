@@ -520,6 +520,14 @@ namespace LiveBackground
             string programRoot = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             Paths.Init(programRoot);
             _appRoot = Paths.DataRoot;
+            try
+            {
+                string profileDir = Path.Combine(_appRoot, "cache", "profiles");
+                Directory.CreateDirectory(profileDir);
+                System.Runtime.ProfileOptimization.SetProfileRoot(profileDir);
+                System.Runtime.ProfileOptimization.StartProfile("startup.profile");
+            }
+            catch { /* best-effort: profile-guided JIT optimization */ }
             Log.Init(_appRoot);
             ulong tickCount64 = Native.GetTickCount64();
             DateTime approxBootUtc = DateTime.UtcNow.AddMilliseconds(-(double)tickCount64);

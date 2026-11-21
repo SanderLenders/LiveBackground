@@ -108,6 +108,7 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 ; already a no-op (StartupTask.Delete treats "not found" as success), so this is
 ; safe on a fresh install too.
 Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
+Filename: "{cmd}"; Parameters: "/c ngen.exe install ""{app}\{#MyAppExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; StatusMsg: "Optimizing startup performance..."; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
 Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early startup)"""; WorkingDir: "{app}"; Flags: runhidden nowait postinstall skipifsilent; Description: "Start LiveBackground now"; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{app}\README.txt"; Description: "View the README"; Flags: postinstall shellexec skipifsilent unchecked nowait
@@ -116,6 +117,8 @@ Filename: "{app}\README.txt"; Description: "View the README"; Flags: postinstall
 Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early startup)"""; WorkingDir: "{app}"; Flags: runhidden nowait skipifnotsilent; Tasks: autostart; Check: ShouldInstallAutostartTask
 
 [UninstallRun]
+; Remove the NGen native image while the exe is still present.
+Filename: "{cmd}"; Parameters: "/c ngen.exe uninstall ""{app}\{#MyAppExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; RunOnceId: "NgenUninstallLiveBackground"; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
 ; Runs the full uninstall command: stops the wallpaper, removes the logon
 ; and watchdog tasks, restores the previous desktop wallpaper and lock screen
 ; (as the README promises), and removes the app-managed cache and logs.
