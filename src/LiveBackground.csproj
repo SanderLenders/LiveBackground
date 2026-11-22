@@ -73,4 +73,8 @@
     <Compile Remove="SettingsProgram.cs" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(BuildTray)'!='true'">
+    <Compile Remove="TrayProgram.cs" />
+  </ItemGroup>
+
 </Project>

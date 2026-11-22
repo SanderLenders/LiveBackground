@@ -75,6 +75,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourceDir}\LiveBackground.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LiveBackgroundCli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LiveBackgroundSettings.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\LiveBackgroundTray.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\LiveBackgroundBootstrap.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\mpv\*"; DestDir: "{app}\mpv"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\tools\ffmpeg\*"; DestDir: "{app}\tools\ffmpeg"; Flags: ignoreversion recursesubdirs createallsubdirs

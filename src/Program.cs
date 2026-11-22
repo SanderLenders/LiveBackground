@@ -211,6 +211,13 @@ namespace LiveBackground
         public static void SetPaused(bool paused)
         {
             _paused = paused;
+            try
+            {
+                string state = Installer.PauseStateFile(_appRoot);
+                if (paused) File.WriteAllText(state, "paused");
+                else Util.SafeDelete(state);
+            }
+            catch { /* best-effort: tray state file */ }
             if (paused)
             {
                 // A later resume is expected to bring the video back, which is

@@ -232,6 +232,7 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $appExe = Join-Path $OutDir 'LiveBackground.exe'
 $cliExe = Join-Path $OutDir 'LiveBackgroundCli.exe'
 $settingsExe = Join-Path $OutDir 'LiveBackgroundSettings.exe'
+$trayExe = Join-Path $OutDir 'LiveBackgroundTray.exe'
 $bootstrapperExe = Join-Path $OutDir 'LiveBackgroundBootstrap.exe'
 $dotnetExe = $dotnet
 if (-not $dotnetExe) { $dotnetExe = Find-Dotnet }
@@ -273,6 +274,9 @@ if ($dotnetExe -and (Test-Path $projectPath)) {
     Write-Step "Compiling LiveBackgroundSettings.exe"
     Invoke-DotnetBuildExe 'settings' 'WinExe' 'LiveBackgroundSettings' 'LiveBackground.SettingsProgram' $settingsExe
 
+    Write-Step "Compiling LiveBackgroundTray.exe"
+    Invoke-DotnetBuildExe 'tray' 'WinExe' 'LiveBackgroundTray' 'LiveBackground.TrayProgram' $trayExe @('UseWPF=false', 'ExcludeSettings=true', 'BuildTray=true')
+
     Write-Step "Compiling LiveBackgroundCli.exe"
     Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe @('UseWPF=false', 'ExcludeSettings=true')
 
@@ -300,6 +304,7 @@ if ($CompileOnly) {
     Write-Step 'Done (compile only)'
     Write-Host ("  " + $appExe)
     Write-Host ("  " + $settingsExe)
+    Write-Host ("  " + $trayExe)
     Write-Host ("  " + $cliExe)
     Write-Host ("  " + $bootstrapperExe)
     return

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -19,6 +19,7 @@ namespace LiveBackground
         private ToolStripMenuItem _pauseItem;
         private BuildProgressForm _progress;
         private bool _closed;
+        private System.Windows.Forms.Timer _exitWatch;
 
         public TrayApp(string appRoot)
         {
@@ -43,7 +44,7 @@ namespace LiveBackground
             _menu.Items.Add(_pauseItem);
 
             ToolStripMenuItem rebuild = new ToolStripMenuItem("Rebuild now");
-            rebuild.Click += delegate { Program.RequestRebuild(); };
+            rebuild.Click += delegate { WriteFlag(Installer.RebuildFlag(_appRoot), "rebuild"); };
             _menu.Items.Add(rebuild);
 
             ToolStripMenuItem settings = new ToolStripMenuItem("Settings...");
@@ -53,11 +54,11 @@ namespace LiveBackground
             _menu.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem videos = new ToolStripMenuItem("Open video folder");
-            videos.Click += delegate { OpenFolder(Util.ResolvePath(_appRoot, Program.Config.VideoFolder)); };
+            videos.Click += delegate { OpenConfigFolder("VideoFolder"); };
             _menu.Items.Add(videos);
 
             ToolStripMenuItem images = new ToolStripMenuItem("Open image folder");
-            images.Click += delegate { OpenFolder(Util.ResolvePath(_appRoot, Program.Config.ImageFolder)); };
+            images.Click += delegate { OpenConfigFolder("ImageFolder"); };
             _menu.Items.Add(images);
 
             ToolStripMenuItem logs = new ToolStripMenuItem("Open logs folder");
@@ -67,7 +68,7 @@ namespace LiveBackground
             _menu.Items.Add(new ToolStripSeparator());
 
             ToolStripMenuItem exit = new ToolStripMenuItem("Exit");
-            exit.Click += delegate { Program.RequestExit(); };
+            exit.Click += delegate { WriteFlag(Installer.QuitFlag(_appRoot), "quit"); WriteFlag(Installer.StopFlag(_appRoot), "stop"); };
             _menu.Items.Add(exit);
 
             _icon = new NotifyIcon();
@@ -78,6 +79,10 @@ namespace LiveBackground
             _icon.Visible = true;
 
             RefreshMenu();
+
+            _exitWatch = new System.Windows.Forms.Timer { Interval = 1000 };
+            _exitWatch.Tick += delegate { CheckExitFlag(); };
+            _exitWatch.Start();
         }
 
         public void RefreshMenu()
@@ -85,7 +90,7 @@ namespace LiveBackground
             Post(delegate
             {
                 if (_closed) return;
-                _pauseItem.Text = Program.IsPaused ? "Resume wallpaper" : "Pause wallpaper";
+                _pauseItem.Text = IsPausedState() ? "Resume wallpaper" : "Pause wallpaper";
             });
         }
 
@@ -165,6 +170,11 @@ namespace LiveBackground
         {
             if (_closed) return;
             _closed = true;
+            if (_exitWatch != null)
+            {
+                try { _exitWatch.Stop(); _exitWatch.Dispose(); } catch { }
+                _exitWatch = null;
+            }
             if (_progress != null && !_progress.IsDisposed)
             {
                 _progress.Hide();
@@ -186,15 +196,50 @@ namespace LiveBackground
             {
                 try { _invoker.Dispose(); } catch { /* best-effort dispose on shutdown */ }
             }
+            try { Util.SafeDelete(Installer.TrayExitFlag(_appRoot)); } catch { }
             ExitThread();
+        }
+
+        private void CheckExitFlag()
+        {
+            try
+            {
+                if (File.Exists(Installer.TrayExitFlag(_appRoot)) || File.Exists(Installer.QuitFlag(_appRoot)))
+                {
+                    CloseCore();
+                }
+            }
+            catch { }
         }
 
         private void TogglePause()
         {
-            Program.SetPaused(!Program.IsPaused);
-            if (Program.IsPaused) Notify("LiveBackground", "Paused. The desktop wallpaper is showing.");
-            else Notify("LiveBackground", "Resumed.");
+            bool paused = IsPausedState();
+            if (paused) WriteFlag(Installer.ResumeFlag(_appRoot), "resume");
+            else WriteFlag(Installer.PauseFlag(_appRoot), "pause");
+            Notify("LiveBackground", paused ? "Resumed." : "Paused. The desktop wallpaper is showing.");
             RefreshMenu();
+        }
+
+        private bool IsPausedState()
+        {
+            try { return File.Exists(Installer.PauseStateFile(_appRoot)); } catch { return false; }
+        }
+
+        private static void WriteFlag(string path, string content)
+        {
+            try { File.WriteAllText(path, content); } catch { /* best-effort */ }
+        }
+
+        private void OpenConfigFolder(string field)
+        {
+            try
+            {
+                AppConfig cfg = ConfigStore.LoadOrCreate(_appRoot);
+                string path = field == "ImageFolder" ? cfg.ImageFolder : cfg.VideoFolder;
+                OpenFolder(Util.ResolvePath(_appRoot, path));
+            }
+            catch (Exception ex) { Log.Warn("could not open folder: " + ex.Message); }
         }
 
         private static void OpenFolder(string folder)
@@ -283,168 +328,61 @@ namespace LiveBackground
         }
     }
 
-    // Static entry points used by the wallpaper process. All of these are safe
-    // to call from any thread and do nothing if the tray could not start.
+    // Static entry points used by the wallpaper process. The tray UI runs in a
+    // separate LiveBackgroundTray.exe process so the wallpaper process does not pay
+    // WinForms initialization cost on the startup-critical path.
     public static class Ui
     {
-        private static TrayApp _tray;
-
-        // A build can be requested a fraction of a second before the tray
-        // thread has finished starting. The card request is held here and
-        // replayed once the tray is ready, so the first encode still shows
-        // its card. A build that finishes before then simply clears it.
-        private static readonly object ProgressSync = new object();
-        private static string _pendingProgressTitle;
-        private static double _pendingProgressFraction;
-        private static string _pendingProgressStatus;
-        private static string _pendingNotifyTitle;
-        private static string _pendingNotifyText;
+        private static int _trayStarted;
 
         public static void Start(string appRoot)
         {
-            if (_tray != null) return;
-            Thread thread = new Thread(delegate()
+            if (Interlocked.CompareExchange(ref _trayStarted, 1, 0) != 0) return;
+            try
             {
-                try
+                string trayExe = Path.Combine(Paths.ProgramRoot, "LiveBackgroundTray.exe");
+                if (!File.Exists(trayExe)) return;
+                ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-
-                    // An unexpected exception in a menu or settings event
-                    // handler would otherwise reach the default WinForms crash
-                    // dialog. Log it and tell the user, the way the rest of the
-                    // app reports trouble, and keep the tray running.
-                    Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-                    Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e)
-                    {
-                        Log.Error("unhandled error in the user interface", e.Exception);
-                        Notify("LiveBackground", "Something went wrong. The details were saved to the log.");
-                    };
-
-                    TrayApp tray = new TrayApp(appRoot);
-                    TrayReady(tray);
-                    Application.Run(tray);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn("the tray icon could not be created: " + ex.Message);
-                    lock (ProgressSync) { _tray = null; }
-                }
-            });
-            thread.IsBackground = true;
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Name = "livebackground-tray";
-            thread.Start();
-        }
-
-        private static void TrayReady(TrayApp tray)
-        {
-            string title;
-            double fraction;
-            string status;
-            lock (ProgressSync)
-            {
-                _tray = tray;
-                title = _pendingProgressTitle;
-                fraction = _pendingProgressFraction;
-                status = _pendingProgressStatus;
-                _pendingProgressTitle = null;
-                _pendingProgressFraction = 0;
-                _pendingProgressStatus = null;
+                    FileName = trayExe,
+                    WorkingDirectory = Paths.ProgramRoot,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                Process.Start(psi);
             }
-            if (!string.IsNullOrEmpty(title))
+            catch (Exception ex)
             {
-                tray.BuildProgressStart(title);
-                if (!string.IsNullOrEmpty(status)) tray.BuildProgressUpdate(fraction, status);
+                Interlocked.Exchange(ref _trayStarted, 0);
+                try { Log.Warn("could not start tray: " + ex.Message); } catch { }
             }
-            string notifyTitle;
-            string notifyText;
-            lock (ProgressSync)
-            {
-                notifyTitle = _pendingNotifyTitle;
-                notifyText = _pendingNotifyText;
-                _pendingNotifyTitle = null;
-                _pendingNotifyText = null;
-            }
-            if (!string.IsNullOrEmpty(notifyTitle)) tray.Notify(notifyTitle, notifyText);
         }
 
         public static bool ShowSettings()
         {
-            TrayApp tray = _tray;
-            if (tray == null) return false;
-            tray.ShowSettings();
-            return true;
-        }
-
-        public static void RefreshMenu()
-        {
-            TrayApp tray = _tray;
-            if (tray != null) tray.RefreshMenu();
-        }
-
-        public static void Notify(string title, string text)
-        {
-            TrayApp tray = _tray;
-            if (tray != null) { tray.Notify(title, text); return; }
-            // The tray thread may not have finished starting yet; hold the
-            // message and replay it in TrayReady.
-            lock (ProgressSync) { _pendingNotifyTitle = title; _pendingNotifyText = text; }
-        }
-
-        public static void BuildProgressStart(string title)
-        {
-            TrayApp tray = _tray;
-            if (tray != null)
+            try
             {
-                tray.BuildProgressStart(title);
-                return;
+                string exe = Path.Combine(Paths.ProgramRoot, "LiveBackgroundSettings.exe");
+                if (!File.Exists(exe)) return false;
+                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Paths.ProgramRoot });
+                return true;
             }
-            lock (ProgressSync)
+            catch (Exception ex)
             {
-                _pendingProgressTitle = title;
-                _pendingProgressFraction = 0;
-                _pendingProgressStatus = null;
+                try { Log.Warn("could not open settings: " + ex.Message); } catch { }
+                return false;
             }
         }
 
-        public static void BuildProgressUpdate(double fraction, string status)
-        {
-            TrayApp tray = _tray;
-            if (tray != null)
-            {
-                tray.BuildProgressUpdate(fraction, status);
-                return;
-            }
-            lock (ProgressSync)
-            {
-                if (_pendingProgressTitle == null) return;
-                _pendingProgressFraction = fraction;
-                _pendingProgressStatus = status;
-            }
-        }
-
-        public static void BuildProgressFinish(bool success, string message)
-        {
-            TrayApp tray = _tray;
-            if (tray != null)
-            {
-                tray.BuildProgressFinish(success, message);
-                return;
-            }
-            // The build finished before the tray existed; there is nothing
-            // to show, so cancel the pending card instead of leaving it.
-            lock (ProgressSync) { _pendingProgressTitle = null; }
-        }
+        public static void RefreshMenu() { }
+        public static void Notify(string title, string text) { try { Log.Info("notify: " + title + " - " + text); } catch { } }
+        public static void BuildProgressStart(string title) { try { Log.Info(title); } catch { } }
+        public static void BuildProgressUpdate(double fraction, string status) { }
+        public static void BuildProgressFinish(bool success, string message) { try { Log.Info(message); } catch { } }
 
         public static void Stop()
         {
-            TrayApp tray = _tray;
-            _tray = null;
-            if (tray != null) tray.Close();
+            try { File.WriteAllText(Installer.TrayExitFlag(Paths.DataRoot), "exit"); } catch { }
         }
     }
 }
-
-
-

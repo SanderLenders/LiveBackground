@@ -52,9 +52,11 @@ namespace LiveBackground
         }
         public static string StopFlag(string appRoot) { return Path.Combine(appRoot, "stop.flag"); }
         public static string QuitFlag(string appRoot) { return Path.Combine(appRoot, "quit.flag"); }
+        public static string TrayExitFlag(string appRoot) { return Path.Combine(appRoot, "tray-exit.flag"); }
         public static string SettingsFlag(string appRoot) { return Path.Combine(appRoot, "settings.flag"); }
         public static string PauseFlag(string appRoot) { return Path.Combine(appRoot, "pause.flag"); }
         public static string ResumeFlag(string appRoot) { return Path.Combine(appRoot, "resume.flag"); }
+        public static string PauseStateFile(string appRoot) { return Path.Combine(appRoot, "pause.state"); }
         public static string RebuildFlag(string appRoot) { return Path.Combine(appRoot, "rebuild.flag"); }
         public static string ApplyConfigFlag(string appRoot) { return Path.Combine(appRoot, "apply-config.flag"); }
         public static string BundledVideoDir(string appRoot) { return Path.Combine(Paths.ProgramRoot, "videos"); }

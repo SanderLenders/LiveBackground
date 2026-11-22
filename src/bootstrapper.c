@@ -11,6 +11,25 @@
 #define SPIF_SENDCHANGE 0x0002
 #endif
 
+static void blog(const char *msg) {
+    wchar_t profile[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return;
+    wchar_t logPath[MAX_PATH * 2];
+    _snwprintf(logPath, MAX_PATH * 2, L"%s\\LiveBackground\\logs\\app.log", profile);
+    logPath[MAX_PATH * 2 - 1] = 0;
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    FILE *f = _wfopen(logPath, L"a");
+    if (!f) return;
+    fprintf(f, "%04u-%02u-%02u %02u:%02u:%02u.%03u [INFO] bootstrapper: %s\n",
+            (unsigned)st.wYear, (unsigned)st.wMonth, (unsigned)st.wDay,
+            (unsigned)st.wHour, (unsigned)st.wMinute, (unsigned)st.wSecond,
+            (unsigned)st.wMilliseconds, msg ? msg : "");
+    fclose(f);
+}
+
 static int file_exists(const wchar_t *path) {
     DWORD a = GetFileAttributesW(path);
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
@@ -90,19 +109,23 @@ static int find_frame(wchar_t *out, size_t cap) {
 }
 
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR lpCmdLine, int nShow) {
-    (void)hInst; (void)hPrev; (void)lpCmdLine; (void)nShow;
+    (void)hInst; (void)hPrev; (void)nShow;
+    blog("started");
 
     wchar_t frame[MAX_PATH * 2];
     if (find_frame(frame, MAX_PATH * 2)) {
         // Best-effort: show the cached frame immediately. Main app will take over.
         SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, frame, SPIF_SENDCHANGE);
+        blog("cached frame applied");
+    } else {
+        blog("no cached frame found");
     }
 
     wchar_t exePath[MAX_PATH * 2];
     DWORD len = GetModuleFileNameW(NULL, exePath, MAX_PATH * 2);
-    if (len == 0 || len >= MAX_PATH * 2) return 1;
+    if (len == 0 || len >= MAX_PATH * 2) { blog("GetModuleFileName failed"); return 1; }
     wchar_t *slash = wcsrchr(exePath, L'\\');
-    if (!slash) return 1;
+    if (!slash) { blog("bad module path"); return 1; }
     *(slash + 1) = 0;
     wchar_t mainExe[MAX_PATH * 2];
     _snwprintf(mainExe, MAX_PATH * 2, L"%sLiveBackground.exe", exePath);
@@ -110,7 +133,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR lpCmdLine, int nShow
 
     // Forward command line args (e.g. --startup, --watchdog) to the main app.
     wchar_t cmd[32768];
-    const wchar_t *args = lpCmdLine;
+    const wchar_t *args = lpCmdLine ? lpCmdLine : L"";
     while (*args == L' ') args++;
     if (*args) _snwprintf(cmd, 32768, L"\"%s\" %s", mainExe, args);
     else _snwprintf(cmd, 32768, L"\"%s\"", mainExe);
@@ -124,6 +147,9 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR lpCmdLine, int nShow
     if (CreateProcessW(mainExe, cmd, NULL, NULL, FALSE, 0, NULL, exePath, &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
+        blog("main exe launched");
+    } else {
+        blog("CreateProcess for main exe failed");
     }
     return 0;
 }
