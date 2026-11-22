@@ -1759,6 +1759,9 @@ namespace LiveBackground
                 _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
                 _deviceLabel = Muted("No screen detected for this slot.");
+                _deviceLabel.FontSize = 11;
+                _deviceLabel.TextWrapping = TextWrapping.NoWrap;
+                _deviceLabel.TextTrimming = TextTrimming.CharacterEllipsis;
                 sp.Children.Add(_deviceLabel);
 
                 _videoSection = new StackPanel();
@@ -2231,8 +2234,6 @@ namespace LiveBackground
                 bool deviceChanged = !string.Equals(_device, dev, StringComparison.OrdinalIgnoreCase);
                 _device = dev;
                 bool has = _device.Length > 0;
-                string fallback = _number == 2 ? "2nd Screen" : _number == 3 ? "3rd Screen" : _number == 4 ? "4th Screen" : "Screen " + _number;
-                if (_tab != null) _tab.Header = has ? ("Monitor: " + _device) : fallback;
                 if (_deviceLabel != null) _deviceLabel.Text = has ? ("Monitor: " + _device) : "No screen detected for this slot.";
                 if (reloadValues || deviceChanged)
                 {
