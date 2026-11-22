@@ -1759,7 +1759,7 @@ namespace LiveBackground
                 _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
                 _deviceLabel = Muted("No screen detected for this slot.");
-                _deviceLabel.FontSize = 9;
+                _deviceLabel.FontSize = 10;
                 _deviceLabel.TextWrapping = TextWrapping.NoWrap;
                 _deviceLabel.TextTrimming = TextTrimming.CharacterEllipsis;
                 sp.Children.Add(_deviceLabel);
@@ -1794,7 +1794,7 @@ namespace LiveBackground
                 vmRow.Children.Add(_videoModePlaylist);
                 _videoSection.Children.Add(vmRow);
 
-                _clipList = new ListView { Height = 210, Margin = new Thickness(20, 0, 0, 6) };
+                _clipList = new ListView { Height = 190, Margin = new Thickness(20, 0, 0, 6) };
                 var vgv = new GridView();
                 vgv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotClipCheckCellTemplate() });
                 vgv.Columns.Add(new GridViewColumn { Header = "Clip", Width = 300, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
@@ -1841,7 +1841,7 @@ namespace LiveBackground
                 imRow.Children.Add(_imageModeSlideshow);
                 _imageSection.Children.Add(imRow);
 
-                _imageList = new ListView { Height = 210, Margin = new Thickness(20, 0, 0, 6) };
+                _imageList = new ListView { Height = 190, Margin = new Thickness(20, 0, 0, 6) };
                 var igv = new GridView();
                 igv.Columns.Add(new GridViewColumn { Header = "", Width = 34, CellTemplate = SlotImageCheckCellTemplate() });
                 igv.Columns.Add(new GridViewColumn { Header = "Image", Width = 380, DisplayMemberBinding = new System.Windows.Data.Binding("Name") });
