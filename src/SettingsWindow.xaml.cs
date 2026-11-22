@@ -1734,6 +1734,20 @@ namespace LiveBackground
             private Border _imageDrop;
             private ListView _imageList;
             private TextBlock _imageHint;
+            private TabControl _innerTabs;
+            private TabItem _contentTab;
+            private TabItem _playbackTab;
+            private Slider _videoFadeSlider;
+            private TextBlock _videoFadeValue;
+            private CheckBox _videoFineSteps;
+            private Slider _intervalSlider;
+            private TextBlock _intervalValue;
+            private Slider _imageFadeSlider;
+            private TextBlock _imageFadeValue;
+            private CheckBox _imageFineSteps;
+            private CheckBox _imageShuffle;
+            private StackPanel _videoPlaybackPanel;
+            private StackPanel _imagePlaybackPanel;
             private bool _imagesMode;
             private string _device = "";
 
@@ -1845,9 +1859,56 @@ namespace LiveBackground
                 _sameImages.Checked += delegate { UpdateEnabled(); };
                 _sameImages.Unchecked += delegate { UpdateEnabled(); };
 
-                sp.Children.Add(_videoSection);
-                sp.Children.Add(_imageSection);
-                _tab.Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = sp };
+                var contentPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+                contentPanel.Children.Add(_videoSection);
+                contentPanel.Children.Add(_imageSection);
+                _contentTab = new TabItem { Header = "Video", Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = contentPanel } };
+
+                var playbackPanel = new StackPanel { Margin = new Thickness(8) };
+                _videoPlaybackPanel = new StackPanel();
+                _videoPlaybackPanel.Children.Add(Header("Crossfade"));
+                var vfadeRow = new DockPanel { Margin = new Thickness(0, 6, 0, 4) };
+                _videoFadeValue = new TextBlock { MinWidth = 60, TextAlignment = TextAlignment.Right, Foreground = Brushes.White };
+                DockPanel.SetDock(_videoFadeValue, Dock.Right);
+                _videoFadeSlider = new Slider { Minimum = 0.5, Maximum = 10.0, TickFrequency = 0.5, IsSnapToTickEnabled = true, SmallChange = 0.5, LargeChange = 1.0 };
+                _videoFadeSlider.ValueChanged += delegate { UpdateVideoFadeLabel(); };
+                vfadeRow.Children.Add(_videoFadeValue); vfadeRow.Children.Add(_videoFadeSlider);
+                _videoPlaybackPanel.Children.Add(vfadeRow);
+                _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
+                _videoPlaybackPanel.Children.Add(_videoFineSteps);
+                _videoPlaybackPanel.Children.Add(Muted("Resolution, frame rate and quality use the main Playback tab settings."));
+                playbackPanel.Children.Add(_videoPlaybackPanel);
+
+                _imagePlaybackPanel = new StackPanel();
+                _imagePlaybackPanel.Children.Add(Header("Slideshow"));
+                _imagePlaybackPanel.Children.Add(Muted("Time each picture stays on screen:"));
+                var intervalRow = new DockPanel { Margin = new Thickness(0, 6, 0, 12) };
+                _intervalValue = new TextBlock { MinWidth = 70, TextAlignment = TextAlignment.Right, Foreground = Brushes.White };
+                DockPanel.SetDock(_intervalValue, Dock.Right);
+                _intervalSlider = new Slider { Minimum = 5, Maximum = 300, TickFrequency = 5, IsSnapToTickEnabled = true };
+                _intervalSlider.ValueChanged += delegate { UpdateIntervalLabel(); };
+                intervalRow.Children.Add(_intervalValue); intervalRow.Children.Add(_intervalSlider);
+                _imagePlaybackPanel.Children.Add(intervalRow);
+                _imagePlaybackPanel.Children.Add(Muted("Crossfade between pictures:"));
+                var imageFadeRow = new DockPanel { Margin = new Thickness(0, 6, 0, 4) };
+                _imageFadeValue = new TextBlock { MinWidth = 70, TextAlignment = TextAlignment.Right, Foreground = Brushes.White };
+                DockPanel.SetDock(_imageFadeValue, Dock.Right);
+                _imageFadeSlider = new Slider { Minimum = 0, Maximum = 5, TickFrequency = 0.5, IsSnapToTickEnabled = true };
+                _imageFadeSlider.ValueChanged += delegate { UpdateImageFadeLabel(); };
+                imageFadeRow.Children.Add(_imageFadeValue); imageFadeRow.Children.Add(_imageFadeSlider);
+                _imagePlaybackPanel.Children.Add(imageFadeRow);
+                _imageFineSteps = new CheckBox { Content = "Allow half-second steps", Margin = new Thickness(0, 0, 0, 10) };
+                _imageShuffle = new CheckBox { Content = "Shuffle pictures", Margin = new Thickness(0, 0, 0, 8) };
+                _imagePlaybackPanel.Children.Add(_imageFineSteps);
+                _imagePlaybackPanel.Children.Add(_imageShuffle);
+                playbackPanel.Children.Add(_imagePlaybackPanel);
+
+                _playbackTab = new TabItem { Header = "Playback", Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = playbackPanel } };
+                _innerTabs = new TabControl();
+                _innerTabs.Items.Add(_contentTab);
+                _innerTabs.Items.Add(_playbackTab);
+                sp.Children.Add(_innerTabs);
+                _tab.Content = sp;
                 UpdateEnabled();
                 return _tab;
             }
@@ -2034,6 +2095,31 @@ namespace LiveBackground
                 catch { return null; }
             }
 
+            private void UpdateVideoFadeLabel()
+            {
+                if (_videoFadeValue == null || _videoFadeSlider == null) return;
+                _videoFadeValue.Text = _videoFadeSlider.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
+            }
+
+            private void UpdateIntervalLabel()
+            {
+                if (_intervalValue == null || _intervalSlider == null) return;
+                int sec = (int)Math.Round(_intervalSlider.Value);
+                if (sec < 60) _intervalValue.Text = sec + "s";
+                else
+                {
+                    int m = sec / 60;
+                    int s = sec % 60;
+                    _intervalValue.Text = s == 0 ? m + "m" : m + "m " + s + "s";
+                }
+            }
+
+            private void UpdateImageFadeLabel()
+            {
+                if (_imageFadeValue == null || _imageFadeSlider == null) return;
+                _imageFadeValue.Text = _imageFadeSlider.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
+            }
+
             private void UpdateClipListMode()
             {
                 bool single = _videoModeSingle != null && _videoModeSingle.IsChecked == true;
@@ -2093,8 +2179,11 @@ namespace LiveBackground
                 bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
 
+                if (_contentTab != null) _contentTab.Header = _imagesMode ? "Images" : "Video";
                 if (_videoSection != null) _videoSection.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
                 if (_imageSection != null) _imageSection.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
+                if (_videoPlaybackPanel != null) _videoPlaybackPanel.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
+                if (_imagePlaybackPanel != null) _imagePlaybackPanel.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
 
                 ApplyReviewChildEnabled(_sameVideo, has, has);
                 ApplyReviewChildEnabled(_sameImages, has, has);
@@ -2103,11 +2192,17 @@ namespace LiveBackground
                 ApplyReviewChildEnabled(_videoModePlaylist, has, has && !sv);
                 ApplyReviewChildEnabled(_videoDrop, has, has && !sv);
                 ApplyReviewChildEnabled(_clipList, has, has && !sv);
+                ApplyReviewChildEnabled(_videoFadeSlider, has, has && !sv);
+                ApplyReviewChildEnabled(_videoFineSteps, has, has && !sv);
                 ApplyReviewChildEnabled(_imageFolder, has, has && !si);
                 ApplyReviewChildEnabled(_imageModeSingle, has, has && !si);
                 ApplyReviewChildEnabled(_imageModeSlideshow, has, has && !si);
                 ApplyReviewChildEnabled(_imageDrop, has, has && !si);
                 ApplyReviewChildEnabled(_imageList, has, has && !si);
+                ApplyReviewChildEnabled(_intervalSlider, has, has && !si);
+                ApplyReviewChildEnabled(_imageFadeSlider, has, has && !si);
+                ApplyReviewChildEnabled(_imageFineSteps, has, has && !si);
+                ApplyReviewChildEnabled(_imageShuffle, has, has && !si);
             }
 
             public void SetMode(bool imagesMode) { _imagesMode = imagesMode; UpdateEnabled(); }
@@ -2150,6 +2245,17 @@ namespace LiveBackground
                     bool singleImage = string.Equals(s.ImageMode, "single", StringComparison.OrdinalIgnoreCase);
                     if (_imageModeSingle != null) _imageModeSingle.IsChecked = singleImage;
                     if (_imageModeSlideshow != null) _imageModeSlideshow.IsChecked = !singleImage;
+                    double vfade = s.CrossfadeSeconds.HasValue ? s.CrossfadeSeconds.Value : (config != null ? config.CrossfadeSeconds : 3.0);
+                    bool vfine = s.FineCrossfadeSteps.HasValue ? s.FineCrossfadeSteps.Value : (config != null && config.FineCrossfadeSteps);
+                    if (_videoFadeSlider != null) _videoFadeSlider.Value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, vfade));
+                    if (_videoFineSteps != null) _videoFineSteps.IsChecked = vfine;
+                    if (_intervalSlider != null) _intervalSlider.Value = Math.Max(_intervalSlider.Minimum, Math.Min(_intervalSlider.Maximum, s.ImageIntervalSeconds));
+                    if (_imageFadeSlider != null) _imageFadeSlider.Value = Math.Max(_imageFadeSlider.Minimum, Math.Min(_imageFadeSlider.Maximum, s.ImageCrossfadeSeconds));
+                    if (_imageFineSteps != null) _imageFineSteps.IsChecked = s.ImageFineCrossfadeSteps;
+                    if (_imageShuffle != null) _imageShuffle.IsChecked = s.ImageShuffle;
+                    UpdateVideoFadeLabel();
+                    UpdateIntervalLabel();
+                    UpdateImageFadeLabel();
                     RefreshClipList();
                     ApplySingleSelection(_clipList, s.SingleClip, singleVideo);
                     RefreshImageList();
@@ -2232,6 +2338,12 @@ namespace LiveBackground
                         s.ImagePlaylist = MergeMissingSavedEntries(imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList(), s.ImagePlaylist);
                     }
                 }
+                if (_videoFadeSlider != null) s.CrossfadeSeconds = _videoFadeSlider.Value;
+                if (_videoFineSteps != null) s.FineCrossfadeSteps = _videoFineSteps.IsChecked == true;
+                if (_intervalSlider != null) s.ImageIntervalSeconds = (int)Math.Round(_intervalSlider.Value);
+                if (_imageFadeSlider != null) s.ImageCrossfadeSeconds = _imageFadeSlider.Value;
+                if (_imageFineSteps != null) s.ImageFineCrossfadeSteps = _imageFineSteps.IsChecked == true;
+                if (_imageShuffle != null) s.ImageShuffle = _imageShuffle.IsChecked == true;
                 return true;
             }
         }
