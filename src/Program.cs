@@ -87,6 +87,9 @@ namespace LiveBackground
         private static DateTime _processStartUtc;
         private static Stopwatch _startupSw;
         private static int _firstFrameProbeStarted;
+        private static int _deferredStartupRan;
+        private static string _deferredVideoFolder = "";
+        private static string _deferredImageFolder = "";
 
         private static long StartupElapsedMs()
         {
@@ -687,6 +690,26 @@ namespace LiveBackground
             });
         }
 
+        private static void TryRunDeferredStartup()
+        {
+            if (Interlocked.CompareExchange(ref _deferredStartupRan, 1, 0) != 0) return;
+            string videoFolder = _deferredVideoFolder;
+            string imageFolder = _deferredImageFolder;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    try { StartLockScreenWorker(); } catch (Exception ex) { Log.Warn("deferred lock screen start failed: " + ex.Message); }
+                    try { StartScreensaverWorker(); } catch (Exception ex) { Log.Warn("deferred screensaver start failed: " + ex.Message); }
+                    try { if (!string.IsNullOrEmpty(videoFolder)) StartWatcher(videoFolder); } catch (Exception ex) { Log.Warn("deferred video watcher start failed: " + ex.Message); }
+                    try { if (!string.IsNullOrEmpty(imageFolder)) StartImageWatcher(imageFolder); } catch (Exception ex) { Log.Warn("deferred image watcher start failed: " + ex.Message); }
+                    try { Ui.Start(_appRoot); } catch (Exception ex) { Log.Warn("deferred UI start failed: " + ex.Message); }
+                    Log.Info("startup: deferred init complete (" + StartupElapsedMs() + " ms after process timer start)");
+                }
+                catch { /* best-effort */ }
+            });
+        }
+
         private static void StartFirstFrameProbe(MpvPlayer player)
         {
             if (player == null) return;
@@ -720,6 +743,7 @@ namespace LiveBackground
                                                 int msAfterMpv = (int)(DateTime.UtcNow - startedUtc).TotalMilliseconds;
                                                 Log.Info("startup: mpv first video frame shown " + msAfterMpv +
                                                     " ms after mpv start (" + StartupElapsedMs() + " ms after process timer start)");
+                                                TryRunDeferredStartup();
                                                 return;
                                             }
                                         }
@@ -732,6 +756,7 @@ namespace LiveBackground
                     }
                 }
                 catch { /* best-effort */ }
+                TryRunDeferredStartup();
             });
         }
 
@@ -1026,11 +1051,14 @@ namespace LiveBackground
             RebuildScreenPlayers();
             Log.Info("startup: players initialized " + startupStep.ElapsedMilliseconds + " ms");
 
-            // The lock screen and tray are not needed for the first wallpaper
-            // frame. Starting them later keeps them from competing with the
-            // first cold disk read.
-            StartLockScreenWorker();
-            StartScreensaverWorker();
+            // Defer non-first-frame work until mpv has shown its first frame.
+            _deferredVideoFolder = folder;
+            _deferredImageFolder = imageFolder;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { Thread.Sleep(20000); TryRunDeferredStartup(); }
+                catch { /* best-effort fallback */ }
+            });
 
             if (imagesMode)
             {
@@ -1051,7 +1079,7 @@ namespace LiveBackground
                 SaveStartupHint(true, _currentImage ?? "");
                 SetStartupPriority(false);
                 Log.Info("startup priority restored to Normal");
-                Ui.Start(_appRoot);
+                TryRunDeferredStartup();
                 if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
                 try { orphanScanDone.Dispose(); } catch { }
                 return WatchLoop();
@@ -1103,9 +1131,6 @@ namespace LiveBackground
             SaveStartupHint(false, _mediaPath ?? "");
             SetStartupPriority(false);
             Log.Info("startup priority restored to Normal");
-            StartWatcher(folder);
-            StartImageWatcher(imageFolder);
-            Ui.Start(_appRoot);
             if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
             try { orphanScanDone.Dispose(); } catch { }
             return WatchLoop();

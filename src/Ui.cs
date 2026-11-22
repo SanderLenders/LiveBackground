@@ -372,9 +372,23 @@ namespace LiveBackground
         public static bool ShowSettings()
         {
             TrayApp tray = _tray;
-            if (tray == null) return false;
-            tray.ShowSettings();
-            return true;
+            if (tray != null)
+            {
+                tray.ShowSettings();
+                return true;
+            }
+            try
+            {
+                string exe = Path.Combine(Paths.ProgramRoot, "LiveBackgroundSettings.exe");
+                if (!File.Exists(exe)) return false;
+                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Paths.ProgramRoot });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                try { Log.Warn("could not open settings: " + ex.Message); } catch { }
+                return false;
+            }
         }
 
         public static void RefreshMenu()
