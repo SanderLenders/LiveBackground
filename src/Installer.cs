@@ -44,12 +44,19 @@ namespace LiveBackground
         public static string BackupDir(string appRoot) { return Path.Combine(appRoot, "backup"); }
         public static string AppExe(string appRoot) { return Path.Combine(Paths.ProgramRoot, "LiveBackground.exe"); }
         public static string SetupExe(string appRoot) { return Path.Combine(Paths.ProgramRoot, "LiveBackgroundCli.exe"); }
+        public static string BootstrapperExe(string appRoot) { return Path.Combine(Paths.ProgramRoot, "LiveBackgroundBootstrap.exe"); }
+        public static string StartupExe(string appRoot)
+        {
+            string b = BootstrapperExe(appRoot);
+            return File.Exists(b) ? b : AppExe(appRoot);
+        }
         public static string StopFlag(string appRoot) { return Path.Combine(appRoot, "stop.flag"); }
         public static string QuitFlag(string appRoot) { return Path.Combine(appRoot, "quit.flag"); }
         public static string SettingsFlag(string appRoot) { return Path.Combine(appRoot, "settings.flag"); }
         public static string PauseFlag(string appRoot) { return Path.Combine(appRoot, "pause.flag"); }
         public static string ResumeFlag(string appRoot) { return Path.Combine(appRoot, "resume.flag"); }
         public static string RebuildFlag(string appRoot) { return Path.Combine(appRoot, "rebuild.flag"); }
+        public static string ApplyConfigFlag(string appRoot) { return Path.Combine(appRoot, "apply-config.flag"); }
         public static string BundledVideoDir(string appRoot) { return Path.Combine(Paths.ProgramRoot, "videos"); }
         public static string BundledImageDir(string appRoot) { return Path.Combine(Paths.ProgramRoot, "images", "wallpapers"); }
 
@@ -192,11 +199,11 @@ namespace LiveBackground
             }
 
             string error;
-            bool ok = StartupTask.Create(appRoot, config.TaskName, AppExe(appRoot), out error);
+            bool ok = StartupTask.Create(appRoot, config.TaskName, StartupExe(appRoot), out error);
             if (ok)
             {
                 bool watchdogOk = StartupTask.CreateWatchdog(appRoot, config.TaskName,
-                    AppExe(appRoot), out error);
+                    StartupExe(appRoot), out error);
                 Shortcut.Remove(Shortcut.StartupShortcutPath(config.TaskName));
                 state.UsedTask = true;
                 state.Save(appRoot);
@@ -208,7 +215,7 @@ namespace LiveBackground
             log("WARNING: could not create the logon task: " + error);
             log("falling back to a Startup folder shortcut (no crash watchdog)");
             string shortcutError;
-            if (Shortcut.Create(Shortcut.StartupShortcutPath(config.TaskName), AppExe(appRoot),
+            if (Shortcut.Create(Shortcut.StartupShortcutPath(config.TaskName), StartupExe(appRoot),
                 "--startup", Paths.ProgramRoot, "LiveBackground video wallpaper", out shortcutError))
             {
                 state.UsedTask = false;
@@ -517,7 +524,7 @@ namespace LiveBackground
             log("falling back to a Startup folder shortcut (no crash watchdog)");
 
             string shortcutError;
-            if (Shortcut.Create(shortcut, AppExe(appRoot), "--startup", Paths.ProgramRoot,
+            if (Shortcut.Create(shortcut, StartupExe(appRoot), "--startup", Paths.ProgramRoot,
                 "LiveBackground video wallpaper", out shortcutError))
             {
                 state.UsedTask = false;
@@ -566,7 +573,10 @@ namespace LiveBackground
         public static void CreateSettingsShortcut(string appRoot, Action<string> log)
         {
             string error;
-            if (Shortcut.Create(SettingsShortcutPath(), AppExe(appRoot), "--settings", Paths.ProgramRoot,
+            string settingsExe = Path.Combine(Paths.ProgramRoot, "LiveBackgroundSettings.exe");
+            string settingsTarget = File.Exists(settingsExe) ? settingsExe : AppExe(appRoot);
+            string settingsArgs = File.Exists(settingsExe) ? "" : "--settings";
+            if (Shortcut.Create(SettingsShortcutPath(), settingsTarget, settingsArgs, Paths.ProgramRoot,
                 "Open the LiveBackground settings", out error))
             {
                 log("added a Start Menu shortcut for the settings");
@@ -843,7 +853,8 @@ namespace LiveBackground
             // the deferred command because this process still writes there.
             foreach (string flag in new string[] {
                 StopFlag(appRoot), QuitFlag(appRoot), SettingsFlag(appRoot),
-                PauseFlag(appRoot), ResumeFlag(appRoot), RebuildFlag(appRoot) })
+                PauseFlag(appRoot), ResumeFlag(appRoot), RebuildFlag(appRoot),
+                ApplyConfigFlag(appRoot) })
             {
                 Util.SafeDelete(flag);
             }

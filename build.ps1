@@ -231,6 +231,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $appExe = Join-Path $OutDir 'LiveBackground.exe'
 $cliExe = Join-Path $OutDir 'LiveBackgroundCli.exe'
+$settingsExe = Join-Path $OutDir 'LiveBackgroundSettings.exe'
+$bootstrapperExe = Join-Path $OutDir 'LiveBackgroundBootstrap.exe'
 $dotnetExe = $dotnet
 if (-not $dotnetExe) { $dotnetExe = Find-Dotnet }
 $projectPath = Join-Path $root 'src\LiveBackground.csproj'
@@ -242,7 +244,7 @@ if ($FrameworkCsc) {
 if ($dotnetExe -and (Test-Path $projectPath)) {
     Write-Host ("  compiler: dotnet build (MSBuild, net48) via " + $dotnetExe)
 
-    function Invoke-DotnetBuildExe([string]$name, [string]$outputType, [string]$assemblyName, [string]$startupObject, [string]$destExe) {
+    function Invoke-DotnetBuildExe([string]$name, [string]$outputType, [string]$assemblyName, [string]$startupObject, [string]$destExe, [string[]]$extraProps) {
         $buildOut = Join-Path $OutDir (".build_" + $name)
         if (Test-Path $buildOut) { Remove-Item $buildOut -Recurse -Force }
         New-Item -ItemType Directory -Force -Path $buildOut | Out-Null
@@ -256,6 +258,7 @@ if ($dotnetExe -and (Test-Path $projectPath)) {
             "-p:AssemblyName=$assemblyName",
             "-p:StartupObject=$startupObject"
         )
+        if ($extraProps) { foreach ($p in $extraProps) { $args += "-p:$p" } }
         & $dotnetExe @args
         if ($LASTEXITCODE -ne 0) { throw "Compilation failed for $name (exit $LASTEXITCODE)." }
         $built = Join-Path $buildOut ($assemblyName + '.exe')
@@ -265,10 +268,29 @@ if ($dotnetExe -and (Test-Path $projectPath)) {
     }
 
     Write-Step "Compiling LiveBackground.exe"
-    Invoke-DotnetBuildExe 'gui' 'WinExe' 'LiveBackground' 'LiveBackground.Program' $appExe
+    Invoke-DotnetBuildExe 'gui' 'WinExe' 'LiveBackground' 'LiveBackground.Program' $appExe @('UseWPF=false', 'ExcludeSettings=true')
+
+    Write-Step "Compiling LiveBackgroundSettings.exe"
+    Invoke-DotnetBuildExe 'settings' 'WinExe' 'LiveBackgroundSettings' 'LiveBackground.SettingsProgram' $settingsExe
 
     Write-Step "Compiling LiveBackgroundCli.exe"
-    Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe
+    Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe @('UseWPF=false', 'ExcludeSettings=true')
+
+    Write-Step "Compiling LiveBackgroundBootstrap.exe"
+    $clang = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+    if (-not $clang) {
+        $wg = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+        if (Test-Path $wg) { $clang = Get-ChildItem $wg -Recurse -Filter 'clang.exe' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 }
+    }
+    $bootstrapSrc = Join-Path $root 'src\bootstrapper.c'
+    if ($clang -and (Test-Path $bootstrapSrc)) {
+        & $clang -Os -s -mwindows -municode -o $bootstrapperExe $bootstrapSrc -luser32 -lkernel32
+        if ($LASTEXITCODE -ne 0) { throw "Bootstrapper compilation failed (exit $LASTEXITCODE)." }
+    } else {
+        $prebuilt = Join-Path $root 'tools\LiveBackgroundBootstrap.exe'
+        if (Test-Path $prebuilt) { Copy-Item -LiteralPath $prebuilt -Destination $bootstrapperExe -Force }
+        else { Write-Warning 'clang not found and no prebuilt bootstrapper; skipping LiveBackgroundBootstrap.exe' }
+    }
 }
 else {
     throw 'WPF settings UI requires dotnet build/MSBuild (XAML compilation). Install the .NET SDK or Visual Studio Build Tools with .NET desktop build tools, then rerun build.ps1.'
@@ -277,7 +299,9 @@ else {
 if ($CompileOnly) {
     Write-Step 'Done (compile only)'
     Write-Host ("  " + $appExe)
+    Write-Host ("  " + $settingsExe)
     Write-Host ("  " + $cliExe)
+    Write-Host ("  " + $bootstrapperExe)
     return
 }
 

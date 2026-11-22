@@ -210,8 +210,8 @@ namespace LiveBackground
         // null). Returns false with a message in error on the first failure.
         private static bool CreateTasks(AppConfig config, string userId, out string error)
         {
-            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
-            return ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.AppExe(_appRoot), out error, userId);
+            bool ok = StartupTask.Create(_appRoot, config.TaskName, Installer.StartupExe(_appRoot), out error, userId);
+            return ok && StartupTask.CreateWatchdog(_appRoot, config.TaskName, Installer.StartupExe(_appRoot), out error, userId);
         }
 
         private static int RemoveTask()

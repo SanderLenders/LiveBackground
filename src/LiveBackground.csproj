@@ -14,7 +14,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <UseWPF Condition="'$(ExcludeSettings)'=='true'">false</UseWPF>
+    <UseWPF Condition="'$(ExcludeSettings)'!='true'">true</UseWPF>
     <AssemblyName>LiveBackground</AssemblyName>
     <RootNamespace>LiveBackground</RootNamespace>
 
@@ -54,15 +55,22 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml" />
     <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Xaml" Condition="'$(ExcludeSettings)'!='true'" />
+    <Reference Include="WindowsBase" Condition="'$(ExcludeSettings)'!='true'" />
+    <Reference Include="PresentationCore" Condition="'$(ExcludeSettings)'!='true'" />
+    <Reference Include="PresentationFramework" Condition="'$(ExcludeSettings)'!='true'" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ExcludeSettings)'=='true'">
+    <Page Remove="SettingsWindow.xaml" />
+    <Compile Remove="SettingsWindow.xaml.cs" />
+    <Compile Remove="SettingsApp.xaml.cs" />
+    <Compile Remove="SettingsProgram.cs" />
   </ItemGroup>
 
 </Project>

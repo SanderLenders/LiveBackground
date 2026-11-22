@@ -94,7 +94,8 @@ namespace LiveBackground
         public SettingsWindow(string appRoot)
         {
             _appRoot = appRoot;
-            AppConfig source = Program.Config;
+            AppConfig source = null;
+            try { source = ConfigStore.LoadOrCreate(appRoot); } catch { /* best-effort: fall back to defaults */ }
             _config = source != null ? source.Clone() : new AppConfig();
             try { _config.BindLegacyScreens(Screens.Enumerate()); } catch { }
             InitializeComponent();
@@ -1002,6 +1003,12 @@ namespace LiveBackground
             UpdateMonitorState(false);
         }
 
+        private void ShowNotify(string title, string text)
+        {
+            try { MessageBox.Show(this, text, title, MessageBoxButton.OK, MessageBoxImage.Information); }
+            catch { /* best-effort notification */ }
+        }
+
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             AppConfig updated = CollectConfig();
@@ -1042,7 +1049,8 @@ namespace LiveBackground
             }
 
             _config = updated.Clone();
-            Program.ApplyConfig(updated);
+            try { File.WriteAllText(Installer.ApplyConfigFlag(_appRoot), "apply"); }
+            catch (Exception ex) { try { Log.Warn("could not signal config apply: " + ex.Message); } catch { } }
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) { Close(); }
@@ -1505,7 +1513,7 @@ namespace LiveBackground
                 }
                 catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
             }
-            if (copied > 0) { try { Ui.Notify("LiveBackground", "Added " + copied + " video(s) to " + folder + "."); } catch { } }
+            if (copied > 0) { ShowNotify("LiveBackground", "Added " + copied + " video(s) to " + folder + "."); }
             else if (copied == 0 && firstError.Length > 0) { MessageBox.Show(this, "Could not add the videos. " + firstError, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning); }
         }
 
@@ -1545,7 +1553,7 @@ namespace LiveBackground
                 }
                 catch (Exception ex) { if (firstError.Length == 0) firstError = ex.Message; }
             }
-            if (copied > 0) { try { Ui.Notify("LiveBackground", "Added " + copied + " image(s) to " + folder + "."); } catch { } }
+            if (copied > 0) { ShowNotify("LiveBackground", "Added " + copied + " image(s) to " + folder + "."); }
             else if (copied == 0 && firstError.Length > 0) { MessageBox.Show(this, "Could not add the images. " + firstError, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning); }
         }
 
@@ -1643,7 +1651,7 @@ namespace LiveBackground
                 message = "Added " + copied + " video(s) to " + folder + ". They are in the list but not ticked yet, so they will not play until you tick them.";
                 if (skipped > 0) message += " " + skipped + " already in the folder.";
                 if (firstError.Length > 0) message += " One file failed: " + firstError;
-                try { Ui.Notify("LiveBackground", "Added " + copied + " video(s). Tick them in the playlist to play them."); } catch { }
+                ShowNotify("LiveBackground", "Added " + copied + " video(s). Tick them in the playlist to play them.");
             }
             if (_clipHint != null) _clipHint.Text = message;
         }
@@ -1700,7 +1708,7 @@ namespace LiveBackground
                 message = "Added " + copied + " image(s) to " + folder + ".";
                 if (skipped > 0) message += " " + skipped + " already in the folder.";
                 if (firstError.Length > 0) message += " One file failed: " + firstError;
-                try { Ui.Notify("LiveBackground", "Added " + copied + " image(s)."); } catch { }
+                ShowNotify("LiveBackground", "Added " + copied + " image(s).");
             }
             if (_imageHint != null) _imageHint.Text = message;
         }

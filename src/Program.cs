@@ -550,8 +550,8 @@ namespace LiveBackground
                 return RunWatchdog();
             }
 
-            // "LiveBackground.exe --settings" opens the dialog. If another
-            // instance is running, the flag file tells it to show the dialog.
+            // "LiveBackground.exe --settings" opens the settings window. If another
+            // instance is running, the flag file tells it to open settings.
             bool settingsRequested = CommandLine.HasArg(args, "--settings");
             if (settingsRequested)
             {
@@ -604,6 +604,21 @@ namespace LiveBackground
                     // running wallpaper, so it is not a second instance.
                     if (settingsRequested) Log.Info("settings requested for the running instance");
                     else Log.Info("another wallpaper instance is already running, exiting");
+                    return 0;
+                }
+                if (settingsRequested)
+                {
+                    try
+                    {
+                        string settingsExe = Path.Combine(Paths.ProgramRoot, "LiveBackgroundSettings.exe");
+                        if (File.Exists(settingsExe))
+                        {
+                            Process.Start(new ProcessStartInfo(settingsExe) { UseShellExecute = false, WorkingDirectory = Paths.ProgramRoot });
+                            Log.Info("settings window launched");
+                        }
+                        else Log.Warn("settings exe not found: " + settingsExe);
+                    }
+                    catch (Exception ex) { Log.Warn("could not launch settings: " + ex.Message); }
                     return 0;
                 }
                 try { return Run(); }

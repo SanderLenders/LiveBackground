@@ -7,6 +7,7 @@
 #define MyAppPublisher "LiveBackground"
 #define MyAppExeName "LiveBackground.exe"
 #define MyAppCliName "LiveBackgroundCli.exe"
+#define MyAppSettingsExeName "LiveBackgroundSettings.exe"
 #define MyAppId "{{8F4E2A1C-6D3B-4A7E-9C21-5B0F7D3E8A64}"
 
 #ifndef SourceDir
@@ -73,6 +74,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#SourceDir}\LiveBackground.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LiveBackgroundCli.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\LiveBackgroundSettings.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\LiveBackgroundBootstrap.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourceDir}\mpv\*"; DestDir: "{app}\mpv"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\tools\ffmpeg\*"; DestDir: "{app}\tools\ffmpeg"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\videos\*"; DestDir: "{app}\videos"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -89,7 +92,7 @@ Source: "{#SourceDir}\LiveBackground.cer"; DestDir: "{app}"; Flags: ignoreversio
 Type: files; Name: "{group}\Verwijder LiveBackground.lnk"
 
 [Icons]
-Name: "{group}\LiveBackground settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
+Name: "{group}\LiveBackground settings"; Filename: "{app}\{#MyAppSettingsExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppSettingsExeName}"; Tasks: startmenuicon
 Name: "{group}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
 Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
@@ -109,6 +112,7 @@ Name: "{autodesktop}\LiveBackground"; Filename: "{app}\{#MyAppExeName}"; Working
 ; safe on a fresh install too.
 Filename: "{app}\{#MyAppCliName}"; Parameters: "remove-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Preparing the startup task..."
 Filename: "{cmd}"; Parameters: "/c ngen.exe install ""{app}\{#MyAppExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; StatusMsg: "Optimizing startup performance..."; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
+Filename: "{cmd}"; Parameters: "/c ngen.exe install ""{app}\{#MyAppSettingsExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; StatusMsg: "Optimizing startup performance..."; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
 Filename: "{app}\{#MyAppCliName}"; Parameters: "install-task"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Creating the logon and watchdog tasks..."; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early startup)"""; WorkingDir: "{app}"; Flags: runhidden nowait postinstall skipifsilent; Description: "Start LiveBackground now"; Tasks: autostart; Check: ShouldInstallAutostartTask
 Filename: "{app}\README.txt"; Description: "View the README"; Flags: postinstall shellexec skipifsilent unchecked nowait
@@ -119,6 +123,7 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/run /tn ""{#MyAppName} (early star
 [UninstallRun]
 ; Remove the NGen native image while the exe is still present.
 Filename: "{cmd}"; Parameters: "/c ngen.exe uninstall ""{app}\{#MyAppExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; RunOnceId: "NgenUninstallLiveBackground"; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
+Filename: "{cmd}"; Parameters: "/c ngen.exe uninstall ""{app}\{#MyAppSettingsExeName}"" /nologo >nul 2>&1 & exit /b 0"; WorkingDir: "{win}\Microsoft.NET\Framework64\v4.0.30319"; Flags: runhidden waituntilterminated; RunOnceId: "NgenUninstallLiveBackgroundSettings"; Check: FileExists(ExpandConstant('{win}\Microsoft.NET\Framework64\v4.0.30319\ngen.exe'))
 ; Runs the full uninstall command: stops the wallpaper, removes the logon
 ; and watchdog tasks, restores the previous desktop wallpaper and lock screen
 ; (as the README promises), and removes the app-managed cache and logs.

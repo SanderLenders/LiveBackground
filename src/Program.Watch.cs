@@ -58,6 +58,18 @@ namespace LiveBackground
                     RequestRebuild();
                 }
 
+                if (File.Exists(Installer.ApplyConfigFlag(_appRoot)))
+                {
+                    Util.SafeDelete(Installer.ApplyConfigFlag(_appRoot));
+                    try
+                    {
+                        AppConfig updated = ConfigStore.LoadOrCreate(_appRoot);
+                        ApplyConfig(updated);
+                        Log.Info("applied config from disk");
+                    }
+                    catch (Exception ex) { Log.Warn("could not apply config from disk: " + ex.Message); }
+                }
+
                 RefreshScreensIfNeeded();
 
                 // Pausing keeps the process (and the tray icon) alive, but
