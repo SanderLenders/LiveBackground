@@ -17,7 +17,6 @@ namespace LiveBackground
         private NotifyIcon _icon;
         private ContextMenuStrip _menu;
         private ToolStripMenuItem _pauseItem;
-        private BuildProgressForm _progress;
         private bool _closed;
         private System.Windows.Forms.Timer _exitWatch;
 
@@ -129,38 +128,6 @@ namespace LiveBackground
 
         // ---- background build card -------------------------------------
 
-        public void BuildProgressStart(string title)
-        {
-            Post(delegate
-            {
-                if (_closed) return;
-                if (_progress == null || _progress.IsDisposed)
-                {
-                    _progress = new BuildProgressForm();
-                }
-                _progress.Begin(title);
-                if (!_progress.Visible) _progress.Show();
-            });
-        }
-
-        public void BuildProgressUpdate(double fraction, string status)
-        {
-            Post(delegate
-            {
-                if (_closed || _progress == null || _progress.IsDisposed) return;
-                _progress.SetProgress(fraction, status);
-            });
-        }
-
-        public void BuildProgressFinish(bool success, string message)
-        {
-            Post(delegate
-            {
-                if (_closed || _progress == null || _progress.IsDisposed) return;
-                _progress.Complete(success, message);
-            });
-        }
-
         public void Close()
         {
             Post(delegate { CloseCore(); });
@@ -174,12 +141,6 @@ namespace LiveBackground
             {
                 try { _exitWatch.Stop(); _exitWatch.Dispose(); } catch { }
                 _exitWatch = null;
-            }
-            if (_progress != null && !_progress.IsDisposed)
-            {
-                _progress.Hide();
-                _progress.Dispose();
-                _progress = null;
             }
             if (_icon != null)
             {
