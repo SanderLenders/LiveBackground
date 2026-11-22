@@ -1759,7 +1759,7 @@ namespace LiveBackground
                 _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
                 _deviceLabel = Muted("No screen detected for this slot.");
-                _deviceLabel.FontSize = 11;
+                _deviceLabel.FontSize = 9;
                 _deviceLabel.TextWrapping = TextWrapping.NoWrap;
                 _deviceLabel.TextTrimming = TextTrimming.CharacterEllipsis;
                 sp.Children.Add(_deviceLabel);
