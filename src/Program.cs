@@ -655,10 +655,17 @@ namespace LiveBackground
 
         private static void StartBootContextProbe()
         {
-            ThreadPool.QueueUserWorkItem(delegate
+            // Diagnostic only. Reading the System event log is surprisingly
+            // expensive after a Fast Startup resume, and running it on the
+            // ThreadPool used to occupy a worker while the orphan scan and the
+            // early mpv start were queued behind it. Give it its own low-
+            // priority background thread and wait until the first frames are
+            // up, so it can never delay the logon race.
+            Thread probe = new Thread((ThreadStart)delegate
             {
                 try
                 {
+                    Thread.Sleep(15000);
                     using (EventLog log = new EventLog("System"))
                     {
                         EventLogEntryCollection entries = log.Entries;
@@ -692,6 +699,10 @@ namespace LiveBackground
                 }
                 catch { /* best-effort: boot context must never affect startup */ }
             });
+            probe.IsBackground = true;
+            probe.Name = "LiveBackground boot probe";
+            try { probe.Priority = ThreadPriority.Lowest; } catch { /* best-effort */ }
+            probe.Start();
         }
 
         private static void StartFirstFrameProbe(MpvPlayer player)
