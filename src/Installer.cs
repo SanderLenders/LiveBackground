@@ -848,7 +848,7 @@ namespace LiveBackground
                 Util.ResolvePath(appRoot, config.VideoFolder),
                 Util.ResolvePath(appRoot, config.ImageFolder) })
             {
-                if (IsInside(appRoot, folder)) ifEmpty.Add(folder);
+                if (InstallerPaths.IsInside(appRoot, folder)) ifEmpty.Add(folder);
             }
             if (!Paths.IsPortable) ifEmpty.Add(appRoot);
 
@@ -893,20 +893,6 @@ namespace LiveBackground
             catch (Exception ex) { Log.Warn("could not schedule folder removal: " + ex.Message); }
         }
 
-        // True when path is a descendant of root (not root itself). Used to
-        // decide which folders an uninstall may offer to remove, so a folder
-        // the user pointed at outside our own tree is never touched.
-        private static bool IsInside(string root, string path)
-        {
-            if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(path)) return false;
-            string r;
-            string p;
-            try { r = Path.GetFullPath(root); p = Path.GetFullPath(path); }
-            catch { return false; }
-            if (r.Length == 0) return false;
-            if (r[r.Length - 1] != Path.DirectorySeparatorChar) r += Path.DirectorySeparatorChar;
-            return p.StartsWith(r, StringComparison.OrdinalIgnoreCase);
-        }
     }
 
     public static class AppConfigDefaults

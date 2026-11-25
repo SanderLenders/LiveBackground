@@ -62,6 +62,8 @@ namespace LiveBackground.Tests
         }
 
         [Theory]
+        [InlineData("sameAsMain")]
+        [InlineData("fps")]
         [InlineData("imagesSameAsMain")]
         [InlineData("imageFolder")]
         [InlineData("imageMode")]
@@ -79,6 +81,8 @@ namespace LiveBackground.Tests
             ScreenSettings screen = changed.ExtraScreens[0];
             switch (field)
             {
+                case "sameAsMain": screen.SameAsMain = false; break;
+                case "fps": screen.Fps = 60; break;
                 case "imagesSameAsMain": screen.ImagesSameAsMain = false; break;
                 case "imageFolder": screen.ImageFolder = @"D:\pics"; break;
                 case "imageMode": screen.ImageMode = "slideshow"; break;
