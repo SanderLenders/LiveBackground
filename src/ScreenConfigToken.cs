@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 
 namespace LiveBackground
@@ -6,9 +7,62 @@ namespace LiveBackground
     // A fingerprint of every screen's settings, so a save that changed any of
     // them can be told apart from a save that did not. The exact bytes do not
     // matter, only that the same settings always produce the same token and a
-    // changed setting produces a different one.
+    // changed setting produces a different one. Every field that affects a
+    // screen's video loop, picture rotation or desktop fallback belongs here;
+    // omitting one leaves that change invisible to the runtime handoff.
     public static class ScreenConfigToken
     {
+        private static void Add(StringBuilder sb, string value)
+        {
+            sb.Append(value ?? "").Append('\u0001');
+        }
+
+        private static void Add(StringBuilder sb, bool value)
+        {
+            sb.Append(value ? '1' : '0').Append('\u0001');
+        }
+
+        private static void Add(StringBuilder sb, int value)
+        {
+            sb.Append(value.ToString(CultureInfo.InvariantCulture)).Append('\u0001');
+        }
+
+        private static void Add(StringBuilder sb, double value)
+        {
+            sb.Append(value.ToString("R", CultureInfo.InvariantCulture)).Append('\u0001');
+        }
+
+        private static void AddNullable(StringBuilder sb, int? value)
+        {
+            sb.Append(value.HasValue ? value.Value.ToString(CultureInfo.InvariantCulture) : "-").Append('\u0001');
+        }
+
+        private static void AddNullable(StringBuilder sb, double? value)
+        {
+            sb.Append(value.HasValue ? value.Value.ToString("R", CultureInfo.InvariantCulture) : "-").Append('\u0001');
+        }
+
+        private static void AddNullable(StringBuilder sb, bool? value)
+        {
+            sb.Append(value.HasValue ? (value.Value ? '1' : '0') : '-').Append('\u0001');
+        }
+
+        private static void AddPlaylist(StringBuilder sb, System.Collections.Generic.List<PlaylistEntry> playlist)
+        {
+            if (playlist == null)
+            {
+                sb.Append("none").Append('\u0002');
+                return;
+            }
+            foreach (PlaylistEntry entry in playlist)
+            {
+                if (entry == null) continue;
+                Add(sb, entry.Name ?? "");
+                Add(sb, entry.Enabled);
+            }
+            sb.Append('\u0002');
+        }
+
         public static string Compute(AppConfig config)
         {
             if (config == null || config.ExtraScreens == null) return "";
@@ -16,30 +70,34 @@ namespace LiveBackground
             foreach (ScreenSettings screen in config.ExtraScreens)
             {
                 if (screen == null) continue;
-                sb.Append(screen.Device ?? "").Append('\u0001')
-                  .Append(screen.ModeOverride ? '1' : '0').Append('\u0001')
-                  .Append(screen.SameAsMain ? '1' : '0').Append('\u0001')
-                  .Append(screen.Folder ?? "").Append('\u0001')
-                  .Append(screen.PlaybackMode ?? "").Append('\u0001')
-                  .Append(screen.SingleClip ?? "").Append('\u0001')
-                  .Append(screen.CrossfadeSeconds.HasValue
-                      ? screen.CrossfadeSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                      : "").Append('\u0001')
-                  .Append(screen.FineCrossfadeSteps.HasValue
-                      ? (screen.FineCrossfadeSteps.Value ? '1' : '0') : '-').Append('\u0001')
-                  .Append(screen.RenderWidth.HasValue ? screen.RenderWidth.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
-                  .Append(screen.RenderHeight.HasValue ? screen.RenderHeight.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
-                  .Append(screen.Fps.HasValue ? screen.Fps.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
-                  .Append(screen.Crf.HasValue ? screen.Crf.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001');
-                if (screen.Playlist != null)
-                {
-                    foreach (PlaylistEntry entry in screen.Playlist)
-                    {
-                        if (entry == null) continue;
-                        sb.Append(entry.Name).Append(':').Append(entry.Enabled ? '1' : '0').Append(';');
-                    }
-                }
-                sb.Append('\u0002');
+
+                Add(sb, screen.Device ?? "");
+                Add(sb, screen.ModeOverride);
+                Add(sb, screen.SameAsMain);
+
+                Add(sb, screen.Folder ?? "");
+                Add(sb, screen.PlaybackMode ?? "");
+                Add(sb, screen.SingleClip ?? "");
+                AddPlaylist(sb, screen.Playlist);
+                AddNullable(sb, screen.CrossfadeSeconds);
+                AddNullable(sb, screen.FineCrossfadeSteps);
+                AddNullable(sb, screen.RenderWidth);
+                AddNullable(sb, screen.RenderHeight);
+                AddNullable(sb, screen.Fps);
+                AddNullable(sb, screen.Crf);
+
+                Add(sb, screen.ImagesSameAsMain);
+                Add(sb, screen.ImageFolder ?? "");
+                Add(sb, screen.ImageMode ?? "");
+                Add(sb, screen.ImageSingle ?? "");
+                AddPlaylist(sb, screen.ImagePlaylist);
+                Add(sb, screen.ImageIntervalSeconds);
+                Add(sb, screen.ImageCrossfadeSeconds);
+                Add(sb, screen.ImageFineCrossfadeSteps);
+                Add(sb, screen.ImageShuffle);
+
+                Add(sb, screen.DesktopWallpaperMode ?? "");
+                Add(sb, screen.DesktopWallpaperImage ?? "");
             }
             return sb.ToString();
         }

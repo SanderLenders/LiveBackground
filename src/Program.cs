@@ -1093,11 +1093,8 @@ namespace LiveBackground
             string wallpaper = imagesMode ? "" : DesktopHost.WallpaperFor(_appRoot, _config, frame);
 
             string loop = MediaPipeline.LoopPath(_appRoot, manifest);
-            bool loopExists = File.Exists(loop);
-            if (loopExists && manifest != null &&
-                manifest.Width == _config.RenderWidth &&
-                manifest.Height == _config.RenderHeight &&
-                manifest.Fps == _config.Fps)
+            StartupCache.Decision cacheDecision = StartupCache.Decide(File.Exists(loop), manifest, _config);
+            if (cacheDecision == StartupCache.Decision.ReuseValid)
             {
                 _mediaPath = loop;
                 Log.Info("using cached loop");
@@ -1107,7 +1104,7 @@ namespace LiveBackground
                 // later and rebuilds in the background if anything changed.
                 _nextCheck = DateTime.UtcNow.AddSeconds(10);
             }
-            else if (loopExists)
+            else if (cacheDecision == StartupCache.Decision.ReuseStale)
             {
                 _mediaPath = loop;
                 _dirty = true;
@@ -1116,6 +1113,14 @@ namespace LiveBackground
             }
             else
             {
+                // An early mpv may already be playing a hint that no longer has
+                // a loop. Drop it so the handoff check below stops that player
+                // instead of treating the hint as the current media path.
+                if (earlyVideoStarted && !string.IsNullOrEmpty(_mediaPath))
+                {
+                    Log.Info("startup: early hint has no loop, discarding " + _mediaPath);
+                    _mediaPath = "";
+                }
                 _dirty = true;
                 Log.Info("no loop yet, building in the background");
             }

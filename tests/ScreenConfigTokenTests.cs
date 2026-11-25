@@ -61,6 +61,41 @@ namespace LiveBackground.Tests
                 ScreenConfigToken.Compute(quality));
         }
 
+        [Theory]
+        [InlineData("imagesSameAsMain")]
+        [InlineData("imageFolder")]
+        [InlineData("imageMode")]
+        [InlineData("imageSingle")]
+        [InlineData("imagePlaylist")]
+        [InlineData("imageIntervalSeconds")]
+        [InlineData("imageCrossfadeSeconds")]
+        [InlineData("imageFineCrossfadeSteps")]
+        [InlineData("imageShuffle")]
+        [InlineData("desktopWallpaperMode")]
+        [InlineData("desktopWallpaperImage")]
+        public void Compute_changes_when_a_picture_or_fallback_setting_changes(string field)
+        {
+            AppConfig changed = ConfigWithOneScreen();
+            ScreenSettings screen = changed.ExtraScreens[0];
+            switch (field)
+            {
+                case "imagesSameAsMain": screen.ImagesSameAsMain = false; break;
+                case "imageFolder": screen.ImageFolder = @"D:\pics"; break;
+                case "imageMode": screen.ImageMode = "slideshow"; break;
+                case "imageSingle": screen.ImageSingle = "other.jpg"; break;
+                case "imagePlaylist": screen.ImagePlaylist.Add(new PlaylistEntry("other.jpg", true)); break;
+                case "imageIntervalSeconds": screen.ImageIntervalSeconds = 25; break;
+                case "imageCrossfadeSeconds": screen.ImageCrossfadeSeconds = 3.5; break;
+                case "imageFineCrossfadeSteps": screen.ImageFineCrossfadeSteps = true; break;
+                case "imageShuffle": screen.ImageShuffle = true; break;
+                case "desktopWallpaperMode": screen.DesktopWallpaperMode = "custom"; break;
+                case "desktopWallpaperImage": screen.DesktopWallpaperImage = @"D:\wallpaper.jpg"; break;
+            }
+
+            Assert.NotEqual(ScreenConfigToken.Compute(ConfigWithOneScreen()),
+                ScreenConfigToken.Compute(changed));
+        }
+
         [Fact]
         public void Compute_skips_null_screens()
         {

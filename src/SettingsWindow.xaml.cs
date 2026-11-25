@@ -802,11 +802,14 @@ namespace LiveBackground
             if (_slot4 != null) _slot4.LoadFromConfig(_config, _screens, _hasSecondScreen, _duplicateLayout);
         }
 
-        private void SetQualityCombo(int crf)
+        private void SetQualityCombo(int crf) { SetQualityCombo(_qualityCombo, crf); }
+
+        private static void SetQualityCombo(ComboBox combo, int crf)
         {
-            if (crf <= 18) _qualityCombo.SelectedIndex = 0;
-            else if (crf <= 23) _qualityCombo.SelectedIndex = 1;
-            else _qualityCombo.SelectedIndex = 2;
+            if (combo == null) return;
+            if (crf <= 18) combo.SelectedIndex = 0;
+            else if (crf <= 23) combo.SelectedIndex = 1;
+            else combo.SelectedIndex = 2;
         }
 
         private static double Clamp(double v, double min, double max) { if (v < min) return min; if (v > max) return max; return v; }
@@ -2456,7 +2459,7 @@ namespace LiveBackground
                     int renderCrf = s.Crf.HasValue ? s.Crf.Value : (config != null ? config.Crf : 18);
                     SetVideoResolutionCombo(renderWidth, renderHeight);
                     SetComboByContains(_videoFpsCombo, renderFps + " fps", 1);
-                    _owner.SetQualityCombo(renderCrf);
+                    SetQualityCombo(_videoQualityCombo, renderCrf);
                     if (_intervalSlider != null) _intervalSlider.Value = Math.Max(_intervalSlider.Minimum, Math.Min(_intervalSlider.Maximum, s.ImageIntervalSeconds));
                     if (_imageFadeSlider != null) _imageFadeSlider.Value = Math.Max(_imageFadeSlider.Minimum, Math.Min(_imageFadeSlider.Maximum, s.ImageCrossfadeSeconds));
                     if (_imageFineSteps != null) _imageFineSteps.IsChecked = s.ImageFineCrossfadeSteps;
