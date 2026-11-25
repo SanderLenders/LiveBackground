@@ -1766,8 +1766,9 @@ namespace LiveBackground
                 _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
                 var headerRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 _deviceLabel = Muted("No screen detected for this slot.");
                 _deviceLabel.FontSize = 10;
                 _deviceLabel.TextWrapping = TextWrapping.NoWrap;
@@ -1775,7 +1776,7 @@ namespace LiveBackground
                 Grid.SetColumn(_deviceLabel, 0);
                 _modeOverride = new CheckBox
                 {
-                    Content = "Use video here",
+                    Content = "Image mode",
                     FontSize = 10,
                     Margin = new Thickness(8, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center
@@ -2208,7 +2209,6 @@ namespace LiveBackground
 
                 if (_modeOverride != null)
                 {
-                    _modeOverride.Content = _globalImagesMode ? "Use video here" : "Use images here";
                     ApplyReviewChildEnabled(_modeOverride, has, has);
                 }
                 if (_contentTab != null) _contentTab.Header = images ? "Images" : "Video";
