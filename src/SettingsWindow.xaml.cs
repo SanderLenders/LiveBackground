@@ -240,6 +240,8 @@ namespace LiveBackground
             fadeRow.Children.Add(_videoFadeValue); fadeRow.Children.Add(_videoFadeSlider);
             panel.Children.Add(fadeRow);
             _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
+            _videoFineSteps.Checked += delegate { ApplyFadeSteps(_videoFadeSlider, true); };
+            _videoFineSteps.Unchecked += delegate { ApplyFadeSteps(_videoFadeSlider, false); };
             panel.Children.Add(_videoFineSteps);
 
             panel.Children.Add(Header("Quality"));
@@ -333,6 +335,8 @@ namespace LiveBackground
             _imageFadeSlider.ValueChanged += delegate { UpdateImageFadeLabel(); };
             frow.Children.Add(_imageFadeValue); frow.Children.Add(_imageFadeSlider); panel.Children.Add(frow);
             _imageFineSteps = new CheckBox { Content = "Allow half-second steps", Margin = new Thickness(0, 0, 0, 10) };
+            _imageFineSteps.Checked += delegate { ApplyFadeSteps(_imageFadeSlider, true); };
+            _imageFineSteps.Unchecked += delegate { ApplyFadeSteps(_imageFadeSlider, false); };
             _imageShuffle = new CheckBox { Content = "Shuffle pictures", Margin = new Thickness(0, 0, 0, 8) };
             panel.Children.Add(_imageFineSteps);
             panel.Children.Add(_imageShuffle);
@@ -754,6 +758,7 @@ namespace LiveBackground
 
             _videoFadeSlider.Value = Clamp(_config.CrossfadeSeconds, _videoFadeSlider.Minimum, _videoFadeSlider.Maximum);
             _videoFineSteps.IsChecked = _config.FineCrossfadeSteps;
+            ApplyFadeSteps(_videoFadeSlider, _config.FineCrossfadeSteps);
             UpdateFadeLabel();
 
             SetComboByContains(_resolutionCombo, _config.RenderWidth + " x " + _config.RenderHeight, 0);
@@ -763,6 +768,7 @@ namespace LiveBackground
             _intervalSlider.Value = Clamp(_config.ImageIntervalSeconds, _intervalSlider.Minimum, _intervalSlider.Maximum);
             _imageFadeSlider.Value = Clamp(_config.ImageCrossfadeSeconds, _imageFadeSlider.Minimum, _imageFadeSlider.Maximum);
             _imageFineSteps.IsChecked = _config.ImageFineCrossfadeSteps;
+            ApplyFadeSteps(_imageFadeSlider, _config.ImageFineCrossfadeSteps);
             _imageShuffle.IsChecked = _config.ImageShuffle;
             UpdateIntervalLabel(); UpdateImageFadeLabel();
 
@@ -1715,6 +1721,19 @@ namespace LiveBackground
             }
             if (_imageHint != null) _imageHint.Text = message;
         }
+
+        // The checkbox changes granularity only. Snapping here keeps the value
+        // on a valid tick after the user turns fine steps off.
+        private static void ApplyFadeSteps(Slider slider, bool fine)
+        {
+            if (slider == null) return;
+            double step = FadeSteps.Step(fine);
+            slider.TickFrequency = step;
+            slider.SmallChange = step;
+            double snapped = FadeSteps.Snap(slider.Value, slider.Minimum, slider.Maximum, fine);
+            if (!snapped.Equals(slider.Value)) slider.Value = snapped;
+        }
+
         private sealed class MonitorSlotUi
         {
             private readonly SettingsWindow _owner;
@@ -1929,6 +1948,8 @@ namespace LiveBackground
                 vfadeRow.Children.Add(_videoFadeValue); vfadeRow.Children.Add(_videoFadeSlider);
                 _videoPlaybackPanel.Children.Add(vfadeRow);
                 _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
+                _videoFineSteps.Checked += delegate { ApplyFadeSteps(_videoFadeSlider, true); };
+                _videoFineSteps.Unchecked += delegate { ApplyFadeSteps(_videoFadeSlider, false); };
                 _videoPlaybackPanel.Children.Add(_videoFineSteps);
 
                 _videoRenderSame = new CheckBox { Content = "Use main Playback settings", Margin = new Thickness(0, 0, 0, 6), IsChecked = true };
@@ -1980,6 +2001,8 @@ namespace LiveBackground
                 imageFadeRow.Children.Add(_imageFadeValue); imageFadeRow.Children.Add(_imageFadeSlider);
                 _imagePlaybackPanel.Children.Add(imageFadeRow);
                 _imageFineSteps = new CheckBox { Content = "Allow half-second steps", Margin = new Thickness(0, 0, 0, 10) };
+                _imageFineSteps.Checked += delegate { ApplyFadeSteps(_imageFadeSlider, true); };
+                _imageFineSteps.Unchecked += delegate { ApplyFadeSteps(_imageFadeSlider, false); };
                 _imageShuffle = new CheckBox { Content = "Shuffle pictures", Margin = new Thickness(0, 0, 0, 8) };
                 _imagePlaybackPanel.Children.Add(_imageFineSteps);
                 _imagePlaybackPanel.Children.Add(_imageShuffle);
@@ -2452,6 +2475,7 @@ namespace LiveBackground
                     bool vfine = s.FineCrossfadeSteps.HasValue ? s.FineCrossfadeSteps.Value : (config != null && config.FineCrossfadeSteps);
                     if (_videoFadeSlider != null) _videoFadeSlider.Value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, vfade));
                     if (_videoFineSteps != null) _videoFineSteps.IsChecked = vfine;
+                    ApplyFadeSteps(_videoFadeSlider, vfine);
                     UpdateNativeResolutionItem(screens);
                     if (_videoRenderSame != null) _videoRenderSame.IsChecked = !s.RenderWidth.HasValue || !s.RenderHeight.HasValue;
                     int renderWidth = s.RenderWidth.HasValue ? s.RenderWidth.Value : (config != null ? config.RenderWidth : 1920);
@@ -2464,6 +2488,7 @@ namespace LiveBackground
                     if (_intervalSlider != null) _intervalSlider.Value = Math.Max(_intervalSlider.Minimum, Math.Min(_intervalSlider.Maximum, s.ImageIntervalSeconds));
                     if (_imageFadeSlider != null) _imageFadeSlider.Value = Math.Max(_imageFadeSlider.Minimum, Math.Min(_imageFadeSlider.Maximum, s.ImageCrossfadeSeconds));
                     if (_imageFineSteps != null) _imageFineSteps.IsChecked = s.ImageFineCrossfadeSteps;
+                    ApplyFadeSteps(_imageFadeSlider, s.ImageFineCrossfadeSteps);
                     if (_imageShuffle != null) _imageShuffle.IsChecked = s.ImageShuffle;
                     UpdateVideoFadeLabel();
                     UpdateIntervalLabel();
