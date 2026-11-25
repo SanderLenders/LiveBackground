@@ -419,7 +419,7 @@ namespace LiveBackground
                     // the cache is stale. Every extra screen is checked on the
                     // same pass, but only while it plays its own loop; when it
                     // mirrors the main screen there is nothing to render.
-                    if (!_building && (_forceBuild || AnyScreenBuildForced() || DateTime.UtcNow >= _nextCheck))
+                    if (!_building && (_forceBuild || AnyScreenBuildPending() || DateTime.UtcNow >= _nextCheck))
                     {
                         _nextCheck = DateTime.UtcNow.AddSeconds(10);
                         bool buildMain = false;
@@ -474,22 +474,23 @@ namespace LiveBackground
                             {
                                 // An images screen has no loop to build, even
                                 // when the rest of the desktop plays video.
-                                screen.ForceBuild = false;
+                                screen.BuildPending = false;
                                 continue;
                             }
                             ScreenSettings settings = _config.ScreenFor(screen.Device);
                             if (settings.SameAsMain)
                             {
-                                screen.ForceBuild = false;
+                                screen.BuildPending = false;
                                 continue;
                             }
                             bool buildScreen = false;
-                            bool forceScreen = false;
-                            if (screen.ForceBuild)
+                            // A pending screen build is only a request to check
+                            // now. Forcing would skip MediaPipeline's cached
+                            // lookup and re-encode an identical loop.
+                            if (screen.BuildPending)
                             {
-                                screen.ForceBuild = false;
+                                screen.BuildPending = false;
                                 buildScreen = true;
-                                forceScreen = true;
                             }
                             else if (scanScreens)
                             {
@@ -525,7 +526,7 @@ namespace LiveBackground
                             ScreenJob job = new ScreenJob();
                             job.Screen = screen;
                             job.Config = own;
-                            job.Force = forceScreen;
+                            job.Force = false;
                             job.ManifestPath = MediaPipeline.ScreenManifestPath(_appRoot, screen.Device);
                             job.LogPrefix = ScreenLabel(screen) + ": ";
                             try

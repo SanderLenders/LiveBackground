@@ -209,6 +209,69 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void IsScreenCacheValid_rejects_a_missing_loop_file()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string device = @"\\.\DISPLAY2";
+                AppConfig config = new AppConfig();
+                MediaManifest manifest = new MediaManifest
+                {
+                    Signature = MediaPipeline.Signature(temp.Dir, config),
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
+                    LoopFile = Path.Combine("loops", "gone.mp4"),
+                    FrameFile = ""
+                };
+                JsonStore.SerializeFile(MediaPipeline.ScreenManifestPath(temp.Dir, device), manifest);
+
+                MediaManifest check;
+                Assert.False(MediaPipeline.IsScreenCacheValid(temp.Dir, config, device, out check, false));
+            }
+        }
+
+        [Fact]
+        public void Build_without_force_adopts_a_cached_loop_for_the_screen_pointer()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string device = @"\\.\DISPLAY2";
+                string loopName = "cached.mp4";
+                string indexName = Path.Combine("cache", "loops");
+                Directory.CreateDirectory(Path.Combine(temp.Dir, indexName));
+                temp.Write(Path.Combine(indexName, loopName), "loop");
+                Directory.CreateDirectory(Path.Combine(temp.Dir, "videos"));
+                temp.Write(Path.Combine("videos", "clip1.mp4"), "one");
+
+                AppConfig config = new AppConfig();
+                config.VideoFolder = "videos";
+                string signature = MediaPipeline.Signature(Path.Combine(temp.Dir, "videos"), config);
+                MediaManifest cached = new MediaManifest
+                {
+                    Signature = signature,
+                    LoopFile = Path.Combine("loops", loopName),
+                    FrameFile = "",
+                    OutputDuration = 12.5
+                };
+                JsonStore.SerializeFile(MediaPipeline.CacheIndexPath(temp.Dir, signature), cached);
+
+                string pointer = MediaPipeline.ScreenManifestPath(temp.Dir, device);
+                BuildResult result = MediaPipeline.Build(temp.Dir, config,
+                    message => { }, progress => { }, null, false, false, pointer);
+
+                Assert.True(result.Success, result.Message);
+                Assert.Contains("cached loop ready", result.Message);
+                MediaManifest adopted = JsonStore.DeserializeFile<MediaManifest>(pointer);
+                Assert.NotNull(adopted);
+                Assert.Equal(cached.LoopFile, adopted.LoopFile);
+            }
+        }
+
+        [Fact]
         public void Signature_changes_when_a_clip_changes()
         {
             using (TempFolder temp = new TempFolder())

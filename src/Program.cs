@@ -156,7 +156,9 @@ namespace LiveBackground
             public string FramePath = "";
             public string FallbackImage = "";
             public bool FallbackVisible;
-            public bool ForceBuild;
+            // A build check is waiting for the watchdog. It is not a request to
+            // bypass the cache; an identical cached loop may be adopted as-is.
+            public bool BuildPending;
             public string LastMissingLog = "";
             public BuildResult Pending;
             // Consecutive failed builds for this screen, so a folder that

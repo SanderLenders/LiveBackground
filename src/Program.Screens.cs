@@ -106,16 +106,17 @@ namespace LiveBackground
                 if (ScreenUsesImages(player))
                 {
                     if (player.Player != null && player.Player.IsRunning) player.Player.Stop();
-                    player.ForceBuild = false;
+                    player.BuildPending = false;
                 }
-                else if (string.IsNullOrEmpty(player.MediaPath) &&
-                    !_config.ScreenFor(player.Device).SameAsMain && !IsImagesMode)
+                else if (ScreenBuild.NeedsImmediateCheck(ScreenUsesImages(player),
+                    _config.ScreenFor(player.Device).SameAsMain, IsImagesMode, player.MediaPath))
                 {
                     // Global Images never builds a new loop. A screen flipped
                     // to video there can only use a loop that is already
-                    // cached.
-                    player.ForceBuild = true;
-                    Log.Info("no loop yet for the " + ScreenLabel(player) + ", building in the background");
+                    // cached. The pending check still lets the build step adopt
+                    // a matching cached loop instead of re-encoding it.
+                    player.BuildPending = true;
+                    Log.Info("no current loop for the " + ScreenLabel(player) + ", checking for a cached one");
                 }
                 number++;
             }
@@ -157,11 +158,11 @@ namespace LiveBackground
         }
 
         // True while any screen still has a rebuild waiting to start.
-        private static bool AnyScreenBuildForced()
+        private static bool AnyScreenBuildPending()
         {
             foreach (ScreenPlayer screen in _screenPlayers)
             {
-                if (screen.ForceBuild) return true;
+                if (screen.BuildPending) return true;
             }
             return false;
         }
