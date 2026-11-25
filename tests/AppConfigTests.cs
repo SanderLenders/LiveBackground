@@ -237,6 +237,71 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void ScreenForSeeded_starts_a_new_screen_from_the_main_settings()
+        {
+            AppConfig c = new AppConfig();
+            c.VideoFolder = @"D:\vids";
+            c.PlaybackMode = "playlist";
+            c.SingleClip = "main.mp4";
+            c.Playlist = new List<PlaylistEntry> { new PlaylistEntry("main.mp4", true) };
+            c.ImageFolder = @"D:\pics";
+            c.ImageMode = "slideshow";
+            c.ImageSingle = "main.jpg";
+            c.ImagePlaylist = new List<PlaylistEntry> { new PlaylistEntry("main.jpg", true) };
+            c.ImageIntervalSeconds = 42;
+            c.ImageCrossfadeSeconds = 1.5;
+            c.ImageShuffle = true;
+
+            ScreenSettings seeded = c.ScreenForSeeded(@"\\.\DISPLAY7");
+
+            Assert.Equal(@"\\.\DISPLAY7", seeded.Device);
+            Assert.Equal(@"D:\vids", seeded.Folder);
+            Assert.Equal("playlist", seeded.PlaybackMode);
+            Assert.Equal("main.mp4", seeded.SingleClip);
+            Assert.Single(seeded.Playlist);
+            Assert.Equal(@"D:\pics", seeded.ImageFolder);
+            Assert.Equal("slideshow", seeded.ImageMode);
+            Assert.Equal("main.jpg", seeded.ImageSingle);
+            Assert.Single(seeded.ImagePlaylist);
+            Assert.Equal(42, seeded.ImageIntervalSeconds);
+            Assert.Equal(1.5, seeded.ImageCrossfadeSeconds);
+            Assert.True(seeded.ImageShuffle);
+
+            seeded.Playlist[0].Enabled = false;
+            Assert.True(c.Playlist[0].Enabled);
+        }
+
+        [Fact]
+        public void ScreenForSeeded_keeps_a_saved_device_entry()
+        {
+            AppConfig c = new AppConfig();
+            c.VideoFolder = @"D:\main";
+            c.ExtraScreens = new List<ScreenSettings>
+            {
+                new ScreenSettings { Device = @"\\.\DISPLAY2", Folder = @"D:\own", SingleClip = "own.mp4" },
+            };
+
+            ScreenSettings saved = c.ScreenForSeeded(@"\\.\display2");
+            Assert.Equal(@"D:\own", saved.Folder);
+            Assert.Equal("own.mp4", saved.SingleClip);
+        }
+
+        [Fact]
+        public void ScreenForSeeded_keeps_a_legacy_device_less_entry()
+        {
+            AppConfig c = new AppConfig();
+            c.VideoFolder = @"D:\main";
+            c.ExtraScreens = new List<ScreenSettings>
+            {
+                new ScreenSettings { Device = "", Folder = @"D:\legacy", SingleClip = "legacy.mp4" },
+            };
+
+            ScreenSettings legacy = c.ScreenForSeeded(@"\\.\DISPLAY9");
+            Assert.Equal(@"D:\legacy", legacy.Folder);
+            Assert.Equal("legacy.mp4", legacy.SingleClip);
+        }
+
+        [Fact]
         public void ScreenByDevice_creates_on_demand_and_then_finds_it()
         {
             AppConfig c = new AppConfig();

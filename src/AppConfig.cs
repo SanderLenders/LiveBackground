@@ -419,6 +419,56 @@ namespace LiveBackground
             return fallback;
         }
 
+        // The UI starts a screen that has no saved entry from the main screen's
+        // folders and selections. Otherwise the first opposite-mode override
+        // would point at the factory folders instead of the user's library.
+        // A saved entry, including a legacy device-less one, is never replaced.
+        public ScreenSettings ScreenForSeeded(string device)
+        {
+            string key = device ?? "";
+            if (HasScreenEntry(key)) return ScreenFor(key);
+
+            ScreenSettings seeded = new ScreenSettings();
+            seeded.Device = key;
+            seeded.Folder = string.IsNullOrEmpty(VideoFolder) ? seeded.Folder : VideoFolder;
+            seeded.PlaybackMode = string.IsNullOrEmpty(PlaybackMode) ? seeded.PlaybackMode : PlaybackMode;
+            seeded.SingleClip = string.IsNullOrEmpty(SingleClip) ? seeded.SingleClip : SingleClip;
+            seeded.Playlist = ClonePlaylist(Playlist);
+
+            seeded.ImageFolder = string.IsNullOrEmpty(ImageFolder) ? seeded.ImageFolder : ImageFolder;
+            seeded.ImageMode = string.IsNullOrEmpty(ImageMode) ? seeded.ImageMode : ImageMode;
+            seeded.ImageSingle = string.IsNullOrEmpty(ImageSingle) ? seeded.ImageSingle : ImageSingle;
+            seeded.ImagePlaylist = ClonePlaylist(ImagePlaylist);
+            seeded.ImageIntervalSeconds = ImageIntervalSeconds;
+            seeded.ImageCrossfadeSeconds = ImageCrossfadeSeconds;
+            seeded.ImageFineCrossfadeSteps = ImageFineCrossfadeSteps;
+            seeded.ImageShuffle = ImageShuffle;
+            return seeded;
+        }
+
+        private bool HasScreenEntry(string device)
+        {
+            if (ExtraScreens == null) return false;
+            foreach (ScreenSettings screen in ExtraScreens)
+            {
+                if (screen == null) continue;
+                if (string.IsNullOrEmpty(screen.Device)) return true;
+                if (string.Equals(screen.Device, device, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        private static List<PlaylistEntry> ClonePlaylist(List<PlaylistEntry> source)
+        {
+            List<PlaylistEntry> copy = new List<PlaylistEntry>();
+            if (source == null) return copy;
+            foreach (PlaylistEntry entry in source)
+            {
+                if (entry != null) copy.Add(new PlaylistEntry(entry.Name, entry.Enabled));
+            }
+            return copy;
+        }
+
         // The stored entry for a device, optionally created on the spot. The
         // settings window uses this so editing a screen always has somewhere
         // to write, without disturbing screens it does not show.

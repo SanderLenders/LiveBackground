@@ -1774,7 +1774,8 @@ namespace LiveBackground
             }
             // Only the section that follows the main pill offers "Same as main
             // screen". The opposite-mode section is an explicit per-screen
-            // override, so it always uses its own folder and playlist.
+            // override; on first use it is seeded from the main settings, then
+            // it keeps its own folder and playlist.
             private bool VideoMirrorsMain
             {
                 get { return !EffectiveImagesMode && !ModeOverridden && _sameVideo != null && _sameVideo.IsChecked == true; }
@@ -2435,7 +2436,7 @@ namespace LiveBackground
                 if (_deviceLabel != null) _deviceLabel.Text = has ? ("Monitor: " + _device) : "No screen detected for this slot.";
                 if (reloadValues || deviceChanged)
                 {
-                    ScreenSettings s = config.ScreenFor(_device);
+                    ScreenSettings s = config.ScreenForSeeded(_device);
                     if (_modeOverride != null) _modeOverride.IsChecked = s.ModeOverride;
                     if (_sameVideo != null) _sameVideo.IsChecked = s.SameAsMain;
                     if (_videoFolder != null) _videoFolder.Text = s.Folder ?? "";
