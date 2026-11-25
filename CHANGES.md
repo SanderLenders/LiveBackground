@@ -304,6 +304,34 @@
   and the desktop-wallpaper choice on the per-screen panes reads "First frame of
   this screen's loop", matching the "Other" tab.
 
+### Final review fixes
+
+- **Extra screens reuse their cached loops again.** A missing "now playing"
+  pointer used to force a full re-encode, so switching a screen's render settings
+  back to an earlier value rebuilt a loop that was already on disk. The screen
+  now only queues a build check; `MediaPipeline` adopts an identical cached loop
+  just as it does on the main screen. Global Images still never starts an encode.
+- **The first opposite-mode override starts from the main settings.** A screen
+  flipped to "Image mode" or "Video mode" now sees the main folders, clip/image
+  selection and slideshow settings instead of the factory folders. Saved device
+  entries and migrated legacy entries are left alone.
+- **Portable installs seed the bundled pictures.** `install.cmd` used to exclude
+  the whole `images` tree, so first-time portable installs had an empty picture
+  library. It now copies the bundled pictures without replacing anything already
+  in the destination.
+- **"Allow half-second steps" now changes the sliders.** The video and picture
+  crossfade sliders use 1-second steps by default and 0.5-second steps when the
+  checkbox is ticked, on both the main and per-screen Playback tabs.
+- **Documentation matches the app again.** README now says four monitors, uses
+  the actual "Same as main screen" label, describes the config-only per-screen
+  desktop fallback, and stops promising keyboard operation of the mode pill,
+  saved edits from disconnected slots, or deletion of user data by
+  `uninstall --remove`. The smoke test checks for the UAC prompt instead of a
+  shield on the setup icon.
+- **`build.ps1` refuses to write into `dist`.** The frozen v1.5.1 archive can no
+  longer be overwritten by a forgotten default `-CompileOnly`; stale comments
+  about the removed `csc` fallback and the analyser gate were corrected too.
+
 ## 1.8.5
 
 ### Reliability and clean-up pass
