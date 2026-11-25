@@ -14,10 +14,10 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 
 ## Install, upgrade, uninstall
 
-- [ ] Fresh install: setup runs; the UAC shield is on the setup icon; "Start
-      LiveBackground when I sign in" is ticked by default; the "View the README"
-      checkbox is unticked; the Start Menu shortcut is created and the desktop
-      shortcut is not.
+- [ ] Fresh install: setup runs and Windows shows the UAC prompt after
+      "Install" is clicked; "Start LiveBackground when I sign in" is ticked by
+      default; the "View the README" checkbox is unticked; the Start Menu
+      shortcut is created and the desktop shortcut is not.
 - [ ] The file being tested is
       `%LOCALAPPDATA%\LiveBackgroundBuild\installer\LiveBackgroundSetup.exe`,
       never a copy from `dist`.
@@ -68,8 +68,9 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
       that monitor's loop is rebuilt and the main loop is untouched.
 - [ ] Turn a mirror back on: the previously saved folder/list and render values
       return when it is turned off again.
-- [ ] Duplicate mode: dimmed per-screen controls remain clickable, their edits
-      are kept, and Windows display placement remains fully controllable.
+- [ ] Duplicate mode: dimmed per-screen controls remain clickable, values are
+      saved only for a connected screen that is not mirroring the main screen,
+      and Windows display placement remains fully controllable.
 - [ ] Unplug and replug a screen: its settings are remembered by device name.
 - [ ] Move the settings window between monitors at different DPI (100% / 125% /
       150%): it stays readable and nothing is clipped.

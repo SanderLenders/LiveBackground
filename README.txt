@@ -64,9 +64,9 @@ notification area; Windows 11 may keep it in the hidden-icons overflow
 
 Double-click the icon, or open "LiveBackground settings" from the Start Menu,
 to change settings. At the top of the window, choose the wallpaper mode:
-Video or Images. Click the pill switch itself or either word; the pill also
-responds to Space or Enter when focused. Exactly four main-row tabs are shown.
-The pill replaces the first two; Multi Monitor and Other stay in place:
+Video or Images. Click the pill switch itself or either word. Exactly four
+main-row tabs are shown. The pill replaces the first two; Multi Monitor and
+Other stay in place:
 
   Video mode:   Videos, Playback, Multi Monitor, Other
   Images mode:  Images, Slideshow, Multi Monitor, Other
@@ -204,30 +204,30 @@ is doing right now; click one to change it. The app never changes the display
 mode on its own and never spoofs or blocks it. "Display settings" opens the
 Windows arrangement page, where display placement stays fully controllable.
 Controls that are not currently usable are dimmed but remain clickable by
-design, so you can edit them ahead of time; their values are ignored until the
-screen is in that mode or connected again.
+design. Values are saved only for a connected screen that is not mirroring the
+main screen; a disconnected slot or a section still set to "Same as main
+screen" has nowhere to store those edits and reloads the saved values later.
 
 The tab follows the Video/Images pill, but each screen can override it. Under
 global Video, the checkbox reads "Image mode" and flips only that screen to
 pictures; under global Images it reads "Video mode" and flips only that screen
 to its own video loop. The mirror checkbox appears only in the section that
-follows the main pill: "Use the same video as the main screen" under Video and
-"Use the same image(s) as the main screen" under Images. The opposite-mode
-section is already an explicit per-screen override, so it always uses its own
-folder and list. Turning a mirror back on restores the values saved for that
-section.
+follows the main pill and is always labelled "Same as main screen". The
+opposite-mode section is an explicit per-screen override: on first use it is
+seeded from the main settings, then it keeps its own folder and list. Turning
+a mirror back on restores the values saved for that section.
 
 In Video mode, each extra screen mirrors the main clip by default. Turn off
-"Use the same video as the main screen" to choose its own folder, playlist or
-single clip and pick which clip plays in Single clip mode; its loop is rendered
-once and cached. Rebuild now is available whenever that screen is attached.
+"Same as main screen" in the Video section to choose its own folder, playlist
+or single clip and pick which clip plays in Single clip mode; its loop is
+rendered once and cached. Rebuild now is available whenever that screen is
+attached.
 
 In Images mode, each extra screen likewise mirrors the main picture or
-slideshow by default. Turn off "Use the same image as the main screen" (it says
-"images" while the main screen is a slideshow) to give it an independent image
-folder, one image or slideshow, pick which image is used in One image mode, and
-set interval (5-300 seconds), picture crossfade and Shuffle. Each independent
-slideshow has its own folder watcher and timer.
+slideshow by default. Turn off "Same as main screen" in the Images section to
+give it an independent image folder, one image or slideshow, pick which image is
+used in One image mode, and set interval (5-300 seconds), picture crossfade and
+Shuffle. Each independent slideshow has its own folder watcher and timer.
 
 Every per-screen Playback tab offers "Use main Playback settings", ticked by
 default. Untick it to set that monitor's resolution, frame rate and quality;
@@ -236,10 +236,12 @@ values are baked into the screen's own cached loop, so a change builds a new
 signature-keyed loop in the background while the current one keeps playing.
 Mirroring screens share the main loop, and the x264 speed preset stays global.
 
-The per-screen crossfade tabs and the per-screen desktop fallback tabs are
-dimmed while a screen mirrors the main clip or is disconnected. An independent
-screen can use the first frame of its own loop or a custom fallback image while
-its video is paused, stopped or being built. Mirroring screens use the main
+Each per-screen Playback tab has a video crossfade control, but there is no
+per-screen desktop-fallback tab in the settings window. An independent screen
+can use the first frame of its own loop or a custom fallback image while its
+video is paused, stopped or being built; those per-screen choices are
+config-only and can be hand-edited as "desktopWallpaperMode" and
+"desktopWallpaperImage" on that screen's entry. Mirroring screens use the main
 fallback.
 
 Adding, removing or moving a monitor while the app runs is picked up within a
@@ -345,7 +347,8 @@ Run these from the install folder, or use the full path:
 
     install                    prepare the library and start (used by install.cmd)
     uninstall                  stop and remove from logon, restore backups
-    uninstall --remove         same, and delete the app data folder
+    uninstall --remove         same, and clear cache, logs and backups;
+                               your videos, pictures and settings are kept
     rebuild                    rebuild the loop now
     build-only                 build the loop without restarting playback
     start                      start the wallpaper
@@ -550,10 +553,10 @@ links. The bundled clips and pictures are not part of the software.
 
 Known limitations
 -----------------
-- Up to three monitors are supported; a fourth or later monitor mirrors the
-  main screen. The three-screen path is designed to stay inert with two
-  monitors, but independent third-screen settings have not been tested on real
-  three-monitor hardware.
+- Up to four monitors are supported; a fifth or later monitor mirrors the main
+  screen. The extra-screen path is designed to stay inert with two monitors,
+  but independent 3rd and 4th screen settings have not been tested on real
+  three- and four-monitor hardware.
 - Windows 11 may put the tray icon in the hidden-icons overflow. Drag it onto
   the taskbar if you want it always visible.
 - The video must be a normal local file; DRM-protected content will not play.
