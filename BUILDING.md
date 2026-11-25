@@ -43,10 +43,11 @@ dotnet test    LiveBackground.sln -c Release
 `dotnet test` also builds the app, so a bare `dotnet test` is enough.
 
 The tests cover the pure logic only: path and command-line helpers, natural
-sorting, configuration normalisation and migration, playlist and crossfade
-state, the JSON store's file round-trip, the folder watchers and the cache
-signature. They need no display, no ffmpeg and no mpv, so they run anywhere,
-including CI.
+sorting, configuration normalisation and migration, per-screen render
+inheritance, the screen-settings fingerprint, startup cache decisions, playlist
+and crossfade state, the JSON store's file round-trip, the folder watchers and
+the cache signature/validity checks. They need no display, no ffmpeg and no mpv,
+so they run anywhere, including CI.
 
 ## The shipping build
 
@@ -55,17 +56,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 `
   -OutDir "$env:LOCALAPPDATA\LiveBackgroundBuild" `
   -MpvSource "C:\Program Files\LiveBackground\mpv" `
   -FfmpegSource "C:\Program Files\LiveBackground\tools\ffmpeg" `
-  -SkipSign
+  -TimestampServer "http://timestamp.digicert.com"
 ```
 
-This is the command that produces the installer. It is not run in CI because it
-needs mpv and ffmpeg and takes several minutes; CI instead runs
-`build.ps1 -CompileOnly` to compile both executables the same way and catch a
-change that would break the real build.
+This is the command that produces the installer that may be shared from
+`%LOCALAPPDATA%\LiveBackgroundBuild\installer\LiveBackgroundSetup.exe`. Use
+`-SkipSign` only for a local throwaway build; a signed build fails if the
+certificate is missing or any signature is invalid. The shipped certificate is
+selected with `-CertThumbprint` or `-CertSubject` (default
+`CN=LiveBackground Test`). A self-signed test certificate is fine for checking
+the pipeline but does not create SmartScreen or SAC reputation; a public release
+needs a trusted OV/EV certificate plus an RFC3161 timestamp server. mpv and
+ffmpeg are not re-signed.
+
+The script hard-requires `tools\LiveBackgroundBootstrap.exe` when clang is not
+available, because that is the executable the scheduled tasks launch. For any
+output folder other than the frozen `dist` archive, it clears the folder first
+so runtime state, old logs and an old installer cannot leak into the package.
+
+It is not run in CI because it needs mpv, ffmpeg, a certificate and Inno Setup,
+and takes several minutes; CI instead runs `build.ps1 -CompileOnly` to compile
+the five first-party executables the same way and catch a change that would
+break the real build.
 
 `build.ps1` compiles through `dotnet build` / MSBuild because the settings UI
 requires WPF XAML compilation. If the .NET SDK / MSBuild is unavailable, the
-script fails with a clear error. Pass `-CompileOnly` to compile both executables
+script fails with a clear error. Pass `-CompileOnly` to compile the executables
 and stop before packaging.
 
 ## Analysers

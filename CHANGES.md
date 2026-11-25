@@ -5,6 +5,36 @@
 - Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
 - Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48). The legacy csc/Roslyn fallback is no longer supported because the WPF settings UI requires XAML compilation.
 
+### Multi-monitor settings and release readiness
+
+- The Multi Monitor tab now uses nested Video/Images/Playback tabs for up to
+  four monitors. A per-screen checkbox names the mode it switches to: "Image
+  mode" under global Video and "Video mode" under global Images. The mirror
+  checkbox appears only in the section that follows the main pill, and hidden
+  mirror state is preserved.
+- Each monitor can now override the main resolution, frame rate and quality.
+  "Use main Playback settings" is ticked by default; unticking it reveals the
+  three controls and offers the monitor's native resolution. The values are
+  baked into a new signature-keyed cached loop, built in the background. The
+  x264 preset stays global because it only controls build speed.
+- Controls that are not currently usable stay dimmed but clickable by design,
+  so edits made ahead of time are kept. Windows display mode and placement stay
+  fully controlled from the Windows display settings page; the app never spoofs
+  or blocks them.
+- The startup cache decision, per-screen settings fingerprint and cache
+  validity checks now cover every field that affects a screen's loop, pictures
+  or desktop fallback. A stale startup hint is discarded when no loop exists.
+- The shipping build now cleans its output folder outside the frozen `dist`
+  archive, hard-requires the bootstrapper, signs every first-party executable,
+  and supports an optional RFC3161 timestamp server. mpv and ffmpeg remain
+  unsigned third-party binaries.
+- The portable `uninstall.cmd` now looks in `%LOCALAPPDATA%\LiveBackground`
+  first, matching `install.cmd`, and falls back to the folder it is run from.
+- README, change list and manual-test notes were brought in line with four
+  monitors, mixed Video/Images modes, per-screen render overrides, the
+  dimmed-but-clickable controls, the 5-300 second interval slider and the
+  current signing policy.
+
 ### Housekeeping and display scaling
 
 - **The settings window now scales with the display.** It is laid out in fixed
@@ -107,7 +137,7 @@
   the per-screen tabs; the clip list sits right under the choice.
 - **The per-screen mirror switch now names what it mirrors.** On the Multi
   Monitor tab it reads "Use the same image as the main screen", or "Use the
-  same imagesâ€¦" while the main screen is a slideshow, matching the Videos side.
+  same images…" while the main screen is a slideshow, matching the Videos side.
 - **A new slideshow starts at 10 seconds per picture**, with the 2-second
   picture crossfade it already had. The video crossfade on the Playback tab is
   unchanged at 3 seconds. Only a fresh install (or a screen with no saved

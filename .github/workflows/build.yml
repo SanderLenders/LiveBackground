@@ -28,18 +28,10 @@ jobs:
       - name: Test
         run: dotnet test LiveBackground.sln --configuration Release --no-build --verbosity normal
 
-      # The application users install is produced by build.ps1. Compile both
-      # executables with that same script (its Roslyn C# 7.3 path) so a change
-      # that breaks the shipping build is caught even though the full packaging
-      # build (which needs mpv and ffmpeg) does not run in CI.
+      # The application users install is produced by build.ps1. Compile the
+      # shipping variants with that same script so a change that breaks the
+      # shipping build is caught even though the full packaging build (which
+      # needs mpv, ffmpeg and Inno Setup) does not run in CI.
       - name: Compile the shipping binaries
         shell: pwsh
         run: ./build.ps1 -CompileOnly -OutDir "$env:RUNNER_TEMP\lb-shipping"
-
-      # Machines without the .NET SDK fall back to the framework csc (C# 5).
-      # Keep an eye on that path, but do not fail the build when the sources
-      # use newer syntax: the fallback is best effort.
-      - name: Check the framework csc fallback (best effort)
-        shell: pwsh
-        continue-on-error: true
-        run: ./build.ps1 -CompileOnly -FrameworkCsc -OutDir "$env:RUNNER_TEMP\lb-fallback"

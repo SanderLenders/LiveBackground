@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 title LiveBackground - uninstall
 
-set "DEST=%USERPROFILE%\LiveBackground"
+set "DEST=%LOCALAPPDATA%\LiveBackground"
 
 echo ==============================================
 echo   LiveBackground - uninstall

@@ -117,9 +117,10 @@ Right-click the tray icon for:
   Open logs folder                     show the log files
   Exit                                 stop the wallpaper completely
 
-The cross-fade slider runs from 1 to 10 seconds in 1-second steps. Tick
-"Allow half-second steps" to use 0.5-second steps. The window shows
-the fade that will actually be applied and the resulting loop length.
+The cross-fade slider runs from 0.5 to 10 seconds in 0.5-second steps. Tick
+"Allow half-second steps" only changes the step granularity; the range is the
+same. The window shows the fade that will actually be applied and the resulting
+loop length.
 
 Fades are capped at one third of the shorter neighbouring clip, so a 10 s
 setting becomes 3.3 s on a 10 s clip. Fades longer than 5 seconds look more
@@ -200,29 +201,46 @@ disconnected screen keeps its saved settings.
 The top of the tab shows the Windows display mode: Extended (separate screens)
 or Duplicate (every screen shows the same). The radio buttons show what Windows
 is doing right now; click one to change it. The app never changes the display
-mode on its own. "Display settings" opens the Windows arrangement page. While
-Windows is duplicating, the per-screen controls are disabled with an
-explanation.
+mode on its own and never spoofs or blocks it. "Display settings" opens the
+Windows arrangement page, where display placement stays fully controllable.
+Controls that are not currently usable are dimmed but remain clickable by
+design, so you can edit them ahead of time; their values are ignored until the
+screen is in that mode or connected again.
 
-The tab follows the Video/Images switch. In Video mode, each extra screen
-mirrors the main clip by default. Turn off "Use the same video as the main
-screen" to choose its own folder, playlist or single clip and pick which clip
-plays in Single clip mode; its loop is rendered once and cached. Rebuild now is
-available whenever that screen is attached.
+The tab follows the Video/Images pill, but each screen can override it. Under
+global Video, the checkbox reads "Image mode" and flips only that screen to
+pictures; under global Images it reads "Video mode" and flips only that screen
+to its own video loop. The mirror checkbox appears only in the section that
+follows the main pill: "Use the same video as the main screen" under Video and
+"Use the same image(s) as the main screen" under Images. The opposite-mode
+section is already an explicit per-screen override, so it always uses its own
+folder and list. Turning a mirror back on restores the values saved for that
+section.
+
+In Video mode, each extra screen mirrors the main clip by default. Turn off
+"Use the same video as the main screen" to choose its own folder, playlist or
+single clip and pick which clip plays in Single clip mode; its loop is rendered
+once and cached. Rebuild now is available whenever that screen is attached.
 
 In Images mode, each extra screen likewise mirrors the main picture or
 slideshow by default. Turn off "Use the same image as the main screen" (it says
 "images" while the main screen is a slideshow) to give it an independent image
 folder, one image or slideshow, pick which image is used in One image mode, and
-set interval, picture crossfade and Shuffle. Each independent slideshow has its
-own folder watcher and timer.
+set interval (5-300 seconds), picture crossfade and Shuffle. Each independent
+slideshow has its own folder watcher and timer.
 
-Playback contains 2nd, 3rd and 4th Screen crossfade tabs for independent video
-loops. They are greyed out while the corresponding screen mirrors the main
-clip, is disconnected, or Windows is duplicating. Other -> Desktop
-wallpaper image also has per-screen tabs: an independent screen can use the
-first frame of its own loop or a custom fallback image while its video is
-paused, stopped or being built. Mirroring screens use the main fallback.
+Every per-screen Playback tab offers "Use main Playback settings", ticked by
+default. Untick it to set that monitor's resolution, frame rate and quality;
+the monitor's native resolution is offered when Windows reports it. Those
+values are baked into the screen's own cached loop, so a change builds a new
+signature-keyed loop in the background while the current one keeps playing.
+Mirroring screens share the main loop, and the x264 speed preset stays global.
+
+The per-screen crossfade tabs and the per-screen desktop fallback tabs are
+dimmed while a screen mirrors the main clip or is disconnected. An independent
+screen can use the first frame of its own loop or a custom fallback image while
+its video is paused, stopped or being built. Mirroring screens use the main
+fallback.
 
 Adding, removing or moving a monitor while the app runs is picked up within a
 couple of seconds; the players and image layers move to the right screens.
@@ -230,10 +248,12 @@ couple of seconds; the players and image layers move to the right screens.
 
 Image wallpapers and the slideshow
 ----------------------------------
-Switch the wallpaper mode at the top of the settings window to Images. The
-video stops completely: mpv is shut down and no loop is built or prepared, so
-the app stays light while pictures are shown. Switching back to Video starts
-the cached loop again without rebuilding it.
+Switch the main wallpaper mode at the top of the settings window to Images.
+The main video stops completely: its mpv player is shut down and no main loop
+is built or prepared, so the app stays light while pictures are shown. A screen
+you explicitly flipped to "Video mode" may still play its already cached loop,
+but global Images never starts a new encode. Switching the main pill back to
+Video restarts the cached loop without rebuilding it.
 
 The image folder is:
     %USERPROFILE%\LiveBackground\images\wallpapers
@@ -257,13 +277,12 @@ The Images tab has two modes:
 New pictures start ticked, so a picture you add joins the slideshow straight
 away. Pictures you untick are remembered and skipped.
 
-The slideshow interval is chosen on the Slideshow tab with a preset slider
-(5, 10, 15, 20, 30 or 60 seconds); it starts at 10 seconds. Tick "Custom" to
-enter any number of seconds
-from 1 to 86400. The "Crossfade" slider controls picture transitions: 0 = off
-(instant), 1 to 5 seconds in 1-second steps. Tick "Allow half-second steps" for
-0.5-second steps. The crossfade is drawn below the icons and only runs while a
-picture is changing.
+The slideshow interval is chosen on the Slideshow tab with a slider from 5 to
+300 seconds in 5-second steps; it starts at 10 seconds. A hand-edited
+config.json can still set 1 to 86400 seconds. The "Crossfade" slider controls
+picture transitions: 0 = off (instant), up to 5 seconds in 1-second steps. Tick
+"Allow half-second steps" for 0.5-second steps. The crossfade is drawn below the
+icons and only runs while a picture is changing.
 
 The rotation is done by LiveBackground itself, not by the Windows slideshow
 feature, so the ticks, the custom order and the short intervals work exactly as
@@ -435,7 +454,9 @@ The desktop is black or the icons disappeared:
   desktop layers, restart Explorer; the watchdog will re-attach.
 
 The video stutters:
-- Use a smaller renderWidth/renderHeight or a faster preset, then rebuild.
+- Use a smaller resolution or lower frame rate on the main Playback tab, or on
+  the affected monitor's Playback tab after unticking "Use main Playback
+  settings". The new loop builds in the background.
 - Hardware decoding is enabled by default. Very high-bitrate 4K clips may still
   be heavy on older GPUs.
 
@@ -446,12 +467,16 @@ A rebuild says "ffmpeg failed":
 
 Code signing and Smart App Control
 ----------------------------------
-LiveBackground.exe, LiveBackgroundCli.exe and LiveBackgroundSetup.exe are not
-code-signed at the moment, so Windows shows them as an "unknown publisher". The
-finished app will be signed with a free, publicly trusted code-signing
-certificate for open-source projects; a trusted signature removes the "unknown
-publisher" warning and lets SmartScreen reputation build up over time. Until
-then, the SmartScreen prompt below is expected.
+The current build signs all first-party executables (the app, CLI, settings
+window, tray helper, bootstrapper and installer) with a local self-signed test
+certificate, SHA-256 and no RFC3161 timestamp. mpv and ffmpeg stay exactly as
+published by their projects and are deliberately not re-signed. A self-signed
+certificate does not create a trusted publisher or SmartScreen reputation, so
+Windows may still show "unknown publisher".
+
+A public release needs a publicly trusted OV/EV code-signing certificate and a
+timestamp server. That is the remaining reputation step; it does not change how
+the app behaves or how quickly it starts.
 
 On a normal PC, SmartScreen may show "Windows protected your PC" the first
 time you run the installer:
@@ -477,10 +502,11 @@ Microsoft Store, or turn SAC off in Windows Security -> App & browser
 control -> Smart App Control. Turning SAC off is permanent until Windows is
 reinstalled, so weigh that carefully.
 
-For wide distribution, every shipped file would need a publicly trusted
-signature (including the bundled, third-party mpv.exe and ffmpeg), or the app
-could be published through the Microsoft Store. Either removes the "unknown
-publisher" warning and lets SmartScreen reputation build over time.
+For wide distribution, the first-party executables need a publicly trusted
+signature. The bundled third-party mpv.exe and ffmpeg are judged separately;
+they must come from a trusted source with a stable hash, or be accepted through
+Microsoft Store distribution. Either route removes the "unknown publisher"
+warning and lets SmartScreen reputation build over time.
 
 This app is not affiliated with Microsoft.
 
@@ -505,7 +531,9 @@ Portable mode
 A folder containing portable.txt next to LiveBackground.exe is a portable copy.
 In portable mode all data stays inside that folder instead of the user profile.
 The installer does not create portable.txt, so an installed copy always uses
-%USERPROFILE%\LiveBackground.
+%USERPROFILE%\LiveBackground. install.cmd copies a portable folder there;
+uninstall.cmd removes that installed copy and falls back to the folder it is
+run from when no installed copy is found.
 
 The portable package still includes install.cmd and uninstall.cmd. install.cmd
 copies the folder to %LOCALAPPDATA%\LiveBackground and creates the logon task

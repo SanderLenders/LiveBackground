@@ -8,15 +8,19 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 ## Before you start
 
 - Build the installer (see `BUILDING.md`).
-- Use a real Windows 11 PC, with a second monitor if you have one.
+- Use a real Windows 11 PC, ideally with up to four monitors in Extended mode.
 - Keep `%USERPROFILE%\LiveBackground\logs\app.log` open. It should stay free of
   unexpected `ERROR` lines.
 
 ## Install, upgrade, uninstall
 
-- [ ] Fresh install: setup runs; "Start LiveBackground when I sign in" is ticked
-      by default; the Start Menu shortcut is created and the desktop shortcut is
-      not.
+- [ ] Fresh install: setup runs; the UAC shield is on the setup icon; "Start
+      LiveBackground when I sign in" is ticked by default; the "View the README"
+      checkbox is unticked; the Start Menu shortcut is created and the desktop
+      shortcut is not.
+- [ ] The file being tested is
+      `%LOCALAPPDATA%\LiveBackgroundBuild\installer\LiveBackgroundSetup.exe`,
+      never a copy from `dist`.
 - [ ] First run seeds "Galaxy HD Clip.mp4" and starts in Single clip mode.
 - [ ] Upgrade over an existing install: videos, pictures and settings are kept,
       and the autostart box is still ticked.
@@ -44,7 +48,7 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 - [ ] One image: the chosen picture stays on the desktop and the Windows
       wallpaper matches it.
 - [ ] Slideshow: interval, picture crossfade (0 = instant) and Shuffle behave.
-- [ ] Custom interval (1..86400) and the half-second crossfade steps.
+- [ ] Slider interval (5..300 seconds, 5-second steps) and the half-second crossfade steps.
 - [ ] Add or remove a picture in the folder: picked up without a restart.
 - [ ] Lock screen mode: frame, custom image and image wallpaper.
 - [ ] Desktop wallpaper: frame versus custom image, on the main and extra
@@ -53,15 +57,26 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 ## Multi-monitor and DPI
 
 - [ ] Extended: each extra screen mirrors the main clip or picture by default.
+- [ ] Global Video + per-screen "Image mode": only that screen switches to
+      pictures; the mirror checkbox is hidden in its Images section.
+- [ ] Global Images + per-screen "Video mode": only that screen plays a cached
+      video loop; no new loop is built while the main pill stays on Images.
 - [ ] Independent 2nd screen: its own folder, playlist or single clip; its loop
       builds and is then reused from the cache.
-- [ ] Duplicate mode: the per-screen controls are disabled with an explanation.
+- [ ] Untick "Use main Playback settings" on a second monitor: choose a
+      different resolution, frame rate and quality, save, and confirm that only
+      that monitor's loop is rebuilt and the main loop is untouched.
+- [ ] Turn a mirror back on: the previously saved folder/list and render values
+      return when it is turned off again.
+- [ ] Duplicate mode: dimmed per-screen controls remain clickable, their edits
+      are kept, and Windows display placement remains fully controllable.
 - [ ] Unplug and replug a screen: its settings are remembered by device name.
 - [ ] Move the settings window between monitors at different DPI (100% / 125% /
       150%): it stays readable and nothing is clipped.
 - [ ] Add or remove a monitor while running: the players and image layers move
       within a few seconds.
-- [ ] With three screens: the 3rd Screen sub-tab works end to end.
+- [ ] With three and four screens: the 3rd and 4th Screen sub-tabs work end to
+      end.
 
 ## Robustness
 
@@ -71,6 +86,12 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 - [ ] Exit from the tray: the watchdog does NOT restart it.
 - [ ] On battery: the background loop preparation is skipped.
 - [ ] Sign out and back in: the wallpaper starts and the still frame shows first.
+- [ ] Signature check on all first-party EXEs in the build folder: app, CLI,
+      settings, tray, bootstrapper and installer. A missing signature fails the
+      build.
+- [ ] On a clean Windows 11 PC, note whether SmartScreen or Smart App Control
+      evaluates the installer and record the result. A self-signed test build is
+      expected to be treated as unknown publisher.
 
 ## Settings window and command line
 

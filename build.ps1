@@ -40,10 +40,10 @@ param(
     [string]$FfmpegSource = '',
     [string]$SampleVideo = '',
     [string]$InnoCompiler = '',
+    [string]$TimestampServer = '',
     [switch]$SkipSign,
     [switch]$SkipInstaller,
-    [switch]$CompileOnly,
-    [switch]$FrameworkCsc # kept for compatibility; WPF builds require dotnet/MSBuild
+    [switch]$CompileOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,17 +59,6 @@ function Write-Step($text) {
     Write-Host "== $text" -ForegroundColor Cyan
 }
 
-function Find-Csc {
-    $candidates = @(
-        (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'),
-        (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe')
-    )
-    foreach ($path in $candidates) {
-        if (Test-Path $path) { return $path }
-    }
-    throw 'csc.exe (.NET Framework 4.x) was not found.'
-}
-
 function Find-Dotnet {
     $candidates = @()
     if ($env:DOTNET_ROOT) { $candidates += (Join-Path $env:DOTNET_ROOT 'dotnet.exe') }
@@ -83,35 +72,6 @@ function Find-Dotnet {
     $command = Get-Command dotnet.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
     return $null
-}
-
-# The SDK's Roslyn compiler, which understands up to C# 7.3. Returns the path to
-# csc.dll, or $null when no SDK is installed.
-function Find-RoslynCsc($dotnetPath) {
-    $roots = @()
-    if ($env:DOTNET_ROOT) { $roots += (Join-Path $env:DOTNET_ROOT 'sdk') }
-    if ($dotnetPath) { $roots += (Join-Path (Split-Path -Parent $dotnetPath) 'sdk') }
-    $roots += @(
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\sdk'),
-        (Join-Path $env:ProgramFiles 'dotnet\sdk')
-    )
-    foreach ($root in ($roots | Where-Object { $_ } | Select-Object -Unique)) {
-        if (-not (Test-Path $root)) { continue }
-        $csc = Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
-            Sort-Object { try { [version]$_.Name } catch { [version]'0.0' } } -Descending |
-            ForEach-Object { Join-Path $_.FullName 'Roslyn\bincore\csc.dll' } |
-            Where-Object { Test-Path $_ } |
-            Select-Object -First 1
-        if ($csc) { return $csc }
-    }
-    return $null
-}
-
-function Invoke-Compiler([string[]]$command) {
-    $exe = $command[0]
-    $arguments = @($command | Select-Object -Skip 1)
-    & $exe @arguments
-    if ($LASTEXITCODE -ne 0) { throw "Compilation failed (exit $LASTEXITCODE)." }
 }
 
 function Find-Inno {
@@ -151,82 +111,53 @@ function Copy-Tree($source, $destination, [string[]]$excludeNames) {
 
 function Find-SigningCert {
     if ($CertThumbprint) {
-        $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
+        return Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
             Where-Object { $_.Thumbprint -eq $CertThumbprint } | Select-Object -First 1
-        if ($cert) { return $cert }
     }
     return Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
         Where-Object { $_.Subject -eq $CertSubject } | Select-Object -First 1
 }
 
 function Sign-File($path, $cert) {
-    if (-not $cert) { return }
+    if (-not $cert) { throw "Signing requested but no certificate was supplied for $path." }
+    if (-not (Test-Path $path)) { throw "Cannot sign a missing file: $path" }
     try {
-        $signature = Set-AuthenticodeSignature -FilePath $path -Certificate $cert -HashAlgorithm SHA256
+        $parameters = @{ FilePath = $path; Certificate = $cert; HashAlgorithm = 'SHA256' }
+        if ($TimestampServer) { $parameters.TimestampServer = $TimestampServer }
+        $signature = Set-AuthenticodeSignature @parameters
+        if ($signature.Status -ne 'Valid') {
+            throw "signature status was $($signature.Status): $($signature.StatusMessage)"
+        }
         Write-Host ("  signed " + (Split-Path $path -Leaf) + " (" + $signature.Status + ")")
     }
     catch {
-        Write-Warning ("  could not sign " + (Split-Path $path -Leaf) + ": " + $_.Exception.Message)
+        throw "Could not sign $(Split-Path $path -Leaf): $($_.Exception.Message)"
     }
 }
 
 $root = $scriptRoot
 if (-not (Test-Path (Join-Path $root 'src'))) { throw "src folder not found next to build.ps1" }
 
-$csc = Find-Csc
-$frameworkDir = Split-Path -Parent $csc
-$sourceFiles = Get-ChildItem (Join-Path $root 'src') -Filter *.cs | ForEach-Object { $_.FullName }
-if ($sourceFiles.Count -eq 0) { throw 'No .cs files found in src.' }
-
-# Prefer the SDK's Roslyn compiler, which understands C# 7.3 (the newest the
-# .NET Framework supports). Fall back to the framework csc (C# 5) when the SDK
-# is not installed, so the build never hard-fails on a bare machine. Passing
-# -FrameworkCsc forces the fallback.
-$roslynCsc = $null
-$dotnet = $null
-if (-not $FrameworkCsc) {
-    $dotnet = Find-Dotnet
-    if ($dotnet) { $roslynCsc = Find-RoslynCsc $dotnet }
+$dotnetExe = Find-Dotnet
+if (-not $dotnetExe) {
+    throw 'The .NET SDK was not found. The WPF settings UI needs MSBuild/XAML compilation; install the SDK or Visual Studio Build Tools with .NET desktop build tools.'
 }
-
-# The framework csc resolves these by simple name and references mscorlib
-# itself; Roslyn needs the full paths plus /nostdlib+ because it does not
-# implicitly reference the .NET Framework.
-$frameworkReferenceNames = @(
-    'mscorlib.dll',
-    'System.dll',
-    'System.Core.dll',
-    'System.Runtime.Serialization.dll',
-    'System.Xml.dll',
-    'System.Drawing.dll',
-    'System.Windows.Forms.dll',
-    'System.Xaml.dll',
-    'WindowsBase.dll',
-    'PresentationCore.dll',
-    'PresentationFramework.dll'
-)
-if ($roslynCsc) {
-    $referenceArgs = $frameworkReferenceNames | ForEach-Object { "/r:" + (Join-Path $frameworkDir $_) }
-} else {
-    $referenceArgs = $frameworkReferenceNames |
-        Where-Object { $_ -ne 'mscorlib.dll' } |
-        ForEach-Object { "/r:$_" }
-}
-
+$projectPath = Join-Path $root 'src\LiveBackground.csproj'
+if (-not (Test-Path $projectPath)) { throw "Project not found: $projectPath" }
 $icon = Join-Path $root 'assets\LiveBackground.ico'
-$iconArgs = @()
-if (Test-Path $icon) { $iconArgs = @("/win32icon:$icon") }
 
-function Compile-Exe([string]$target, [string]$entryPoint, [string]$outFile) {
-    $common = @('/nologo', '/platform:x64', "/target:$target", "/main:$entryPoint")
-    if ($roslynCsc) {
-        Invoke-Compiler (@($dotnet, 'exec', $roslynCsc, '/nostdlib+', '/langversion:7.3') +
-            $common + $referenceArgs + $iconArgs + @("/out:$outFile") + $sourceFiles)
-    } else {
-        Invoke-Compiler (@($csc) + $common + $referenceArgs + $iconArgs + @("/out:$outFile") + $sourceFiles)
-    }
+# The frozen v1.5.1 archive under dist is never cleaned. Every other output
+# folder is rebuilt from scratch so config.json, caches, logs, backups and old
+# installers from a previous local run cannot leak into a release package.
+$distDir = Join-Path $scriptRoot 'dist'
+$isDistBuild = [string]::Equals([IO.Path]::GetFullPath($OutDir), [IO.Path]::GetFullPath($distDir), [StringComparison]::OrdinalIgnoreCase)
+if ($isDistBuild -and -not $CompileOnly) {
+    Write-Warning 'Building into dist. The release installer must be built into %LOCALAPPDATA%\LiveBackgroundBuild and shared from its installer folder.'
 }
-
+if (-not $isDistBuild -and -not $CompileOnly -and (Test-Path $OutDir)) {
+    Write-Step 'Cleaning the build output'
+    Remove-Item -LiteralPath $OutDir -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $appExe = Join-Path $OutDir 'LiveBackground.exe'
@@ -234,70 +165,60 @@ $cliExe = Join-Path $OutDir 'LiveBackgroundCli.exe'
 $settingsExe = Join-Path $OutDir 'LiveBackgroundSettings.exe'
 $trayExe = Join-Path $OutDir 'LiveBackgroundTray.exe'
 $bootstrapperExe = Join-Path $OutDir 'LiveBackgroundBootstrap.exe'
-$dotnetExe = $dotnet
-if (-not $dotnetExe) { $dotnetExe = Find-Dotnet }
-$projectPath = Join-Path $root 'src\LiveBackground.csproj'
 
-if ($FrameworkCsc) {
-    throw 'WPF settings UI requires dotnet build/MSBuild (XAML compilation). -FrameworkCsc is not supported.'
+Write-Host ("  compiler: dotnet build (MSBuild, net48) via " + $dotnetExe)
+
+function Invoke-DotnetBuildExe([string]$name, [string]$outputType, [string]$assemblyName, [string]$startupObject, [string]$destExe, [string[]]$extraProps) {
+    $buildOut = Join-Path $OutDir (".build_" + $name)
+    if (Test-Path $buildOut) { Remove-Item $buildOut -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $buildOut | Out-Null
+    $args = @(
+        'build', $projectPath,
+        '-c', 'Release',
+        '-nologo',
+        '-o', $buildOut,
+        "-p:IntermediateOutputPath=$buildOut\obj\",
+        "-p:OutputType=$outputType",
+        "-p:AssemblyName=$assemblyName",
+        "-p:StartupObject=$startupObject"
+    )
+    if ($extraProps) { foreach ($p in $extraProps) { $args += "-p:$p" } }
+    & $dotnetExe @args
+    if ($LASTEXITCODE -ne 0) { throw "Compilation failed for $name (exit $LASTEXITCODE)." }
+    $built = Join-Path $buildOut ($assemblyName + '.exe')
+    if (-not (Test-Path $built)) { throw "Build output not found: $built" }
+    Copy-Item -LiteralPath $built -Destination $destExe -Force
+    Remove-Item $buildOut -Recurse -Force
 }
 
-if ($dotnetExe -and (Test-Path $projectPath)) {
-    Write-Host ("  compiler: dotnet build (MSBuild, net48) via " + $dotnetExe)
+Write-Step "Compiling LiveBackground.exe"
+Invoke-DotnetBuildExe 'gui' 'WinExe' 'LiveBackground' 'LiveBackground.Program' $appExe @('UseWPF=false', 'ExcludeSettings=true')
 
-    function Invoke-DotnetBuildExe([string]$name, [string]$outputType, [string]$assemblyName, [string]$startupObject, [string]$destExe, [string[]]$extraProps) {
-        $buildOut = Join-Path $OutDir (".build_" + $name)
-        if (Test-Path $buildOut) { Remove-Item $buildOut -Recurse -Force }
-        New-Item -ItemType Directory -Force -Path $buildOut | Out-Null
-        $args = @(
-            'build', $projectPath,
-            '-c', 'Release',
-            '-nologo',
-            '-o', $buildOut,
-            "-p:IntermediateOutputPath=$buildOut\obj\",
-            "-p:OutputType=$outputType",
-            "-p:AssemblyName=$assemblyName",
-            "-p:StartupObject=$startupObject"
-        )
-        if ($extraProps) { foreach ($p in $extraProps) { $args += "-p:$p" } }
-        & $dotnetExe @args
-        if ($LASTEXITCODE -ne 0) { throw "Compilation failed for $name (exit $LASTEXITCODE)." }
-        $built = Join-Path $buildOut ($assemblyName + '.exe')
-        if (-not (Test-Path $built)) { throw "Build output not found: $built" }
-        Copy-Item -LiteralPath $built -Destination $destExe -Force
-        Remove-Item $buildOut -Recurse -Force
-    }
+Write-Step "Compiling LiveBackgroundSettings.exe"
+Invoke-DotnetBuildExe 'settings' 'WinExe' 'LiveBackgroundSettings' 'LiveBackground.SettingsProgram' $settingsExe
 
-    Write-Step "Compiling LiveBackground.exe"
-    Invoke-DotnetBuildExe 'gui' 'WinExe' 'LiveBackground' 'LiveBackground.Program' $appExe @('UseWPF=false', 'ExcludeSettings=true')
+Write-Step "Compiling LiveBackgroundTray.exe"
+Invoke-DotnetBuildExe 'tray' 'WinExe' 'LiveBackgroundTray' 'LiveBackground.TrayProgram' $trayExe @('UseWPF=false', 'ExcludeSettings=true', 'BuildTray=true')
 
-    Write-Step "Compiling LiveBackgroundSettings.exe"
-    Invoke-DotnetBuildExe 'settings' 'WinExe' 'LiveBackgroundSettings' 'LiveBackground.SettingsProgram' $settingsExe
+Write-Step "Compiling LiveBackgroundCli.exe"
+Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe @('UseWPF=false', 'ExcludeSettings=true')
 
-    Write-Step "Compiling LiveBackgroundTray.exe"
-    Invoke-DotnetBuildExe 'tray' 'WinExe' 'LiveBackgroundTray' 'LiveBackground.TrayProgram' $trayExe @('UseWPF=false', 'ExcludeSettings=true', 'BuildTray=true')
-
-    Write-Step "Compiling LiveBackgroundCli.exe"
-    Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe @('UseWPF=false', 'ExcludeSettings=true')
-
-    Write-Step "Compiling LiveBackgroundBootstrap.exe"
-    $clang = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
-    if (-not $clang) {
-        $wg = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
-        if (Test-Path $wg) { $clang = Get-ChildItem $wg -Recurse -Filter 'clang.exe' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 }
-    }
-    $bootstrapSrc = Join-Path $root 'src\bootstrapper.c'
-    if ($clang -and (Test-Path $bootstrapSrc)) {
-        & $clang -Os -s -mwindows -municode -o $bootstrapperExe $bootstrapSrc -luser32 -lkernel32
-        if ($LASTEXITCODE -ne 0) { throw "Bootstrapper compilation failed (exit $LASTEXITCODE)." }
-    } else {
-        $prebuilt = Join-Path $root 'tools\LiveBackgroundBootstrap.exe'
-        if (Test-Path $prebuilt) { Copy-Item -LiteralPath $prebuilt -Destination $bootstrapperExe -Force }
-        else { Write-Warning 'clang not found and no prebuilt bootstrapper; skipping LiveBackgroundBootstrap.exe' }
-    }
+Write-Step "Compiling LiveBackgroundBootstrap.exe"
+$clang = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+if (-not $clang) {
+    $wg = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+    if (Test-Path $wg) { $clang = Get-ChildItem $wg -Recurse -Filter 'clang.exe' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 }
 }
-else {
-    throw 'WPF settings UI requires dotnet build/MSBuild (XAML compilation). Install the .NET SDK or Visual Studio Build Tools with .NET desktop build tools, then rerun build.ps1.'
+$bootstrapSrc = Join-Path $root 'src\bootstrapper.c'
+if ($clang -and (Test-Path $bootstrapSrc)) {
+    & $clang -Os -s -mwindows -municode -o $bootstrapperExe $bootstrapSrc -luser32 -lkernel32
+    if ($LASTEXITCODE -ne 0) { throw "Bootstrapper compilation failed (exit $LASTEXITCODE)." }
+} else {
+    $prebuilt = Join-Path $root 'tools\LiveBackgroundBootstrap.exe'
+    if (-not (Test-Path $prebuilt)) {
+        throw 'clang was not found and tools\LiveBackgroundBootstrap.exe is missing. The bootstrapper is the scheduled-task target and must be present.'
+    }
+    Copy-Item -LiteralPath $prebuilt -Destination $bootstrapperExe -Force
 }
 
 if ($CompileOnly) {
@@ -313,9 +234,11 @@ if ($CompileOnly) {
 Write-Step 'Copying mpv'
 if (-not $MpvSource) {
     $candidates = @(
-        (Join-Path $OutDir 'mpv'),
         (Join-Path $env:LOCALAPPDATA 'LiveBackground\mpv'),
-        (Join-Path $root 'mpv')
+        (Join-Path ${env:ProgramFiles} 'LiveBackground\mpv'),
+        (Join-Path ${env:ProgramFiles(x86)} 'LiveBackground\mpv'),
+        (Join-Path $root 'mpv'),
+        (Join-Path $OutDir 'mpv')
     )
     foreach ($candidate in $candidates) {
         if (Test-Path (Join-Path $candidate 'mpv.exe')) { $MpvSource = $candidate; break }
@@ -329,8 +252,11 @@ Copy-Tree $MpvSource (Join-Path $OutDir 'mpv')
 Write-Step 'Copying ffmpeg'
 if (-not $FfmpegSource) {
     $candidates = @(
-        (Join-Path $OutDir 'tools\ffmpeg'),
-        (Join-Path $env:LOCALAPPDATA 'LiveBackground\tools\ffmpeg')
+        (Join-Path $env:LOCALAPPDATA 'LiveBackground\tools\ffmpeg'),
+        (Join-Path ${env:ProgramFiles} 'LiveBackground\tools\ffmpeg'),
+        (Join-Path ${env:ProgramFiles(x86)} 'LiveBackground\tools\ffmpeg'),
+        (Join-Path $root 'tools\ffmpeg'),
+        (Join-Path $OutDir 'tools\ffmpeg')
     )
     foreach ($candidate in $candidates) {
         if (Test-Path (Join-Path $candidate 'ffmpeg.exe')) { $FfmpegSource = $candidate; break }
@@ -363,10 +289,12 @@ New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'videos') | Out-Nul
 $bundledVideos = @(
     @{ Target = 'Galaxy HD Clip.mp4'; Sources = @(
         $SampleVideo,
+        (Join-Path ${env:ProgramFiles} 'LiveBackground\videos\Galaxy HD Clip.mp4'),
         (Join-Path $root 'dist\videos\Galaxy HD Clip.mp4'),
         (Join-Path $OutDir 'videos\Galaxy HD Clip.mp4')
     ) },
     @{ Target = 'Fokuz Recordings Clip.mp4'; Sources = @(
+        (Join-Path ${env:ProgramFiles} 'LiveBackground\videos\Fokuz Recordings Clip.mp4'),
         # The smaller re-encode ships now. The older, longer template is kept
         # only as a fallback for builds made from an older working copy.
         (Join-Path $root 'dist\videos\Fokuz Recordings Clip.mp4'),
@@ -401,9 +329,19 @@ if (Test-Path $superseded) {
 
 Write-Step 'Copying the bundled images'
 # A fresh install seeds these pictures into the user's image folder and starts
-# on the first one in One-image mode. Every picture in dist\images\wallpapers
-# ships; drop files in there to change what a new install starts with.
-$imageSourceDir = Join-Path $root 'dist\images\wallpapers'
+# on the first one in One-image mode. The current installed package is preferred
+# over the frozen dist archive as the source for bundled pictures.
+$imageSourceDir = ''
+foreach ($candidate in @(
+    (Join-Path ${env:ProgramFiles} 'LiveBackground\images\wallpapers'),
+    (Join-Path $root 'dist\images\wallpapers')
+)) {
+    if (Test-Path $candidate) {
+        $pictures = Get-ChildItem -Path $candidate -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|bmp|gif|webp)$' }
+        if ($pictures -and $pictures.Count -gt 0) { $imageSourceDir = $candidate; break }
+    }
+}
 $imageTargetDir = Join-Path $OutDir 'images\wallpapers'
 New-Item -ItemType Directory -Force -Path $imageTargetDir | Out-Null
 if (Test-Path $imageSourceDir) {
@@ -464,26 +402,27 @@ Write-Host "  portable.txt"
 
 $cert = $null
 if (-not $SkipSign) {
-    Write-Step 'Signing the executables'
+    Write-Step 'Signing the first-party executables'
     $cert = Find-SigningCert
     if (-not $cert) {
-        Write-Warning "No code-signing certificate '$CertSubject' found. Skipping signing."
-        Write-Warning 'Smart App Control may block LiveBackgroundSetup.exe on other PCs.'
+        throw "No code-signing certificate '$CertSubject' was found. Use -SkipSign only for local development; a release build needs a certificate."
     }
-    else {
-        Write-Host ("  certificate: " + $cert.Subject + " (" + $cert.Thumbprint + ")")
-        foreach ($exe in @($appExe, $cliExe)) { Sign-File $exe $cert }
+    Write-Host ("  certificate: " + $cert.Subject + " (" + $cert.Thumbprint + ")")
+    if (-not $TimestampServer) {
+        Write-Warning 'No RFC3161 timestamp server was supplied. A public release needs -TimestampServer so signatures survive certificate expiry.'
+    }
 
-        $cerPath = Join-Path $OutDir 'LiveBackground.cer'
-        try {
-            if (Test-Path $cerPath) { Remove-Item $cerPath -Force }
-            Export-Certificate -Cert $cert -FilePath $cerPath -Type CERT | Out-Null
-            Write-Host ("  exported " + $cerPath)
-        }
-        catch {
-            Write-Warning ("  could not export the certificate: " + $_.Exception.Message)
-        }
+    # mpv and ffmpeg stay as published by their projects; only the binaries
+    # built here are signed. The bootstrapper matters because the scheduled
+    # task launches it before the main executable.
+    foreach ($exe in @($appExe, $cliExe, $settingsExe, $trayExe, $bootstrapperExe)) {
+        Sign-File $exe $cert
     }
+
+    $cerPath = Join-Path $OutDir 'LiveBackground.cer'
+    if (Test-Path $cerPath) { Remove-Item $cerPath -Force }
+    Export-Certificate -Cert $cert -FilePath $cerPath -Type CERT | Out-Null
+    Write-Host ("  exported " + $cerPath)
 }
 else {
     Write-Step 'Signing skipped (-SkipSign)'
