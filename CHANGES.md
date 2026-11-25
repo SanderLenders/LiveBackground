@@ -25,9 +25,9 @@
   validity checks now cover every field that affects a screen's loop, pictures
   or desktop fallback. A stale startup hint is discarded when no loop exists.
 - The shipping build now cleans its output folder outside the frozen `dist`
-  archive, hard-requires the bootstrapper, signs every first-party executable,
-  and supports an optional RFC3161 timestamp server. mpv and ffmpeg remain
-  unsigned third-party binaries.
+  archive, always copies one tracked bootstrapper binary, signs every
+  first-party executable, and supports an optional RFC3161 timestamp server.
+  mpv and ffmpeg remain unsigned third-party binaries.
 - The portable `uninstall.cmd` now looks in `%LOCALAPPDATA%\LiveBackground`
   first, matching `install.cmd`, and falls back to the folder it is run from.
 - README, change list and manual-test notes were brought in line with four

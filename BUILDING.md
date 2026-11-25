@@ -69,10 +69,13 @@ the pipeline but does not create SmartScreen or SAC reputation; a public release
 needs a trusted OV/EV certificate plus an RFC3161 timestamp server. mpv and
 ffmpeg are not re-signed.
 
-The script hard-requires `tools\LiveBackgroundBootstrap.exe` when clang is not
-available, because that is the executable the scheduled tasks launch. For any
-output folder other than the frozen `dist` archive, it clears the folder first
-so runtime state, old logs and an old installer cannot leak into the package.
+The script always copies the tracked `tools\LiveBackgroundBootstrap.exe`
+because that is the executable the scheduled tasks launch; it is not recompiled
+on each build, so every package contains the same bootstrapper. Change it only
+by rebuilding it from `src\bootstrapper.c` and committing the result. For any
+output folder other than the frozen `dist` archive, the script clears the folder
+first so runtime state, old logs and an old installer cannot leak into the
+package.
 
 It is not run in CI because it needs mpv, ffmpeg, a certificate and Inno Setup,
 and takes several minutes; CI instead runs `build.ps1 -CompileOnly` to compile

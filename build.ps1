@@ -203,23 +203,16 @@ Invoke-DotnetBuildExe 'tray' 'WinExe' 'LiveBackgroundTray' 'LiveBackground.TrayP
 Write-Step "Compiling LiveBackgroundCli.exe"
 Invoke-DotnetBuildExe 'cli' 'Exe' 'LiveBackgroundCli' 'LiveBackground.SetupProgram' $cliExe @('UseWPF=false', 'ExcludeSettings=true')
 
-Write-Step "Compiling LiveBackgroundBootstrap.exe"
-$clang = Get-Command clang -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
-if (-not $clang) {
-    $wg = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
-    if (Test-Path $wg) { $clang = Get-ChildItem $wg -Recurse -Filter 'clang.exe' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1 }
+Write-Step "Copying LiveBackgroundBootstrap.exe"
+# The scheduled task launches this executable before the managed app, so every
+# build uses the same tracked binary instead of recompiling it differently on
+# each machine. To change it, rebuild from src\bootstrapper.c and commit the
+# result deliberately.
+$bootstrapSource = Join-Path $root 'tools\LiveBackgroundBootstrap.exe'
+if (-not (Test-Path $bootstrapSource)) {
+    throw 'tools\LiveBackgroundBootstrap.exe is missing. The bootstrapper is the scheduled-task target and must be present.'
 }
-$bootstrapSrc = Join-Path $root 'src\bootstrapper.c'
-if ($clang -and (Test-Path $bootstrapSrc)) {
-    & $clang -Os -s -mwindows -municode -o $bootstrapperExe $bootstrapSrc -luser32 -lkernel32
-    if ($LASTEXITCODE -ne 0) { throw "Bootstrapper compilation failed (exit $LASTEXITCODE)." }
-} else {
-    $prebuilt = Join-Path $root 'tools\LiveBackgroundBootstrap.exe'
-    if (-not (Test-Path $prebuilt)) {
-        throw 'clang was not found and tools\LiveBackgroundBootstrap.exe is missing. The bootstrapper is the scheduled-task target and must be present.'
-    }
-    Copy-Item -LiteralPath $prebuilt -Destination $bootstrapperExe -Force
-}
+Copy-Item -LiteralPath $bootstrapSource -Destination $bootstrapperExe -Force
 
 if ($CompileOnly) {
     Write-Step 'Done (compile only)'
