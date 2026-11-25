@@ -545,8 +545,6 @@ namespace LiveBackground
             Log.Info("startup: Main entered " + _startupSw.ElapsedMilliseconds + " ms after process timer start; " +
                 "process start " + _processStartUtc.ToString("o") + "; tickCount64 " + tickCount64 +
                 " ms; approx boot " + approxBootUtc.ToString("o"));
-            StartBootContextProbe();
-
             // Leave a readable trace if anything escapes the normal paths.
             AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e)
             {
@@ -655,58 +653,6 @@ namespace LiveBackground
                     try { mutex.ReleaseMutex(); } catch { /* best-effort: the mutex is released on exit regardless */ }
                 }
             }
-        }
-
-        private static void StartBootContextProbe()
-        {
-            // Diagnostic only. Reading the System event log is surprisingly
-            // expensive after a Fast Startup resume, and running it on the
-            // ThreadPool used to occupy a worker while the orphan scan and the
-            // early mpv start were queued behind it. Give it its own low-
-            // priority background thread and wait until the first frames are
-            // up, so it can never delay the logon race.
-            Thread probe = new Thread((ThreadStart)delegate
-            {
-                try
-                {
-                    Thread.Sleep(15000);
-                    using (EventLog log = new EventLog("System"))
-                    {
-                        EventLogEntryCollection entries = log.Entries;
-                        int count = entries.Count;
-                        int start = Math.Max(0, count - 50);
-                        for (int i = count - 1; i >= start; i--)
-                        {
-                            EventLogEntry entry = null;
-                            try { entry = entries[i]; } catch { continue; }
-                            if (entry == null) continue;
-                            try
-                            {
-                                // Kernel-Boot 27 indicates resume/boot type; 0x1 is hiberfile/Fast Startup.
-                                if ((entry.InstanceId & 0xFFFF) == 27 &&
-                                    string.Equals(entry.Source, "Microsoft-Windows-Kernel-Boot", StringComparison.OrdinalIgnoreCase) &&
-                                    (DateTime.UtcNow - entry.TimeGenerated.ToUniversalTime()).TotalMinutes < 15)
-                                {
-                                    string msg = entry.Message;
-                                    if (!string.IsNullOrEmpty(msg) && msg.Length > 200) msg = msg.Substring(0, 200) + "...";
-                                    Log.Info("startup: boot context Kernel-Boot/27 at " +
-                                        entry.TimeGenerated.ToUniversalTime().ToString("o") + ": " + (msg ?? ""));
-                                    return;
-                                }
-                            }
-                            finally
-                            {
-                                try { entry.Dispose(); } catch { }
-                            }
-                        }
-                    }
-                }
-                catch { /* best-effort: boot context must never affect startup */ }
-            });
-            probe.IsBackground = true;
-            probe.Name = "LiveBackground boot probe";
-            try { probe.Priority = ThreadPriority.Lowest; } catch { /* best-effort */ }
-            probe.Start();
         }
 
         private static void StartFirstFrameProbe(MpvPlayer player)

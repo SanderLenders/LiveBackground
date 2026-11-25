@@ -109,7 +109,10 @@ namespace LiveBackground
                 // Inhibit the OS screensaver while the app manages idle actions
                 // (hide chrome or lock) on its own timer.
                 "--stop-screensaver=yes" +
-                " --cache=no --priority=abovenormal " +
+                // mpv stays at Normal priority. The main app alone is boosted
+                // to High during the logon race; an AboveNormal video process
+                // would keep competing with the user's apps for the whole loop.
+                " --cache=no " +
                 "--demuxer-lavf-analyzeduration=0 --demuxer-lavf-probesize=32768 " +
                 "--gpu-shader-cache=yes --gpu-shader-cache-dir={1}" +
                 "{2} {3}{4}",

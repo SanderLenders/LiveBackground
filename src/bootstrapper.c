@@ -230,7 +230,7 @@ static int start_early_mpv(HWND progman, const wchar_t *media, const wchar_t *pr
         L"--no-input-default-bindings --no-border --gpu-api=d3d11 --hwdec=auto "
         L"--panscan=1.0 --force-window=yes --terminal=no --no-resume-playback "
         L"--sub-auto=no --audio-file-auto=no --stop-screensaver=yes --cache=no "
-        L"--priority=abovenormal --demuxer-lavf-analyzeduration=0 "
+        L"--demuxer-lavf-analyzeduration=0 "
         L"--demuxer-lavf-probesize=32768 --gpu-shader-cache=yes "
         L"--gpu-shader-cache-dir=\"%s\" \"%s\"",
         mpv, (long long)(INT_PTR)progman, shaders, media);
