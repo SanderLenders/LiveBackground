@@ -1753,9 +1753,24 @@ namespace LiveBackground
             private string _device = "";
 
             // The pill chooses the default; the checkbox flips only this screen.
+            private bool ModeOverridden
+            {
+                get { return _modeOverride != null && _modeOverride.IsChecked == true; }
+            }
             private bool EffectiveImagesMode
             {
-                get { return _globalImagesMode != (_modeOverride != null && _modeOverride.IsChecked == true); }
+                get { return _globalImagesMode != ModeOverridden; }
+            }
+            // Only the section that follows the main pill offers "Same as main
+            // screen". The opposite-mode section is an explicit per-screen
+            // override, so it always uses its own folder and playlist.
+            private bool VideoMirrorsMain
+            {
+                get { return !EffectiveImagesMode && !ModeOverridden && _sameVideo != null && _sameVideo.IsChecked == true; }
+            }
+            private bool ImagesMirrorMain
+            {
+                get { return EffectiveImagesMode && !ModeOverridden && _sameImages != null && _sameImages.IsChecked == true; }
             }
 
             public MonitorSlotUi(SettingsWindow owner, int number) { _owner = owner; _number = number; }
@@ -1802,7 +1817,7 @@ namespace LiveBackground
                 var vb = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 vb.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _videoFolder.Text = dlg.SelectedPath; } } catch { } };
                 Grid.SetColumn(vb, 1);
-                _videoDrop = CreateDropZone("Drop videos", delegate(string[] files) { if (_sameVideo == null || _sameVideo.IsChecked == true) return; _owner.CopyVideosToFolder(_videoFolder.Text, files); RefreshClipList(); }, BrowseAndAddVideosToSlot, false);
+                _videoDrop = CreateDropZone("Drop videos", delegate(string[] files) { if (VideoMirrorsMain) return; _owner.CopyVideosToFolder(_videoFolder.Text, files); RefreshClipList(); }, BrowseAndAddVideosToSlot, false);
                 _videoDrop.MinWidth = 120; _videoDrop.MinHeight = 0; _videoDrop.Margin = new Thickness(8, 0, 0, 0); _videoDrop.VerticalAlignment = VerticalAlignment.Stretch;
                 Grid.SetColumn(_videoDrop, 2);
                 vrow.Children.Add(_videoFolder); vrow.Children.Add(vb); vrow.Children.Add(_videoDrop);
@@ -1849,7 +1864,7 @@ namespace LiveBackground
                 var ib = new Button { Content = "Browse...", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
                 ib.Click += delegate { try { using (var dlg = new System.Windows.Forms.FolderBrowserDialog()) { if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) _imageFolder.Text = dlg.SelectedPath; } } catch { } };
                 Grid.SetColumn(ib, 1);
-                _imageDrop = CreateDropZone("Drop images", delegate(string[] files) { if (_sameImages == null || _sameImages.IsChecked == true) return; _owner.CopyImagesToFolder(_imageFolder.Text, files); RefreshImageList(); }, BrowseAndAddImagesToSlot, true);
+                _imageDrop = CreateDropZone("Drop images", delegate(string[] files) { if (ImagesMirrorMain) return; _owner.CopyImagesToFolder(_imageFolder.Text, files); RefreshImageList(); }, BrowseAndAddImagesToSlot, true);
                 _imageDrop.MinWidth = 120; _imageDrop.MinHeight = 0; _imageDrop.Margin = new Thickness(8, 0, 0, 0); _imageDrop.VerticalAlignment = VerticalAlignment.Stretch;
                 Grid.SetColumn(_imageDrop, 2);
                 irow.Children.Add(_imageFolder); irow.Children.Add(ib); irow.Children.Add(_imageDrop);
@@ -2004,7 +2019,7 @@ namespace LiveBackground
             {
                 try
                 {
-                    if (_sameVideo != null && _sameVideo.IsChecked == true) return;
+                    if (VideoMirrorsMain) return;
                     var dlg = new Microsoft.Win32.OpenFileDialog();
                     dlg.Title = "Choose wallpaper videos";
                     dlg.Filter = "Video files|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.m4v;*.wmv;*.mpg;*.mpeg;*.ts;*.m2ts;*.flv;*.ogv;*.3gp|All files|*.*";
@@ -2019,7 +2034,7 @@ namespace LiveBackground
             {
                 try
                 {
-                    if (_sameImages != null && _sameImages.IsChecked == true) return;
+                    if (ImagesMirrorMain) return;
                     var dlg = new Microsoft.Win32.OpenFileDialog();
                     dlg.Title = "Choose images";
                     dlg.Filter = "Image files|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp|All files|*.*";
@@ -2203,9 +2218,10 @@ namespace LiveBackground
             {
                 bool has = !string.IsNullOrEmpty(_device);
                 bool images = EffectiveImagesMode;
+                bool overridden = ModeOverridden;
                 ApplyReviewEnabled(_tab, has);
-                bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
-                bool si = _sameImages != null && _sameImages.IsChecked == true;
+                bool sv = VideoMirrorsMain;
+                bool si = ImagesMirrorMain;
 
                 if (_modeOverride != null)
                 {
@@ -2217,8 +2233,19 @@ namespace LiveBackground
                 if (_videoPlaybackPanel != null) _videoPlaybackPanel.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
                 if (_imagePlaybackPanel != null) _imagePlaybackPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
 
-                ApplyReviewChildEnabled(_sameVideo, has, has);
-                ApplyReviewChildEnabled(_sameImages, has, has);
+                // The checkbox belongs to the section that follows the main pill.
+                // When Image mode flips this screen to the other mode, that
+                // section is an explicit override and has no mirror checkbox.
+                if (_sameVideo != null)
+                {
+                    _sameVideo.Visibility = !images && !overridden ? Visibility.Visible : Visibility.Collapsed;
+                    ApplyReviewChildEnabled(_sameVideo, has, has);
+                }
+                if (_sameImages != null)
+                {
+                    _sameImages.Visibility = images && !overridden ? Visibility.Visible : Visibility.Collapsed;
+                    ApplyReviewChildEnabled(_sameImages, has, has);
+                }
                 ApplyReviewChildEnabled(_videoFolder, has, has && !sv);
                 ApplyReviewChildEnabled(_videoModeSingle, has, has && !sv);
                 ApplyReviewChildEnabled(_videoModePlaylist, has, has && !sv);
@@ -2344,9 +2371,13 @@ namespace LiveBackground
                 if (string.IsNullOrEmpty(_device)) return true;
                 ScreenSettings s = updated.ScreenByDevice(_device, true);
                 if (s == null) return true;
-                s.ModeOverride = _modeOverride != null && _modeOverride.IsChecked == true;
-                s.SameAsMain = _sameVideo != null && _sameVideo.IsChecked == true;
-                s.ImagesSameAsMain = _sameImages != null && _sameImages.IsChecked == true;
+                bool images = EffectiveImagesMode;
+                s.ModeOverride = ModeOverridden;
+                // Preserve the hidden section's saved mirror state. The visible
+                // opposite-mode section is treated as an explicit override even
+                // though its checkbox is hidden.
+                s.SameAsMain = images ? (_sameVideo != null && _sameVideo.IsChecked == true) : VideoMirrorsMain;
+                s.ImagesSameAsMain = images ? ImagesMirrorMain : (_sameImages != null && _sameImages.IsChecked == true);
                 if (_videoFolder != null && !s.SameAsMain) s.Folder = (_videoFolder.Text ?? "").Trim();
                 if (!s.SameAsMain)
                 {
