@@ -30,6 +30,10 @@ namespace LiveBackground
     public class ScreenSettings
     {
         [DataMember(Name = "device")] public string Device = "";
+        // Checked in the settings window means "use the opposite of the main
+        // Video/Images pill on this screen". Kept per device name so moving a
+        // monitor does not change its mode.
+        [DataMember(Name = "modeOverride")] public bool ModeOverride = false;
         [DataMember(Name = "sameAsMain")] public bool SameAsMain = true;
         [DataMember(Name = "folder")] public string Folder = @"%USERPROFILE%\LiveBackground\Videos";
         [DataMember(Name = "playbackMode")] public string PlaybackMode = "single";
@@ -61,6 +65,7 @@ namespace LiveBackground
         private void SetDefaults(StreamingContext context)
         {
             Device = "";
+            ModeOverride = false;
             SameAsMain = true;
             Folder = @"%USERPROFILE%\LiveBackground\Videos";
             PlaybackMode = "single";
@@ -85,6 +90,7 @@ namespace LiveBackground
         {
             ScreenSettings copy = new ScreenSettings();
             copy.Device = Device;
+            copy.ModeOverride = ModeOverride;
             copy.SameAsMain = SameAsMain;
             copy.Folder = Folder;
             copy.PlaybackMode = PlaybackMode;
@@ -356,6 +362,14 @@ namespace LiveBackground
                 }
             }
             return own;
+        }
+
+        // Effective mode for one screen. The main Video/Images pill is the
+        // default; a screen's modeOverride flips just that screen.
+        public bool ScreenUsesImages(string device)
+        {
+            bool globalImages = string.Equals(WallpaperMode, "images", StringComparison.OrdinalIgnoreCase);
+            return globalImages != ScreenFor(device ?? "").ModeOverride;
         }
 
         // The settings for one physical screen, matched by device name.

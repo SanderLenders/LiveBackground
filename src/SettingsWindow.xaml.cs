@@ -1748,8 +1748,15 @@ namespace LiveBackground
             private CheckBox _imageShuffle;
             private StackPanel _videoPlaybackPanel;
             private StackPanel _imagePlaybackPanel;
-            private bool _imagesMode;
+            private CheckBox _modeOverride;
+            private bool _globalImagesMode;
             private string _device = "";
+
+            // The pill chooses the default; the checkbox flips only this screen.
+            private bool EffectiveImagesMode
+            {
+                get { return _globalImagesMode != (_modeOverride != null && _modeOverride.IsChecked == true); }
+            }
 
             public MonitorSlotUi(SettingsWindow owner, int number) { _owner = owner; _number = number; }
 
@@ -1758,11 +1765,27 @@ namespace LiveBackground
                 string header = _number == 2 ? "2nd Screen" : _number == 3 ? "3rd Screen" : _number == 4 ? "4th Screen" : "Screen " + _number;
                 _tab = new TabItem { Header = header };
                 var sp = new StackPanel { Margin = new Thickness(8) };
+                var headerRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 _deviceLabel = Muted("No screen detected for this slot.");
                 _deviceLabel.FontSize = 10;
                 _deviceLabel.TextWrapping = TextWrapping.NoWrap;
                 _deviceLabel.TextTrimming = TextTrimming.CharacterEllipsis;
-                sp.Children.Add(_deviceLabel);
+                Grid.SetColumn(_deviceLabel, 0);
+                _modeOverride = new CheckBox
+                {
+                    Content = "Use video here",
+                    FontSize = 10,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                _modeOverride.Checked += delegate { UpdateEnabled(); };
+                _modeOverride.Unchecked += delegate { UpdateEnabled(); };
+                Grid.SetColumn(_modeOverride, 1);
+                headerRow.Children.Add(_deviceLabel);
+                headerRow.Children.Add(_modeOverride);
+                sp.Children.Add(headerRow);
 
                 _videoSection = new StackPanel();
                 _videoSection.Children.Add(Header("Video"));
@@ -2178,15 +2201,21 @@ namespace LiveBackground
             private void UpdateEnabled()
             {
                 bool has = !string.IsNullOrEmpty(_device);
+                bool images = EffectiveImagesMode;
                 ApplyReviewEnabled(_tab, has);
                 bool sv = _sameVideo != null && _sameVideo.IsChecked == true;
                 bool si = _sameImages != null && _sameImages.IsChecked == true;
 
-                if (_contentTab != null) _contentTab.Header = _imagesMode ? "Images" : "Video";
-                if (_videoSection != null) _videoSection.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
-                if (_imageSection != null) _imageSection.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
-                if (_videoPlaybackPanel != null) _videoPlaybackPanel.Visibility = _imagesMode ? Visibility.Collapsed : Visibility.Visible;
-                if (_imagePlaybackPanel != null) _imagePlaybackPanel.Visibility = _imagesMode ? Visibility.Visible : Visibility.Collapsed;
+                if (_modeOverride != null)
+                {
+                    _modeOverride.Content = _globalImagesMode ? "Use video here" : "Use images here";
+                    ApplyReviewChildEnabled(_modeOverride, has, has);
+                }
+                if (_contentTab != null) _contentTab.Header = images ? "Images" : "Video";
+                if (_videoSection != null) _videoSection.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
+                if (_imageSection != null) _imageSection.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
+                if (_videoPlaybackPanel != null) _videoPlaybackPanel.Visibility = images ? Visibility.Collapsed : Visibility.Visible;
+                if (_imagePlaybackPanel != null) _imagePlaybackPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
 
                 ApplyReviewChildEnabled(_sameVideo, has, has);
                 ApplyReviewChildEnabled(_sameImages, has, has);
@@ -2208,7 +2237,7 @@ namespace LiveBackground
                 ApplyReviewChildEnabled(_imageShuffle, has, has && !si);
             }
 
-            public void SetMode(bool imagesMode) { _imagesMode = imagesMode; UpdateEnabled(); }
+            public void SetMode(bool imagesMode) { _globalImagesMode = imagesMode; UpdateEnabled(); }
 
             public void LoadFromConfig(AppConfig config, List<ScreenInfo> screens, bool hasSecond, bool duplicate)
             {
@@ -2238,6 +2267,7 @@ namespace LiveBackground
                 if (reloadValues || deviceChanged)
                 {
                     ScreenSettings s = config.ScreenFor(_device);
+                    if (_modeOverride != null) _modeOverride.IsChecked = s.ModeOverride;
                     if (_sameVideo != null) _sameVideo.IsChecked = s.SameAsMain;
                     if (_videoFolder != null) _videoFolder.Text = s.Folder ?? "";
                     bool singleVideo = string.Equals(s.PlaybackMode, "single", StringComparison.OrdinalIgnoreCase);
@@ -2314,6 +2344,7 @@ namespace LiveBackground
                 if (string.IsNullOrEmpty(_device)) return true;
                 ScreenSettings s = updated.ScreenByDevice(_device, true);
                 if (s == null) return true;
+                s.ModeOverride = _modeOverride != null && _modeOverride.IsChecked == true;
                 s.SameAsMain = _sameVideo != null && _sameVideo.IsChecked == true;
                 s.ImagesSameAsMain = _sameImages != null && _sameImages.IsChecked == true;
                 if (_videoFolder != null && !s.SameAsMain) s.Folder = (_videoFolder.Text ?? "").Trim();

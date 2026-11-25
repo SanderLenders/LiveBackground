@@ -38,6 +38,15 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void Compute_changes_when_the_mode_override_changes()
+        {
+            AppConfig changed = ConfigWithOneScreen();
+            changed.ExtraScreens[0].ModeOverride = true;
+            Assert.NotEqual(ScreenConfigToken.Compute(ConfigWithOneScreen()),
+                ScreenConfigToken.Compute(changed));
+        }
+
+        [Fact]
         public void Compute_skips_null_screens()
         {
             AppConfig config = new AppConfig();

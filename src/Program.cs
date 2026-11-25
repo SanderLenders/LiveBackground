@@ -212,6 +212,40 @@ namespace LiveBackground
             }
         }
 
+        // The main pill is the default; a screen's modeOverride flips it for
+        // that monitor only. These helpers keep the runtime decisions in one
+        // place so the player and image sides cannot disagree.
+        private static bool ScreenUsesImages(string device)
+        {
+            return _config != null && _config.ScreenUsesImages(device ?? "");
+        }
+
+        private static bool ScreenUsesImages(ScreenPlayer screen)
+        {
+            return screen != null && ScreenUsesImages(screen.Device);
+        }
+
+        private static bool ScreenUsesVideo(ScreenPlayer screen)
+        {
+            return screen != null && !ScreenUsesImages(screen);
+        }
+
+        // A screen only counts as showing video once its player is up on a
+        // loop that exists. Until then an image layer may still cover it (for
+        // example when global Images overrides a screen to Video but that
+        // screen has no cached loop yet).
+        private static bool ScreenVideoIsLive(string device)
+        {
+            if (string.IsNullOrEmpty(device) || ScreenUsesImages(device)) return false;
+            foreach (ScreenPlayer screen in _screenPlayers)
+            {
+                if (!string.Equals(screen.Device, device, StringComparison.OrdinalIgnoreCase)) continue;
+                if (screen.Player == null || !screen.Player.IsRunning) return false;
+                return !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath);
+            }
+            return false;
+        }
+
         public static void SetPaused(bool paused)
         {
             _paused = paused;
@@ -235,6 +269,9 @@ namespace LiveBackground
                 {
                     lock (ImageSync) { _nextImageAt = DateTime.UtcNow; }
                 }
+                // A resume must also bring back any screen that the main pill
+                // currently flips to video.
+                _screensDirty = true;
                 // A resume is a deliberate fresh start for the video.
                 ResetRestartBackoff();
             }
@@ -350,6 +387,10 @@ namespace LiveBackground
             // needed loop rebuilt in the watchdog. The token covers all screens
             // at once; comparing it before and after the swap catches them.
             string screensBefore = ScreenConfigToken.Compute(_config);
+            // Compare before the swap: IsImagesMode still reads the old config
+            // here. The screen token does not include the main pill.
+            bool globalModeChanged = !string.Equals(_config.WallpaperMode, updated.WallpaperMode,
+                StringComparison.OrdinalIgnoreCase);
             // Publish a brand-new config object in a single atomic reference
             // write instead of copying into the live one field by field. The
             // watchdog reads _config without a lock, so it must never observe a
@@ -358,8 +399,11 @@ namespace LiveBackground
             AppConfig fresh = updated.Clone();
             _config = fresh;
             ReconfigurePlayers(fresh);
-            if (!string.Equals(screensBefore, ScreenConfigToken.Compute(_config), StringComparison.Ordinal))
+            if (globalModeChanged ||
+                !string.Equals(screensBefore, ScreenConfigToken.Compute(_config), StringComparison.Ordinal))
             {
+                // A global mode flip changes every screen's effective mode even
+                // though no per-screen field changed.
                 _screensDirty = true;
             }
             if (lockChanged) StartLockScreenWorker();
@@ -377,7 +421,10 @@ namespace LiveBackground
                 if (_player != null) _player.Stop();
                 foreach (ScreenPlayer screen in _screenPlayers)
                 {
-                    if (screen.Player != null) screen.Player.Stop();
+                    // A screen flipped to images stops here. One flipped to
+                    // video keeps its cached loop; the watchdog starts it if
+                    // it is not already playing.
+                    if (ScreenUsesImages(screen) && screen.Player != null) screen.Player.Stop();
                 }
                 // This runs on the apply thread while the watchdog advances the
                 // slideshow. Take ImageSync so the whole transition - the flags,
@@ -398,6 +445,7 @@ namespace LiveBackground
                     _imageActive = false;
                     _nextImageAt = DateTime.UtcNow;
                     _imageProgman = Native.FindWindow("Progman", null);
+                    if (_imageProgman != IntPtr.Zero) _progman = _imageProgman;
                     StartImageSurfaces(_imageProgman);
                     ApplyImage(false);
                     _imageActive = true;
@@ -1100,11 +1148,22 @@ namespace LiveBackground
                 {
                     Log.Error("Progman not found for the image layer; the wallpaper fallback is used");
                 }
+                else
+                {
+                    // Overridden screens may be playing video even while the
+                    // main pill is Images, so the player code needs the same
+                    // desktop handle.
+                    _progman = _imageProgman;
+                }
                 StartImageSurfaces(_imageProgman);
                 StartWatcher(folder);
                 StartImageWatcher(imageFolder);
                 ApplyImage(false);
                 _imageActive = true;
+                // Start only the cached loops of screens flipped to video;
+                // this path never builds a new loop from global Images mode.
+                SyncScreenPlayersToMode(true);
+                UpdateExtraImageSlideshow();
                 Log.Info("images mode: showing " +
                     (string.IsNullOrEmpty(_currentImage) ? "no picture" : Path.GetFileName(_currentImage)));
                 SaveStartupHint(true, _currentImage ?? "");
@@ -1165,6 +1224,9 @@ namespace LiveBackground
 
                 // Create the WorkerW wallpaper layer while mpv is still loading.
                 StartWallpaperLayerWarmup(_progman);
+                // A screen flipped to images needs its own picture layer. This
+                // is a no-op in the normal all-video layout.
+                UpdateFallbackSurfaces();
             }
 
             // The static frame hides the wait for mpv, but it does not need to

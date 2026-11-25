@@ -103,8 +103,17 @@ namespace LiveBackground
                 player.Number = number;
                 player.ScreenIndex = screen.Index;
                 RefreshScreenMediaPath(player);
-                if (string.IsNullOrEmpty(player.MediaPath) && !_config.ScreenFor(player.Device).SameAsMain)
+                if (ScreenUsesImages(player))
                 {
+                    if (player.Player != null && player.Player.IsRunning) player.Player.Stop();
+                    player.ForceBuild = false;
+                }
+                else if (string.IsNullOrEmpty(player.MediaPath) &&
+                    !_config.ScreenFor(player.Device).SameAsMain && !IsImagesMode)
+                {
+                    // Global Images never builds a new loop. A screen flipped
+                    // to video there can only use a loop that is already
+                    // cached.
                     player.ForceBuild = true;
                     Log.Info("no loop yet for the " + ScreenLabel(player) + ", building in the background");
                 }
@@ -119,6 +128,12 @@ namespace LiveBackground
         private static void RefreshScreenMediaPath(ScreenPlayer screen)
         {
             if (screen == null || _config == null) return;
+            if (ScreenUsesImages(screen))
+            {
+                screen.MediaPath = "";
+                screen.FramePath = "";
+                return;
+            }
             ScreenSettings settings = _config.ScreenFor(screen.Device);
             if (settings.SameAsMain)
             {
@@ -149,6 +164,91 @@ namespace LiveBackground
                 if (screen.ForceBuild) return true;
             }
             return false;
+        }
+
+        // Bring every extra screen in line with the current pill/checkbox
+        // combination. RebuildScreenPlayers stops images screens and points
+        // video screens at the right loop; this also starts a video screen
+        // that should be playing, including one flipped while the main pill
+        // says Images.
+        private static void SyncScreenPlayersToMode(bool start)
+        {
+            RebuildScreenPlayers();
+            foreach (ScreenPlayer screen in _screenPlayers)
+            {
+                if (screen == null || screen.Player == null) continue;
+                if (!ScreenUsesVideo(screen))
+                {
+                    if (screen.Player.IsRunning) screen.Player.Stop();
+                    continue;
+                }
+                RefreshScreenMediaPath(screen);
+                if (!start || _paused || _progman == IntPtr.Zero ||
+                    string.IsNullOrEmpty(screen.MediaPath) || !File.Exists(screen.MediaPath))
+                {
+                    continue;
+                }
+                if (screen.Player.IsRunning) screen.Player.Stop();
+                screen.Player.Start(_progman, screen.MediaPath);
+            }
+        }
+
+        // The per-screen half of the watchdog, shared by the video and images
+        // branches. Images screens stop their player; video screens are placed
+        // on their monitor and get the same bounded restart attempts as before.
+        private static void WatchScreenPlayers()
+        {
+            foreach (ScreenPlayer screen in _screenPlayers)
+            {
+                if (screen == null || screen.Player == null) continue;
+                if (ScreenUsesImages(screen))
+                {
+                    if (screen.Player.IsRunning) screen.Player.Stop();
+                    continue;
+                }
+                if (screen.Player.IsRunning)
+                {
+                    if (screen.Restarts > 0 &&
+                        (DateTime.UtcNow - screen.Player.StartedUtc).TotalSeconds > 20)
+                    {
+                        screen.Restarts = 0;
+                        screen.RestartWindow = DateTime.MinValue;
+                        screen.RestartStopped = false;
+                    }
+                    PlacePlayerOnScreen(screen.Player, screen.ScreenIndex);
+                }
+                else if (!_building && !_paused && _progman != IntPtr.Zero &&
+                    !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
+                {
+                    if (screen.Player.StartedRecently(5))
+                    {
+                        // Give a just-started player a moment to appear.
+                    }
+                    else if (screen.RestartStopped)
+                    {
+                        // Already gave up on this screen's loop.
+                    }
+                    else
+                    {
+                        DateTime now = DateTime.UtcNow;
+                        if (now - screen.RestartWindow > TimeSpan.FromMinutes(2)) screen.Restarts = 0;
+                        screen.RestartWindow = now;
+                        screen.Restarts++;
+                        if (screen.Restarts > MaxPlayerRestarts)
+                        {
+                            screen.RestartStopped = true;
+                            Log.Warn("the " + ScreenLabel(screen) + " player keeps exiting; giving up");
+                            Ui.Notify("LiveBackground", ScreenLabel(screen) +
+                                ": the wallpaper video could not play. Pick another clip or check logs\\app.log.");
+                        }
+                        else
+                        {
+                            Log.Warn("the " + ScreenLabel(screen) + " player is not running, restarting");
+                            screen.Player.Start(_progman, screen.MediaPath);
+                        }
+                    }
+                }
+            }
         }
 
         // "second screen" / "third screen" for the log and the progress card,

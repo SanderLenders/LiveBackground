@@ -17,6 +17,7 @@ namespace LiveBackground
             {
                 if (screen == null) continue;
                 sb.Append(screen.Device ?? "").Append('\u0001')
+                  .Append(screen.ModeOverride ? '1' : '0').Append('\u0001')
                   .Append(screen.SameAsMain ? '1' : '0').Append('\u0001')
                   .Append(screen.Folder ?? "").Append('\u0001')
                   .Append(screen.PlaybackMode ?? "").Append('\u0001')

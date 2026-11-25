@@ -142,8 +142,11 @@ namespace LiveBackground
             return images[(index + 1) % images.Count];
         }
 
-        // Advances each extra screen that has its own image settings. Mirrored
-        // screens are painted by ApplyImage together with the primary screen.
+        // Advances each extra screen that currently wants pictures. In the
+        // normal Images layout a screen that mirrors the main slideshow is
+        // still painted by ApplyImage; a screen with its own image settings has
+        // its own state. With a per-screen override in Video mode, even a
+        // mirror needs its own state because the main image tick is not running.
         private static void UpdateExtraImageSlideshow()
         {
             // Save/apply runs on the settings UI thread while the watchdog is
@@ -152,11 +155,35 @@ namespace LiveBackground
             lock (ImageSync)
             {
                 SyncScreenImageStates();
+                bool globalImages = IsImagesMode;
                 foreach (ScreenImageState state in _screenImages)
                 {
-                    ScreenSettings settings = _config.ScreenFor(state.Device);
-                    if (settings.ImagesSameAsMain)
+                    bool effectiveImages = ScreenUsesImages(state.Device);
+                    bool wantsImage = effectiveImages || (globalImages && !ScreenVideoIsLive(state.Device));
+                    if (!wantsImage)
                     {
+                        StopScreenImageWatcher(state);
+                        bool owned = state.Active || !string.IsNullOrEmpty(state.SurfaceImage);
+                        state.Active = false;
+                        state.CurrentImage = "";
+                        state.SurfaceImage = "";
+                        // Only hide a layer this state painted. A customized
+                        // Video-mode fallback owns its own layer and must stay
+                        // visible while the video is paused or rebuilding.
+                        if (owned && state.ScreenIndex >= 0 && state.ScreenIndex < _imageSurfaces.Count &&
+                            _imageSurfaces[state.ScreenIndex].IsStarted)
+                        {
+                            _imageSurfaces[state.ScreenIndex].Hide();
+                        }
+                        continue;
+                    }
+
+                    ScreenSettings settings = _config.ScreenFor(state.Device);
+                    if (settings.ImagesSameAsMain && globalImages)
+                    {
+                        // ApplyImage owns this layer while the main pill is
+                        // Images, including a screen flipped to video whose
+                        // cached loop is not playing yet.
                         StopScreenImageWatcher(state);
                         state.Active = false;
                         state.CurrentImage = "";
@@ -164,7 +191,9 @@ namespace LiveBackground
                         continue;
                     }
 
-                    AppConfig own = _config.ScreenConfig(settings);
+                    // A mirror in Video mode uses the main image settings; an
+                    // independent screen keeps the settings saved in its tab.
+                    AppConfig own = settings.ImagesSameAsMain ? _config : _config.ScreenConfig(settings);
                     if (state.ListDirty || !state.Active)
                     {
                         state.ListDirty = false;
@@ -286,6 +315,10 @@ namespace LiveBackground
             }
         }
 
+        // A layer is owned by something other than the main slideshow when a
+        // video is actually playing on it, or when that screen has its own
+        // picture settings. A flipped screen waiting for a cached loop is not
+        // owned, so the main picture keeps covering it until video appears.
         private static bool IsIndependentImageIndex(int index)
         {
             if (_config == null) return false;
@@ -294,7 +327,8 @@ namespace LiveBackground
                 foreach (ScreenImageState state in _screenImages)
                 {
                     if (state.ScreenIndex != index) continue;
-                    return !_config.ScreenFor(state.Device).ImagesSameAsMain;
+                    return ScreenVideoIsLive(state.Device) ||
+                        !_config.ScreenFor(state.Device).ImagesSameAsMain;
                 }
                 return false;
             }
@@ -449,7 +483,8 @@ namespace LiveBackground
 
         // Video's static fallback remains the native Windows wallpaper on every
         // screen by default. Only an independent screen whose desktop fallback
-        // was explicitly customized needs an app-owned image layer.
+        // was explicitly customized needs an app-owned image layer. A screen
+        // flipped to Images also owns its layer, even in a Video desktop.
         private static void UpdateFallbackSurfaces()
         {
             if (IsImagesMode || _config == null || _screens == null) return;
@@ -458,7 +493,7 @@ namespace LiveBackground
                 bool any = false;
                 foreach (ScreenPlayer screen in _screenPlayers)
                 {
-                    if (NeedsFallbackSurface(screen))
+                    if (ScreenUsesImages(screen) || NeedsFallbackSurface(screen))
                     {
                         any = true;
                         break;
@@ -466,6 +501,7 @@ namespace LiveBackground
                 }
                 if (!any)
                 {
+                    ResetExtraImageStates();
                     ImageHideAll();
                     foreach (ScreenPlayer screen in _screenPlayers)
                     {
@@ -477,13 +513,15 @@ namespace LiveBackground
                 if (_progman == IntPtr.Zero) return;
                 StartImageSurfaces(_progman);
 
-                // The primary and mirroring screens use the native wallpaper.
+                // The primary and mirroring video screens use the native
+                // wallpaper. Image screens and customized fallbacks are ours.
                 for (int i = 0; i < _imageSurfaces.Count; i++)
                 {
                     bool managed = false;
                     foreach (ScreenPlayer screen in _screenPlayers)
                     {
-                        if (screen.ScreenIndex == i && NeedsFallbackSurface(screen))
+                        if (screen.ScreenIndex == i &&
+                            (ScreenUsesImages(screen) || NeedsFallbackSurface(screen)))
                         {
                             managed = true;
                             break;
@@ -494,6 +532,13 @@ namespace LiveBackground
 
                 foreach (ScreenPlayer screen in _screenPlayers)
                 {
+                    if (ScreenUsesImages(screen))
+                    {
+                        // The slideshow state owns this layer; drop any stale
+                        // fallback flag from before the checkbox was ticked.
+                        HideFallbackSurface(screen);
+                        continue;
+                    }
                     if (!NeedsFallbackSurface(screen))
                     {
                         HideFallbackSurface(screen);
@@ -521,6 +566,11 @@ namespace LiveBackground
                         screen.FallbackVisible = true;
                     }
                 }
+
+                // Image screens advanced here even though the main image tick
+                // belongs to the Images pill and is not running. The owned gate
+                // above leaves customized fallback layers alone.
+                UpdateExtraImageSlideshow();
             }
         }
 
@@ -550,9 +600,10 @@ namespace LiveBackground
         {
             lock (ImageSync)
             {
-                foreach (ImageSurface surface in _imageSurfaces)
+                for (int i = 0; i < _imageSurfaces.Count; i++)
                 {
-                    if (surface.IsStarted) surface.EnsureVisible();
+                    if (IsIndependentImageIndex(i)) continue;
+                    if (_imageSurfaces[i].IsStarted) _imageSurfaces[i].EnsureVisible();
                 }
             }
         }

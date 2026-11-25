@@ -104,7 +104,12 @@ namespace LiveBackground
                                 Log.Info("Explorer restarted, reattaching the image layer");
                             }
                             _imageProgman = current;
+                            // A screen flipped to video lives in the same
+                            // desktop as the image layers; its old window was
+                            // destroyed with Explorer.
+                            _progman = current;
                             ImageAttachAll(current);
+                            if (!_paused) SyncScreenPlayersToMode(true);
                         }
 
                         // A monitor was added, removed or resized: rebuild the
@@ -119,6 +124,15 @@ namespace LiveBackground
                                 _surfaceImage = "";
                                 if (!string.IsNullOrEmpty(_currentImage)) ApplyImage(false);
                             }
+                            if (_imageProgman != IntPtr.Zero) _progman = _imageProgman;
+                            SyncScreenPlayersToMode(true);
+                        }
+                        else if (_screensDirty)
+                        {
+                            // A save may only have flipped one screen's
+                            // checkbox while the main pill stayed on Images.
+                            _screensDirty = false;
+                            SyncScreenPlayersToMode(true);
                         }
 
                         if (_paused)
@@ -129,6 +143,9 @@ namespace LiveBackground
                         }
                         else
                         {
+                            // Bring up cached loops on screens flipped to video
+                            // before the image layers choose what to cover.
+                            WatchScreenPlayers();
                             UpdateImageSlideshow();
                             if (!string.IsNullOrEmpty(_currentImage)) ImageEnsureVisibleAll();
                         }
@@ -161,7 +178,11 @@ namespace LiveBackground
                         if (!_paused && !string.IsNullOrEmpty(_mediaPath)) _player.Start(_progman, _mediaPath);
                         foreach (ScreenPlayer screen in _screenPlayers)
                         {
-                            if (screen.Player != null && !_paused &&
+                            if (ScreenUsesImages(screen))
+                            {
+                                if (screen.Player != null && screen.Player.IsRunning) screen.Player.Stop();
+                            }
+                            else if (screen.Player != null && !_paused &&
                                 !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
                             {
                                 screen.Player.Start(_progman, screen.MediaPath);
@@ -169,6 +190,10 @@ namespace LiveBackground
                             screen.FallbackVisible = false;
                             screen.FallbackImage = "";
                         }
+                        // The layers were destroyed with the old desktop, so
+                        // an image-override screen must repaint rather than
+                        // trust its remembered picture.
+                        ResetExtraImageStates();
                         firstPlacementLogged = false;
                     }
                     else if (_progman == IntPtr.Zero)
@@ -209,8 +234,13 @@ namespace LiveBackground
                             // its own loop is left to its own build.
                             foreach (ScreenPlayer screen in _screenPlayers)
                             {
-                                if (screen.Player == null || _paused) continue;
-                                if (!_config.ScreenFor(screen.Device).SameAsMain) continue;
+                                if (screen.Player == null) continue;
+                                if (ScreenUsesImages(screen))
+                                {
+                                    if (screen.Player.IsRunning) screen.Player.Stop();
+                                    continue;
+                                }
+                                if (_paused || !_config.ScreenFor(screen.Device).SameAsMain) continue;
                                 screen.MediaPath = _mediaPath;
                                 if (screen.Player.IsRunning) screen.Player.Stop();
                                 screen.Player.Start(_progman, screen.MediaPath);
@@ -278,7 +308,12 @@ namespace LiveBackground
                             screen.FailureNotified = false;
                             screen.MediaPath = finished2.LoopPath;
                             screen.FramePath = finished2.FramePath;
-                            if (screen.Player != null && !_paused)
+                            if (screen.Player != null && ScreenUsesImages(screen))
+                            {
+                                // The checkbox changed while this encode ran.
+                                if (screen.Player.IsRunning) screen.Player.Stop();
+                            }
+                            else if (screen.Player != null && !_paused)
                             {
                                 if (screen.Player.IsRunning) screen.Player.Stop();
                                 screen.Player.Start(_progman, screen.MediaPath);
@@ -344,7 +379,11 @@ namespace LiveBackground
                                 _player.Start(_progman, _mediaPath);
                             foreach (ScreenPlayer screen in _screenPlayers)
                             {
-                                if (screen.Player != null && !string.IsNullOrEmpty(screen.MediaPath) &&
+                                if (ScreenUsesImages(screen))
+                                {
+                                    if (screen.Player != null && screen.Player.IsRunning) screen.Player.Stop();
+                                }
+                                else if (screen.Player != null && !string.IsNullOrEmpty(screen.MediaPath) &&
                                     File.Exists(screen.MediaPath))
                                 {
                                     screen.Player.Start(_progman, screen.MediaPath);
@@ -361,17 +400,9 @@ namespace LiveBackground
                     if (_screensDirty)
                     {
                         _screensDirty = false;
-                        RebuildScreenPlayers();
-                        foreach (ScreenPlayer screen in _screenPlayers)
-                        {
-                            RefreshScreenMediaPath(screen);
-                            if (screen.Player != null && !_paused && _progman != IntPtr.Zero &&
-                                !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
-                            {
-                                if (screen.Player.IsRunning) screen.Player.Stop();
-                                screen.Player.Start(_progman, screen.MediaPath);
-                            }
-                        }
+                        // Includes a global pill flip, which changes every
+                        // screen's effective mode without touching the token.
+                        SyncScreenPlayersToMode(true);
                     }
 
                     // Follow the video folder if it was changed in the settings.
@@ -439,6 +470,13 @@ namespace LiveBackground
                         foreach (ScreenPlayer screen in _screenPlayers)
                         {
                             if (screen.Player == null) continue;
+                            if (ScreenUsesImages(screen))
+                            {
+                                // An images screen has no loop to build, even
+                                // when the rest of the desktop plays video.
+                                screen.ForceBuild = false;
+                                continue;
+                            }
                             ScreenSettings settings = _config.ScreenFor(screen.Device);
                             if (settings.SameAsMain)
                             {
@@ -624,55 +662,9 @@ namespace LiveBackground
                     }
 
                     // Each extra screen has its own player and watchdog: place
-                    // it on its monitor and bring it back if it exited.
-                    foreach (ScreenPlayer screen in _screenPlayers)
-                    {
-                        if (screen.Player == null) continue;
-                        if (screen.Player.IsRunning)
-                        {
-                            // A screen player that has stayed up for a while is
-                            // healthy; a later failure may try again.
-                            if (screen.Restarts > 0 &&
-                                (DateTime.UtcNow - screen.Player.StartedUtc).TotalSeconds > 20)
-                            {
-                                screen.Restarts = 0;
-                                screen.RestartWindow = DateTime.MinValue;
-                                screen.RestartStopped = false;
-                            }
-                            PlacePlayerOnScreen(screen.Player, screen.ScreenIndex);
-                        }
-                        else if (!_building && !_paused && _progman != IntPtr.Zero &&
-                            !string.IsNullOrEmpty(screen.MediaPath) && File.Exists(screen.MediaPath))
-                        {
-                            if (screen.Player.StartedRecently(5))
-                            {
-                                // Give a just-started player a moment to appear.
-                            }
-                            else if (screen.RestartStopped)
-                            {
-                                // Already gave up on this screen's loop.
-                            }
-                            else
-                            {
-                                DateTime now = DateTime.UtcNow;
-                                if (now - screen.RestartWindow > TimeSpan.FromMinutes(2)) screen.Restarts = 0;
-                                screen.RestartWindow = now;
-                                screen.Restarts++;
-                                if (screen.Restarts > MaxPlayerRestarts)
-                                {
-                                    screen.RestartStopped = true;
-                                    Log.Warn("the " + ScreenLabel(screen) + " player keeps exiting; giving up");
-                                    Ui.Notify("LiveBackground", ScreenLabel(screen) +
-                                        ": the wallpaper video could not play. Pick another clip or check logs\\app.log.");
-                                }
-                                else
-                                {
-                                    Log.Warn("the " + ScreenLabel(screen) + " player is not running, restarting");
-                                    screen.Player.Start(_progman, screen.MediaPath);
-                                }
-                            }
-                        }
-                    }
+                    // it on its monitor and bring it back if it exited. Screens
+                    // flipped to images are stopped by the same helper.
+                    WatchScreenPlayers();
 
                     // Show a customized static desktop image only on screens
                     // whose player is paused, stopped or still being built.

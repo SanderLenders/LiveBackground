@@ -367,5 +367,31 @@ namespace LiveBackground.Tests
                 Assert.Equal("single", loaded.PlaybackMode);
             }
         }
+
+        [Fact]
+        public void ScreenUsesImages_flips_only_the_overridden_device()
+        {
+            AppConfig c = new AppConfig();
+            c.ExtraScreens = new List<ScreenSettings>
+            {
+                new ScreenSettings { Device = @"\\.\DISPLAY2", ModeOverride = true },
+                new ScreenSettings { Device = @"\\.\DISPLAY3" },
+            };
+
+            Assert.True(c.ScreenUsesImages(@"\\.\DISPLAY2"));
+            Assert.False(c.ScreenUsesImages(@"\\.\DISPLAY3"));
+
+            c.WallpaperMode = "images";
+            Assert.False(c.ScreenUsesImages(@"\\.\DISPLAY2"));
+            Assert.True(c.ScreenUsesImages(@"\\.\DISPLAY3"));
+        }
+
+        [Fact]
+        public void ModeOverride_survives_a_clone()
+        {
+            AppConfig c = new AppConfig();
+            c.ExtraScreens.Add(new ScreenSettings { Device = @"\\.\DISPLAY2", ModeOverride = true });
+            Assert.True(c.Clone().ExtraScreens[0].ModeOverride);
+        }
     }
 }
