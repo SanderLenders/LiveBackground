@@ -26,7 +26,11 @@ namespace LiveBackground
                       ? screen.CrossfadeSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                       : "").Append('\u0001')
                   .Append(screen.FineCrossfadeSteps.HasValue
-                      ? (screen.FineCrossfadeSteps.Value ? '1' : '0') : '-').Append('\u0001');
+                      ? (screen.FineCrossfadeSteps.Value ? '1' : '0') : '-').Append('\u0001')
+                  .Append(screen.RenderWidth.HasValue ? screen.RenderWidth.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
+                  .Append(screen.RenderHeight.HasValue ? screen.RenderHeight.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
+                  .Append(screen.Fps.HasValue ? screen.Fps.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001')
+                  .Append(screen.Crf.HasValue ? screen.Crf.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-").Append('\u0001');
                 if (screen.Playlist != null)
                 {
                     foreach (PlaylistEntry entry in screen.Playlist)

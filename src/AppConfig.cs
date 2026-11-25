@@ -43,6 +43,12 @@ namespace LiveBackground
         // the main video fade until its own fade is saved in the settings.
         [DataMember(Name = "crossfadeSeconds")] public double? CrossfadeSeconds;
         [DataMember(Name = "fineCrossfadeSteps")] public bool? FineCrossfadeSteps;
+        // The same idea for the loop's render settings. Null inherits the main
+        // Playback tab; an explicit value builds this screen's own loop variant.
+        [DataMember(Name = "renderWidth")] public int? RenderWidth;
+        [DataMember(Name = "renderHeight")] public int? RenderHeight;
+        [DataMember(Name = "fps")] public int? Fps;
+        [DataMember(Name = "crf")] public int? Crf;
 
         [DataMember(Name = "imagesSameAsMain")] public bool ImagesSameAsMain = true;
         [DataMember(Name = "imageFolder")] public string ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
@@ -73,6 +79,10 @@ namespace LiveBackground
             Playlist = new List<PlaylistEntry>();
             CrossfadeSeconds = null;
             FineCrossfadeSteps = null;
+            RenderWidth = null;
+            RenderHeight = null;
+            Fps = null;
+            Crf = null;
             ImagesSameAsMain = true;
             ImageFolder = @"%USERPROFILE%\LiveBackground\images\wallpapers";
             ImageMode = "single";
@@ -98,6 +108,10 @@ namespace LiveBackground
             copy.Playlist = CopyEntries(Playlist);
             copy.CrossfadeSeconds = CrossfadeSeconds;
             copy.FineCrossfadeSteps = FineCrossfadeSteps;
+            copy.RenderWidth = RenderWidth;
+            copy.RenderHeight = RenderHeight;
+            copy.Fps = Fps;
+            copy.Crf = Crf;
             copy.ImagesSameAsMain = ImagesSameAsMain;
             copy.ImageFolder = ImageFolder;
             copy.ImageMode = ImageMode;
@@ -317,9 +331,9 @@ namespace LiveBackground
             }
         }
 
-        // A config that builds one screen's own loop: the same render settings
-        // as the main loop, but that screen's folder, mode and clip selection.
-        // Used only when "same as main" is off for the screen.
+        // A config that builds one screen's own loop: that screen's folder,
+        // mode, clip selection and optional render overrides. Unset overrides
+        // still inherit the main Playback settings.
         public AppConfig ScreenConfig(ScreenSettings screen)
         {
             AppConfig own = Clone();
@@ -338,6 +352,10 @@ namespace LiveBackground
                 }
                 if (screen.CrossfadeSeconds.HasValue) own.CrossfadeSeconds = screen.CrossfadeSeconds.Value;
                 if (screen.FineCrossfadeSteps.HasValue) own.FineCrossfadeSteps = screen.FineCrossfadeSteps.Value;
+                if (screen.RenderWidth.HasValue) own.RenderWidth = screen.RenderWidth.Value;
+                if (screen.RenderHeight.HasValue) own.RenderHeight = screen.RenderHeight.Value;
+                if (screen.Fps.HasValue) own.Fps = screen.Fps.Value;
+                if (screen.Crf.HasValue) own.Crf = screen.Crf.Value;
 
                 own.ImageFolder = screen.ImageFolder;
                 own.ImageMode = screen.ImageMode;
@@ -648,6 +666,23 @@ namespace LiveBackground
                 {
                     screen.CrossfadeSeconds = 10.0;
                 }
+
+                // Width and height travel together; one half of a pair is
+                // treated as untouched so the main settings still apply.
+                if (screen.RenderWidth.HasValue != screen.RenderHeight.HasValue)
+                {
+                    screen.RenderWidth = null;
+                    screen.RenderHeight = null;
+                }
+                if (screen.RenderWidth.HasValue &&
+                    (screen.RenderWidth.Value < 640 || screen.RenderWidth.Value > 7680 ||
+                     screen.RenderHeight.Value < 360 || screen.RenderHeight.Value > 4320))
+                {
+                    screen.RenderWidth = null;
+                    screen.RenderHeight = null;
+                }
+                if (screen.Fps.HasValue && (screen.Fps.Value < 10 || screen.Fps.Value > 60)) screen.Fps = null;
+                if (screen.Crf.HasValue && (screen.Crf.Value < 10 || screen.Crf.Value > 30)) screen.Crf = null;
 
                 if (string.IsNullOrEmpty(screen.ImageFolder))
                 {

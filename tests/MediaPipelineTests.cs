@@ -173,6 +173,42 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void IsScreenCacheValid_rejects_a_stale_render_quality()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string device = @"\\.\DISPLAY2";
+                string loopName = "screen-loop.mp4";
+                Directory.CreateDirectory(MediaPipeline.LoopsDir(temp.Dir));
+                temp.Write(Path.Combine("cache", "loops", loopName), "loop");
+                AppConfig config = new AppConfig();
+                MediaManifest manifest = new MediaManifest
+                {
+                    Signature = MediaPipeline.Signature(temp.Dir, config),
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
+                    LoopFile = Path.Combine("loops", loopName),
+                    FrameFile = ""
+                };
+                JsonStore.SerializeFile(MediaPipeline.ScreenManifestPath(temp.Dir, device), manifest);
+
+                MediaManifest check;
+                Assert.True(MediaPipeline.IsScreenCacheValid(temp.Dir, config, device, out check, false));
+
+                config.Crf = 23;
+                Assert.False(MediaPipeline.IsScreenCacheValid(temp.Dir, config, device, out check, false));
+                config.Crf = 18;
+
+                config.Preset = "slow";
+                Assert.False(MediaPipeline.IsScreenCacheValid(temp.Dir, config, device, out check, false));
+            }
+        }
+
+        [Fact]
         public void Signature_changes_when_a_clip_changes()
         {
             using (TempFolder temp = new TempFolder())

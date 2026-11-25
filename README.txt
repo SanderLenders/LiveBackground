@@ -391,8 +391,10 @@ Useful fields:
                        screensaver action (default 300)
     extraScreens       per-monitor settings keyed by device name: video and
                        image mirror switches (both default true), folders,
-                       playlists, optional video crossfade, slideshow settings
-                       and desktop fallback mode/image
+                       playlists, optional video crossfade, slideshow settings,
+                       desktop fallback mode/image and optional renderWidth,
+                       renderHeight, fps and crf overrides (omitted values
+                       inherit the main Playback settings; preset stays global)
     secondScreen*      older flat second-screen fields, migrated into
                        extraScreens automatically
     taskName           scheduled-task name

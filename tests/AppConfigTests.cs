@@ -316,6 +316,68 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void ScreenConfig_applies_only_explicit_render_overrides()
+        {
+            AppConfig c = new AppConfig();
+            c.ExtraScreens.Add(new ScreenSettings
+            {
+                Device = @"\\.\DISPLAY2",
+                RenderWidth = 2560,
+                RenderHeight = 1440,
+                Fps = 60,
+                Crf = 23
+            });
+            c.ExtraScreens.Add(new ScreenSettings { Device = @"\\.\DISPLAY3" });
+
+            AppConfig own = c.ScreenConfig(c.ExtraScreens[0]);
+            Assert.Equal(2560, own.RenderWidth);
+            Assert.Equal(1440, own.RenderHeight);
+            Assert.Equal(60, own.Fps);
+            Assert.Equal(23, own.Crf);
+
+            AppConfig inherited = c.ScreenConfig(c.ExtraScreens[1]);
+            Assert.Equal(c.RenderWidth, inherited.RenderWidth);
+            Assert.Equal(c.RenderHeight, inherited.RenderHeight);
+            Assert.Equal(c.Fps, inherited.Fps);
+            Assert.Equal(c.Crf, inherited.Crf);
+        }
+
+        [Fact]
+        public void Normalize_discards_broken_screen_render_overrides()
+        {
+            AppConfig c = new AppConfig();
+            c.ExtraScreens.Add(new ScreenSettings { Device = "half", RenderWidth = 1280 });
+            c.ExtraScreens.Add(new ScreenSettings
+            {
+                Device = "tiny",
+                RenderWidth = 320,
+                RenderHeight = 240,
+                Fps = 5,
+                Crf = 5
+            });
+            c.ExtraScreens.Add(new ScreenSettings
+            {
+                Device = "good",
+                RenderWidth = 3440,
+                RenderHeight = 1440,
+                Fps = 50,
+                Crf = 20
+            });
+            c.Normalize();
+
+            Assert.Null(c.ExtraScreens[0].RenderWidth);
+            Assert.Null(c.ExtraScreens[0].RenderHeight);
+            Assert.Null(c.ExtraScreens[1].RenderWidth);
+            Assert.Null(c.ExtraScreens[1].RenderHeight);
+            Assert.Null(c.ExtraScreens[0].Fps);
+            Assert.Null(c.ExtraScreens[0].Crf);
+            Assert.Equal(3440, c.ExtraScreens[2].RenderWidth);
+            Assert.Equal(1440, c.ExtraScreens[2].RenderHeight);
+            Assert.Equal(50, c.ExtraScreens[2].Fps);
+            Assert.Equal(20, c.ExtraScreens[2].Crf);
+        }
+
+        [Fact]
         public void Config_survives_a_save_and_load_round_trip()
         {
             using (TempFolder temp = new TempFolder())
@@ -334,7 +396,16 @@ namespace LiveBackground.Tests
                 };
                 original.ExtraScreens = new List<ScreenSettings>
                 {
-                    new ScreenSettings { Device = @"\\.\DISPLAY2", Folder = @"D:\vids", CrossfadeSeconds = 4.5 },
+                    new ScreenSettings
+                    {
+                        Device = @"\\.\DISPLAY2",
+                        Folder = @"D:\vids",
+                        CrossfadeSeconds = 4.5,
+                        RenderWidth = 2560,
+                        RenderHeight = 1440,
+                        Fps = 60,
+                        Crf = 23
+                    },
                 };
 
                 JsonStore.SerializeFile(ConfigStore.PathFor(temp.Dir), original);
@@ -353,6 +424,10 @@ namespace LiveBackground.Tests
                 Assert.Equal(@"\\.\DISPLAY2", loaded.ExtraScreens[0].Device);
                 Assert.Equal(@"D:\vids", loaded.ExtraScreens[0].Folder);
                 Assert.Equal((double?)4.5, loaded.ExtraScreens[0].CrossfadeSeconds);
+                Assert.Equal((int?)2560, loaded.ExtraScreens[0].RenderWidth);
+                Assert.Equal((int?)1440, loaded.ExtraScreens[0].RenderHeight);
+                Assert.Equal((int?)60, loaded.ExtraScreens[0].Fps);
+                Assert.Equal((int?)23, loaded.ExtraScreens[0].Crf);
             }
         }
 

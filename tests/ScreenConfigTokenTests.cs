@@ -47,6 +47,21 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void Compute_changes_when_only_the_render_settings_change()
+        {
+            AppConfig changed = ConfigWithOneScreen();
+            changed.ExtraScreens[0].RenderWidth = 2560;
+            changed.ExtraScreens[0].RenderHeight = 1440;
+            Assert.NotEqual(ScreenConfigToken.Compute(ConfigWithOneScreen()),
+                ScreenConfigToken.Compute(changed));
+
+            AppConfig quality = ConfigWithOneScreen();
+            quality.ExtraScreens[0].Crf = 23;
+            Assert.NotEqual(ScreenConfigToken.Compute(ConfigWithOneScreen()),
+                ScreenConfigToken.Compute(quality));
+        }
+
+        [Fact]
         public void Compute_skips_null_screens()
         {
             AppConfig config = new AppConfig();

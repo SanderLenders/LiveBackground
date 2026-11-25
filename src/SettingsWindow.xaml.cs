@@ -1740,6 +1740,14 @@ namespace LiveBackground
             private Slider _videoFadeSlider;
             private TextBlock _videoFadeValue;
             private CheckBox _videoFineSteps;
+            private CheckBox _videoRenderSame;
+            private StackPanel _videoRenderPanel;
+            private TextBlock _videoNativeResolution;
+            private ComboBox _videoResolutionCombo;
+            private ComboBox _videoFpsCombo;
+            private ComboBox _videoQualityCombo;
+            private string _nativeResolutionItem;
+            private string _customResolutionItem;
             private Slider _intervalSlider;
             private TextBlock _intervalValue;
             private Slider _imageFadeSlider;
@@ -1918,7 +1926,35 @@ namespace LiveBackground
                 _videoPlaybackPanel.Children.Add(vfadeRow);
                 _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
                 _videoPlaybackPanel.Children.Add(_videoFineSteps);
-                _videoPlaybackPanel.Children.Add(Muted("Resolution, frame rate and quality use the main Playback tab settings."));
+
+                _videoRenderSame = new CheckBox { Content = "Use main Playback settings", Margin = new Thickness(0, 0, 0, 6), IsChecked = true };
+                _videoRenderSame.Checked += delegate { UpdateEnabled(); };
+                _videoRenderSame.Unchecked += delegate { UpdateEnabled(); };
+                _videoPlaybackPanel.Children.Add(_videoRenderSame);
+                _videoRenderPanel = new StackPanel { Margin = new Thickness(20, 0, 0, 16) };
+                _videoNativeResolution = Muted("");
+                _videoRenderPanel.Children.Add(_videoNativeResolution);
+                var renderGrid = new Grid();
+                renderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                renderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                renderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                renderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                renderGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                AddLabeledCombo(renderGrid, 0, "Resolution", out _videoResolutionCombo);
+                AddLabeledCombo(renderGrid, 1, "Frame rate", out _videoFpsCombo);
+                AddLabeledCombo(renderGrid, 2, "Quality", out _videoQualityCombo);
+                _videoResolutionCombo.Items.Add("1920 x 1080");
+                _videoResolutionCombo.Items.Add("2560 x 1440");
+                _videoResolutionCombo.Items.Add("3840 x 2160");
+                _videoFpsCombo.Items.Add("24 fps");
+                _videoFpsCombo.Items.Add("30 fps");
+                _videoFpsCombo.Items.Add("60 fps");
+                _videoQualityCombo.Items.Add("High quality (slower build)");
+                _videoQualityCombo.Items.Add("Balanced");
+                _videoQualityCombo.Items.Add("Smaller file (faster build)");
+                _videoRenderPanel.Children.Add(renderGrid);
+                _videoRenderPanel.Children.Add(Muted("Changing these makes a new cached video loop for this screen."));
+                _videoPlaybackPanel.Children.Add(_videoRenderPanel);
                 playbackPanel.Children.Add(_videoPlaybackPanel);
 
                 _imagePlaybackPanel = new StackPanel();
@@ -2162,6 +2198,90 @@ namespace LiveBackground
                 _imageFadeValue.Text = _imageFadeSlider.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
             }
 
+            private void UpdateNativeResolutionItem(List<ScreenInfo> screens)
+            {
+                if (_videoResolutionCombo == null) return;
+                if (_nativeResolutionItem != null)
+                {
+                    _videoResolutionCombo.Items.Remove(_nativeResolutionItem);
+                    _nativeResolutionItem = null;
+                }
+                int width = 0;
+                int height = 0;
+                try
+                {
+                    if (screens != null)
+                    {
+                        foreach (ScreenInfo info in screens)
+                        {
+                            if (info == null || !string.Equals(info.Device, _device, StringComparison.OrdinalIgnoreCase)) continue;
+                            width = info.Bounds.Width;
+                            height = info.Bounds.Height;
+                            break;
+                        }
+                    }
+                }
+                catch { width = 0; height = 0; }
+                if (_videoNativeResolution != null)
+                {
+                    _videoNativeResolution.Text = width > 0 && height > 0
+                        ? "This screen: " + width + " x " + height : "";
+                }
+                if (width <= 0 || height <= 0) return;
+                string item = width + " x " + height;
+                if (_videoResolutionCombo.Items.Contains(item)) return;
+                _nativeResolutionItem = item;
+                _videoResolutionCombo.Items.Insert(0, item);
+            }
+
+            private void SetVideoResolutionCombo(int width, int height)
+            {
+                if (_videoResolutionCombo == null) return;
+                if (_customResolutionItem != null)
+                {
+                    _videoResolutionCombo.Items.Remove(_customResolutionItem);
+                    _customResolutionItem = null;
+                }
+                string exact = width + " x " + height;
+                if (_videoResolutionCombo.Items.Contains(exact))
+                {
+                    _videoResolutionCombo.SelectedItem = exact;
+                    return;
+                }
+                _customResolutionItem = "Custom: " + exact;
+                _videoResolutionCombo.Items.Add(_customResolutionItem);
+                _videoResolutionCombo.SelectedItem = _customResolutionItem;
+            }
+
+            private static bool TryParseResolution(string value, out int width, out int height)
+            {
+                width = 0;
+                height = 0;
+                if (string.IsNullOrEmpty(value)) return false;
+                int x = value.IndexOf('x');
+                if (x <= 0 || x >= value.Length - 1) return false;
+                string before = value.Substring(0, x).Trim();
+                string after = value.Substring(x + 1).Trim();
+                int start = before.Length;
+                while (start > 0 && char.IsDigit(before[start - 1])) start--;
+                string w = before.Substring(start);
+                string h = new string(after.TakeWhile(char.IsDigit).ToArray());
+                return int.TryParse(w, out width) && int.TryParse(h, out height) && width > 0 && height > 0;
+            }
+
+            private static int LeadingNumber(string value)
+            {
+                if (string.IsNullOrEmpty(value)) return 0;
+                int number = 0;
+                bool found = false;
+                foreach (char c in value)
+                {
+                    if (char.IsDigit(c)) { number = number * 10 + (c - '0'); found = true; }
+                    else if (found) break;
+                }
+                return found ? number : 0;
+            }
+
             private void UpdateClipListMode()
             {
                 bool single = _videoModeSingle != null && _videoModeSingle.IsChecked == true;
@@ -2255,6 +2375,23 @@ namespace LiveBackground
                 ApplyReviewChildEnabled(_clipList, has, has && !sv);
                 ApplyReviewChildEnabled(_videoFadeSlider, has, has && !sv);
                 ApplyReviewChildEnabled(_videoFineSteps, has, has && !sv);
+
+                // Render overrides only matter when this screen plays its own
+                // loop. Inheriting them keeps the combined controls out of the
+                // way until the user opts in.
+                bool ownVideo = has && !images && !sv;
+                bool customRender = ownVideo && _videoRenderSame != null && _videoRenderSame.IsChecked != true;
+                if (_videoRenderSame != null)
+                {
+                    _videoRenderSame.Visibility = ownVideo ? Visibility.Visible : Visibility.Collapsed;
+                    ApplyReviewChildEnabled(_videoRenderSame, has, has);
+                }
+                if (_videoRenderPanel != null)
+                {
+                    _videoRenderPanel.Visibility = customRender ? Visibility.Visible : Visibility.Collapsed;
+                    ApplyReviewChildEnabled(_videoRenderPanel, has, customRender);
+                }
+
                 ApplyReviewChildEnabled(_imageFolder, has, has && !si);
                 ApplyReviewChildEnabled(_imageModeSingle, has, has && !si);
                 ApplyReviewChildEnabled(_imageModeSlideshow, has, has && !si);
@@ -2311,6 +2448,15 @@ namespace LiveBackground
                     bool vfine = s.FineCrossfadeSteps.HasValue ? s.FineCrossfadeSteps.Value : (config != null && config.FineCrossfadeSteps);
                     if (_videoFadeSlider != null) _videoFadeSlider.Value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, vfade));
                     if (_videoFineSteps != null) _videoFineSteps.IsChecked = vfine;
+                    UpdateNativeResolutionItem(screens);
+                    if (_videoRenderSame != null) _videoRenderSame.IsChecked = !s.RenderWidth.HasValue || !s.RenderHeight.HasValue;
+                    int renderWidth = s.RenderWidth.HasValue ? s.RenderWidth.Value : (config != null ? config.RenderWidth : 1920);
+                    int renderHeight = s.RenderHeight.HasValue ? s.RenderHeight.Value : (config != null ? config.RenderHeight : 1080);
+                    int renderFps = s.Fps.HasValue ? s.Fps.Value : (config != null ? config.Fps : 30);
+                    int renderCrf = s.Crf.HasValue ? s.Crf.Value : (config != null ? config.Crf : 18);
+                    SetVideoResolutionCombo(renderWidth, renderHeight);
+                    SetComboByContains(_videoFpsCombo, renderFps + " fps", 1);
+                    _owner.SetQualityCombo(renderCrf);
                     if (_intervalSlider != null) _intervalSlider.Value = Math.Max(_intervalSlider.Minimum, Math.Min(_intervalSlider.Maximum, s.ImageIntervalSeconds));
                     if (_imageFadeSlider != null) _imageFadeSlider.Value = Math.Max(_imageFadeSlider.Minimum, Math.Min(_imageFadeSlider.Maximum, s.ImageCrossfadeSeconds));
                     if (_imageFineSteps != null) _imageFineSteps.IsChecked = s.ImageFineCrossfadeSteps;
@@ -2407,6 +2553,36 @@ namespace LiveBackground
                 }
                 if (_videoFadeSlider != null) s.CrossfadeSeconds = _videoFadeSlider.Value;
                 if (_videoFineSteps != null) s.FineCrossfadeSteps = _videoFineSteps.IsChecked == true;
+                if (_videoRenderSame != null)
+                {
+                    if (_videoRenderSame.IsChecked == true)
+                    {
+                        s.RenderWidth = null;
+                        s.RenderHeight = null;
+                        s.Fps = null;
+                        s.Crf = null;
+                    }
+                    else
+                    {
+                        int width;
+                        int height;
+                        if (TryParseResolution(_videoResolutionCombo != null ? _videoResolutionCombo.SelectedItem as string : null,
+                            out width, out height))
+                        {
+                            s.RenderWidth = width;
+                            s.RenderHeight = height;
+                        }
+                        else
+                        {
+                            s.RenderWidth = null;
+                            s.RenderHeight = null;
+                        }
+                        int fps = LeadingNumber(_videoFpsCombo != null ? _videoFpsCombo.SelectedItem as string : null);
+                        s.Fps = fps > 0 ? (int?)fps : null;
+                        int quality = _videoQualityCombo != null ? _videoQualityCombo.SelectedIndex : -1;
+                        s.Crf = quality < 0 ? (int?)null : (quality == 0 ? 18 : (quality == 2 ? 28 : 23));
+                    }
+                }
                 if (_intervalSlider != null) s.ImageIntervalSeconds = (int)Math.Round(_intervalSlider.Value);
                 if (_imageFadeSlider != null) s.ImageCrossfadeSeconds = _imageFadeSlider.Value;
                 if (_imageFineSteps != null) s.ImageFineCrossfadeSteps = _imageFineSteps.IsChecked == true;

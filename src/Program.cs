@@ -391,6 +391,13 @@ namespace LiveBackground
             // here. The screen token does not include the main pill.
             bool globalModeChanged = !string.Equals(_config.WallpaperMode, updated.WallpaperMode,
                 StringComparison.OrdinalIgnoreCase);
+            // A global render change also affects every screen that inherits
+            // the main Playback settings, not just the main loop.
+            bool renderChanged = _config.RenderWidth != updated.RenderWidth ||
+                _config.RenderHeight != updated.RenderHeight ||
+                _config.Fps != updated.Fps ||
+                _config.Crf != updated.Crf ||
+                !string.Equals(_config.Preset ?? "", updated.Preset ?? "", StringComparison.OrdinalIgnoreCase);
             // Publish a brand-new config object in a single atomic reference
             // write instead of copying into the live one field by field. The
             // watchdog reads _config without a lock, so it must never observe a
@@ -399,7 +406,7 @@ namespace LiveBackground
             AppConfig fresh = updated.Clone();
             _config = fresh;
             ReconfigurePlayers(fresh);
-            if (globalModeChanged ||
+            if (globalModeChanged || renderChanged ||
                 !string.Equals(screensBefore, ScreenConfigToken.Compute(_config), StringComparison.Ordinal))
             {
                 // A global mode flip changes every screen's effective mode even

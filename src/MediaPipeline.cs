@@ -596,6 +596,8 @@ namespace LiveBackground
             if (!File.Exists(LoopPath(appRoot, manifest))) return false;
             if (manifest.Width != screenConfig.RenderWidth || manifest.Height != screenConfig.RenderHeight) return false;
             if (manifest.Fps != screenConfig.Fps) return false;
+            if (manifest.Crf != screenConfig.Crf) return false;
+            if (!string.Equals(manifest.Preset ?? "", screenConfig.Preset ?? "", StringComparison.OrdinalIgnoreCase)) return false;
             if (!checkSignature) return true;
             string folder = Util.ResolvePath(appRoot, screenConfig.VideoFolder);
             return manifest.Signature == Signature(folder, screenConfig);
@@ -615,6 +617,8 @@ namespace LiveBackground
             if (!File.Exists(LoopPath(appRoot, manifest))) return false;
             if (manifest.Width != config.RenderWidth || manifest.Height != config.RenderHeight) return false;
             if (manifest.Fps != config.Fps) return false;
+            if (manifest.Crf != config.Crf) return false;
+            if (!string.Equals(manifest.Preset ?? "", config.Preset ?? "", StringComparison.OrdinalIgnoreCase)) return false;
             if (!checkSignature) return true;
             string folder = Util.ResolvePath(appRoot, config.VideoFolder);
             return manifest.Signature == Signature(folder, config);
