@@ -19,6 +19,15 @@ rem Existing config, cache, logs and backups are preserved.
 rem ---------------------------------------------------------------
 echo Copying files to "%DEST%" ...
 if not exist "%DEST%" mkdir "%DEST%" >nul 2>&1
+
+rem The main copy excludes images because that folder becomes the user's
+rem library. Seed it with the bundled pictures first, without replacing
+rem anything the user already has there.
+if exist "%SRC%\images\wallpapers" (
+    if not exist "%DEST%\images\wallpapers" mkdir "%DEST%\images\wallpapers" >nul 2>&1
+    for %%F in ("%SRC%\images\wallpapers\*.*") do if not exist "%DEST%\images\wallpapers\%%~nxF" copy /Y "%%~fF" "%DEST%\images\wallpapers\" >nul
+)
+
 robocopy "%SRC%" "%DEST%" /E /XF config.json install-state.json /XD cache logs backup images installer /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
     echo.
