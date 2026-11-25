@@ -14,6 +14,10 @@ namespace LiveBackground
         private static string _appRoot;
         private static volatile AppConfig _config;
         private static MpvPlayer _player;
+        // PID of an mpv the native bootstrapper started and this process adopted.
+        // The startup orphan scan must not reap it. Written by the handoff
+        // waiter, read from the scan thread, so it is volatile.
+        private static volatile int _adoptedEarlyMpvPid;
         private static IntPtr _progman = IntPtr.Zero;
         private static string _mediaPath = "";
 
@@ -849,6 +853,80 @@ namespace LiveBackground
             return false;
         }
 
+        // The native bootstrapper writes "pending" before it launches us, then
+        // replaces it with the mpv PID once the desktop exists and mpv is up.
+        // This lets us skip our own managed early start and adopt that process
+        // instead, without ever starting two videos.
+        private static string EarlyMpvHandoffPath()
+        {
+            return Path.Combine(_appRoot, "cache", "early-mpv.txt");
+        }
+
+        private static void DeleteEarlyMpvHandoff()
+        {
+            Util.SafeDelete(EarlyMpvHandoffPath());
+        }
+
+        private static bool TryReadEarlyMpvHandoff(out string mediaPath, out int pid)
+        {
+            mediaPath = "";
+            pid = 0;
+            try
+            {
+                string path = EarlyMpvHandoffPath();
+                if (!File.Exists(path)) return false;
+                if ((DateTime.UtcNow - File.GetLastWriteTimeUtc(path)).TotalMinutes > 5) return false;
+                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+                if (lines.Length < 2) return false;
+                string first = (lines[0] ?? "").Trim();
+                mediaPath = (lines[1] ?? "").Trim();
+                if (string.IsNullOrEmpty(mediaPath)) return false;
+                if (string.Equals(first, "pending", StringComparison.OrdinalIgnoreCase)) return true;
+                if (!int.TryParse(first, out pid) || pid <= 0) return false;
+                return true;
+            }
+            catch { /* best-effort: handoff is an optimization */ }
+            mediaPath = "";
+            pid = 0;
+            return false;
+        }
+
+        private static void WaitForBootstrapperMpv(string expectedMedia, ManualResetEvent done)
+        {
+            try
+            {
+                Stopwatch wait = Stopwatch.StartNew();
+                while (wait.ElapsedMilliseconds < 15000)
+                {
+                    string media;
+                    int pid;
+                    if (TryReadEarlyMpvHandoff(out media, out pid) && pid > 0 &&
+                        string.Equals(media, expectedMedia, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Exclude it from the orphan scan even if validation is
+                        // still in progress: the scan may run concurrently.
+                        _adoptedEarlyMpvPid = pid;
+                        if (_player != null && _player.Adopt(pid, expectedMedia))
+                        {
+                            if (_jobHandle != IntPtr.Zero && Native.AssignPidToJob(_jobHandle, pid))
+                                Log.Info("startup: bootstrapper mpv added to child-process job");
+                            else Log.Warn("startup: could not add bootstrapper mpv to child-process job");
+                            Log.Info("startup: adopted bootstrapper mpv pid " + pid + " (" + StartupElapsedMs() +
+                                " ms after process timer start)");
+                            return;
+                        }
+                        _adoptedEarlyMpvPid = 0;
+                        Log.Warn("startup: bootstrapper mpv pid " + pid + " failed validation");
+                        return;
+                    }
+                    Thread.Sleep(50);
+                }
+                Log.Warn("startup: bootstrapper mpv handoff timed out");
+            }
+            catch (Exception ex) { Log.Warn("startup: bootstrapper mpv handoff failed: " + ex.Message); }
+            finally { try { done.Set(); } catch { } }
+        }
+
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
             Justification = "earlyStartDone/orphanScanDone are disposed on normal return paths; a fatal Run exception already tears down the process.")]
         private static int Run()
@@ -886,7 +964,8 @@ namespace LiveBackground
                 try
                 {
                     Stopwatch s = Stopwatch.StartNew();
-                    int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); });
+                    int reaped = Installer.KillOrphanMpv(delegate(string message) { Log.Info(message); },
+                        delegate(int pid) { return pid == _adoptedEarlyMpvPid; });
                     if (reaped > 0) Log.Info("reaped " + reaped + " orphaned mpv process(es) at startup");
                     Log.Info("startup: orphan mpv scan " + s.ElapsedMilliseconds + " ms");
                 }
@@ -904,42 +983,60 @@ namespace LiveBackground
             // "the user closed it on purpose" marker.
             Util.SafeDelete(Installer.QuitFlag(_appRoot));
 
-            // Early-start: if we have a last-known-good video loop, start mpv
-            // while config/manifest load continues. Reconciled below once the
-            // real config is known; any mismatch falls back to the normal path.
+            // Early-start: prefer an mpv the native bootstrapper already
+            // launched, and only start one here when the app was launched
+            // directly. The bootstrapper writes a "pending" handoff before it
+            // launches us, so we never start a second mpv while it is still
+            // waiting for the desktop. Reconciled below once the real config is
+            // known; any mismatch falls back to the normal path.
             bool earlyHintImages = false;
             string earlyHintMedia = "";
             ManualResetEvent earlyStartDone = null;
             bool earlyVideoStarted = TryReadStartupHint(out earlyHintImages, out earlyHintMedia) && !earlyHintImages;
+            string handoffMedia;
+            int handoffPid;
+            bool bootstrapperMpv = TryReadEarlyMpvHandoff(out handoffMedia, out handoffPid) &&
+                earlyVideoStarted &&
+                string.Equals(handoffMedia, earlyHintMedia, StringComparison.OrdinalIgnoreCase);
             if (earlyVideoStarted)
             {
                 Log.Info("startup: early hint video " + earlyHintMedia);
                 _mediaPath = earlyHintMedia;
-                _player = new MpvPlayer(_appRoot, new AppConfig());
-                string hintMedia = earlyHintMedia;
+                if (_player == null) _player = new MpvPlayer(_appRoot, new AppConfig());
                 earlyStartDone = new ManualResetEvent(false);
                 ManualResetEvent done = earlyStartDone;
-                ThreadPool.QueueUserWorkItem(delegate
+                if (bootstrapperMpv)
                 {
-                    try
+                    Log.Info("startup: waiting for bootstrapper mpv handoff");
+                    ThreadPool.QueueUserWorkItem(delegate { WaitForBootstrapperMpv(earlyHintMedia, done); });
+                }
+                else
+                {
+                    DeleteEarlyMpvHandoff();
+                    string hintMedia = earlyHintMedia;
+                    ThreadPool.QueueUserWorkItem(delegate
                     {
-                        IntPtr progman = DesktopHost.WaitForProgman(30000);
-                        if (progman == IntPtr.Zero)
+                        try
                         {
-                            Log.Warn("startup: early Progman not found");
-                            return;
+                            IntPtr progman = DesktopHost.WaitForProgman(30000);
+                            if (progman == IntPtr.Zero)
+                            {
+                                Log.Warn("startup: early Progman not found");
+                                return;
+                            }
+                            lock (Sync) { if (_progman == IntPtr.Zero) _progman = progman; }
+                            try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
+                            if (_player != null && _player.Start(progman, hintMedia))
+                            {
+                                Log.Info("startup: early mpv started (" + StartupElapsedMs() + " ms after process timer start)");
+                            }
                         }
-                        lock (Sync) { if (_progman == IntPtr.Zero) _progman = progman; }
-                        try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
-                        if (_player != null && _player.Start(progman, hintMedia))
-                        {
-                            Log.Info("startup: early mpv started (" + StartupElapsedMs() + " ms after process timer start)");
-                        }
-                    }
-                    catch (Exception ex) { Log.Warn("startup: early mpv start failed: " + ex.Message); }
-                    finally { try { done.Set(); } catch { } }
-                });
+                        catch (Exception ex) { Log.Warn("startup: early mpv start failed: " + ex.Message); }
+                        finally { try { done.Set(); } catch { } }
+                    });
+                }
             }
+            else DeleteEarlyMpvHandoff();
 
             startupStep.Restart();
             bool firstRun = !File.Exists(ConfigStore.PathFor(_appRoot));
@@ -1024,18 +1121,11 @@ namespace LiveBackground
 
             Log.Info("startup: cache/manifest ready " + StartupElapsedMs() + " ms after process timer start");
             startupStep.Restart();
-            bool earlyMainMatches = earlyVideoStarted && !imagesMode &&
-                !string.IsNullOrEmpty(_mediaPath) &&
-                string.Equals(_mediaPath, earlyHintMedia, StringComparison.OrdinalIgnoreCase) &&
-                string.IsNullOrEmpty(_config.ExtraMpvArgs) &&
-                string.Equals((_config.MpvPath ?? "").Trim(), @"mpv\mpv.exe", StringComparison.OrdinalIgnoreCase);
+            // Reconfigure the player that either the bootstrapper or our own
+            // early-start thread created. The decision to keep it is made after
+            // the handoff event is signalled, so we cannot race an adoption.
             if (_player == null) _player = new MpvPlayer(_appRoot, _config);
             else _player.Reconfigure(_config);
-            if (earlyVideoStarted && !earlyMainMatches)
-            {
-                Log.Info("startup: early mpv hint mismatch, using normal startup");
-                try { _player.Stop(); } catch { /* best-effort */ }
-            }
 
             // Each extra display gets its own player. A screen mirrors the main
             // loop by default; an independent loop is built on demand. Duplicate
@@ -1054,6 +1144,11 @@ namespace LiveBackground
             {
                 // No mpv, no WorkerW layer and no loop work at all. The still
                 // image goes up immediately and the rotation timer takes over.
+                // A stale video hint can make the bootstrapper start mpv before
+                // the real config is read; stop it here if that happened.
+                try { _player.Stop(); } catch { /* best-effort */ }
+                DeleteEarlyMpvHandoff();
+                _adoptedEarlyMpvPid = 0;
                 _imageProgman = DesktopHost.WaitForProgman(30000);
                 if (_imageProgman == IntPtr.Zero)
                 {
@@ -1083,16 +1178,32 @@ namespace LiveBackground
             else
             {
                 Log.Info("Progman = 0x" + _progman.ToString("X"));
-                bool mainStartedEarly = false;
-                if (earlyMainMatches)
+                // Wait for the bootstrapper handoff (or our own managed early
+                // start) before deciding whether the running player matches the
+                // real config. This removes the race where a mismatch stopped a
+                // player that had not been adopted yet.
+                if (earlyStartDone != null)
                 {
-                    if (earlyStartDone != null)
-                    {
-                        try { earlyStartDone.WaitOne(30000); } catch { /* best-effort */ }
-                    }
+                    try { earlyStartDone.WaitOne(30000); } catch { /* best-effort */ }
+                }
+                bool earlyMainMatches = earlyVideoStarted &&
+                    !string.IsNullOrEmpty(_mediaPath) &&
+                    string.Equals(_mediaPath, earlyHintMedia, StringComparison.OrdinalIgnoreCase) &&
+                    string.IsNullOrEmpty(_config.ExtraMpvArgs) &&
+                    string.Equals((_config.MpvPath ?? "").Trim(), @"mpv\mpv.exe", StringComparison.OrdinalIgnoreCase);
+                bool mainStartedEarly = false;
+                if (earlyVideoStarted && !earlyMainMatches)
+                {
+                    Log.Info("startup: early mpv hint mismatch, using normal startup");
+                    try { _player.Stop(); } catch { /* best-effort */ }
+                    _adoptedEarlyMpvPid = 0;
+                }
+                else
+                {
                     mainStartedEarly = _player.IsRunning;
                     if (mainStartedEarly) Log.Info("startup: reusing early-started mpv");
                 }
+                DeleteEarlyMpvHandoff();
                 try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
                 if (!string.IsNullOrEmpty(_mediaPath) && !mainStartedEarly)
                 {

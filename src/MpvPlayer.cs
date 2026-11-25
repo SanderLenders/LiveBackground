@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace LiveBackground
 {
@@ -127,6 +128,61 @@ namespace LiveBackground
                 _lastStart = DateTime.UtcNow;
             }
             return started != null;
+        }
+
+        // Takes over an mpv the native bootstrapper started before the managed
+        // app was up. Validate the PID carefully: it must still be our mpv exe,
+        // and it must be recent. A stale/reused PID is never killed.
+        public bool Adopt(int pid, string mediaPath)
+        {
+            if (pid <= 0 || string.IsNullOrEmpty(mediaPath) || !File.Exists(mediaPath)) return false;
+            string expected = Paths.Tool(AppConfigDefaults.DefaultMpvPath);
+            Process process;
+            try { process = Process.GetProcessById(pid); }
+            catch { return false; }
+
+            bool looksLikeMpv = false;
+            try
+            {
+                DateTime startedUtc = process.StartTime.ToUniversalTime();
+                string actual = "";
+                try { actual = process.MainModule.FileName; }
+                catch
+                {
+                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
+                    if (handle != IntPtr.Zero)
+                    {
+                        try
+                        {
+                            StringBuilder text = new StringBuilder(1024);
+                            uint length = (uint)text.Capacity;
+                            if (Native.QueryFullProcessImageName(handle, 0, text, ref length)) actual = text.ToString();
+                        }
+                        finally { Native.CloseHandle(handle); }
+                    }
+                }
+                looksLikeMpv = string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
+                if (!looksLikeMpv) { process.Dispose(); return false; }
+                if ((DateTime.UtcNow - startedUtc).TotalMinutes > 5)
+                {
+                    try { if (!process.HasExited) process.Kill(); } catch { /* best-effort */ }
+                    process.Dispose();
+                    return false;
+                }
+                lock (_sync)
+                {
+                    if (_process != null) { process.Dispose(); return false; }
+                    _process = process;
+                    _window = IntPtr.Zero;
+                    _lastStart = startedUtc;
+                }
+                return true;
+            }
+            catch
+            {
+                process.Dispose();
+                return false;
+            }
         }
 
         public void Stop()

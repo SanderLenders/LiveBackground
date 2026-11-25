@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
+#include <tlhelp32.h>
 #include <stdio.h>
 #include <wchar.h>
 
@@ -40,6 +41,27 @@ static void join_path(wchar_t *out, size_t cap, const wchar_t *a, const wchar_t 
     out[cap - 1] = 0;
 }
 
+static void trim_ws(wchar_t *s) {
+    size_t n;
+    if (!s) return;
+    n = wcslen(s);
+    while (n > 0 && (s[n - 1] == L'\r' || s[n - 1] == L'\n' ||
+                     s[n - 1] == L' ' || s[n - 1] == L'\t')) {
+        s[--n] = 0;
+    }
+}
+
+static void data_path(wchar_t *out, size_t cap, const wchar_t *leaf) {
+    wchar_t profile[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) { out[0] = 0; return; }
+    wchar_t root[MAX_PATH * 2];
+    join_path(root, MAX_PATH * 2, profile, L"LiveBackground");
+    if (leaf && leaf[0]) join_path(out, cap, root, leaf);
+    else wcsncpy(out, root, cap);
+    out[cap - 1] = 0;
+}
+
 static int find_manifest_frame(const wchar_t *cache, wchar_t *out, size_t cap) {
     wchar_t manifest[MAX_PATH * 2];
     join_path(manifest, MAX_PATH * 2, cache, L"manifest.json");
@@ -76,12 +98,9 @@ static int find_manifest_frame(const wchar_t *cache, wchar_t *out, size_t cap) {
 }
 
 static int find_frame(wchar_t *out, size_t cap) {
-    wchar_t profile[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) return 0;
     wchar_t cache[MAX_PATH * 2];
-    _snwprintf(cache, MAX_PATH * 2, L"%s\\LiveBackground\\cache", profile);
-    cache[MAX_PATH * 2 - 1] = 0;
+    data_path(cache, MAX_PATH * 2, L"cache");
+    if (!cache[0]) return 0;
 
     wchar_t candidate[MAX_PATH * 2];
     join_path(candidate, MAX_PATH * 2, cache, L"frame.jpg");
@@ -106,6 +125,133 @@ static int find_frame(wchar_t *out, size_t cap) {
     FindClose(fh);
     join_path(out, cap, cache, bestName);
     return file_exists(out);
+}
+
+// Last-known-good video loop, written by the managed app on every successful
+// startup. Bootstrapper only uses it when the hint says "video".
+static int read_video_hint(wchar_t *media, size_t cap) {
+    wchar_t path[MAX_PATH * 2];
+    data_path(path, MAX_PATH * 2, L"startup-hint.txt");
+    if (!path[0]) return 0;
+    FILE *f = _wfopen(path, L"r, ccs=UTF-8");
+    if (!f) return 0;
+    wchar_t mode[64];
+    wchar_t value[MAX_PATH * 2];
+    int ok = 0;
+    if (fgetws(mode, 64, f) && fgetws(value, MAX_PATH * 2, f)) {
+        trim_ws(mode);
+        trim_ws(value);
+        if (_wcsicmp(mode, L"video") == 0 && value[0] && file_exists(value)) {
+            wcsncpy(media, value, cap);
+            media[cap - 1] = 0;
+            ok = 1;
+        }
+    }
+    fclose(f);
+    return ok;
+}
+
+static void handoff_path(wchar_t *out, size_t cap, const wchar_t *leaf) {
+    wchar_t cache[MAX_PATH * 2];
+    data_path(cache, MAX_PATH * 2, L"cache");
+    if (!cache[0]) { out[0] = 0; return; }
+    CreateDirectoryW(cache, NULL);
+    join_path(out, cap, cache, leaf);
+}
+
+// Write to a temp file then replace, so the managed reader never sees a
+// half-written handoff.
+static void write_handoff(const wchar_t *first, const wchar_t *media) {
+    wchar_t finalPath[MAX_PATH * 2];
+    wchar_t tempPath[MAX_PATH * 2];
+    handoff_path(finalPath, MAX_PATH * 2, L"early-mpv.txt");
+    handoff_path(tempPath, MAX_PATH * 2, L"early-mpv.tmp");
+    if (!finalPath[0] || !tempPath[0]) return;
+    FILE *f = _wfopen(tempPath, L"w, ccs=UTF-8");
+    if (!f) return;
+    fwprintf(f, L"%s\n%s\n", first, media);
+    fclose(f);
+    MoveFileExW(tempPath, finalPath, MOVEFILE_REPLACE_EXISTING);
+}
+
+static void clear_handoff(void) {
+    wchar_t path[MAX_PATH * 2];
+    handoff_path(path, MAX_PATH * 2, L"early-mpv.txt");
+    if (path[0]) DeleteFileW(path);
+}
+
+static int app_already_running(void) {
+    HANDLE mutex = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\LiveBackgroundApp");
+    if (!mutex) return 0;
+    CloseHandle(mutex);
+    return 1;
+}
+
+static int mpv_already_running(void) {
+    int found = 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W entry;
+    ZeroMemory(&entry, sizeof(entry));
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snap, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"mpv.exe") == 0) { found = 1; break; }
+        } while (Process32NextW(snap, &entry));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+static HWND wait_for_progman(DWORD timeoutMs) {
+    DWORD start = GetTickCount();
+    for (;;) {
+        HWND window = FindWindowW(L"Progman", NULL);
+        if (window) return window;
+        if (GetTickCount() - start >= timeoutMs) return NULL;
+        Sleep(50);
+    }
+}
+
+static int start_early_mpv(HWND progman, const wchar_t *media, const wchar_t *programRoot, DWORD *pidOut) {
+    wchar_t mpv[MAX_PATH * 2];
+    join_path(mpv, MAX_PATH * 2, programRoot, L"mpv\\mpv.exe");
+    if (!file_exists(mpv)) return 0;
+
+    wchar_t shaders[MAX_PATH * 2];
+    data_path(shaders, MAX_PATH * 2, L"cache\\mpv-shaders");
+    if (!shaders[0]) return 0;
+    CreateDirectoryW(shaders, NULL);
+
+    wchar_t cmd[32768];
+    _snwprintf(cmd, 32768,
+        L"\"%s\" --wid=%lld --loop-file=inf --no-config --load-scripts=no "
+        L"--media-controls=no --no-audio --no-osc --no-osd-bar "
+        L"--no-input-default-bindings --no-border --gpu-api=d3d11 --hwdec=auto "
+        L"--panscan=1.0 --force-window=yes --terminal=no --no-resume-playback "
+        L"--sub-auto=no --audio-file-auto=no --stop-screensaver=yes --cache=no "
+        L"--priority=abovenormal --demuxer-lavf-analyzeduration=0 "
+        L"--demuxer-lavf-probesize=32768 --gpu-shader-cache=yes "
+        L"--gpu-shader-cache-dir=\"%s\" \"%s\"",
+        mpv, (long long)(INT_PTR)progman, shaders, media);
+    cmd[32767] = 0;
+
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+    if (!CreateProcessW(mpv, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, programRoot, &si, &pi))
+        return 0;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    wchar_t pidText[32];
+    _snwprintf(pidText, 32, L"%lu", (unsigned long)pi.dwProcessId);
+    pidText[31] = 0;
+    write_handoff(pidText, media);
+    if (pidOut) *pidOut = pi.dwProcessId;
+    return 1;
 }
 
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR lpCmdLine, int nShow) {
@@ -144,12 +290,75 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR lpCmdLine, int nShow
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
+
+    // Only a true logon startup may hand mpv off early. The 5-minute watchdog
+    // and manual launches must never start a second video.
+    int wantEarlyMpv = (wcsstr(args, L"--startup") != NULL);
+    HANDLE earlyLock = NULL;
+    wchar_t earlyMedia[MAX_PATH * 2];
+    earlyMedia[0] = 0;
+    if (wantEarlyMpv) {
+        clear_handoff();
+        if (app_already_running()) {
+            blog("early mpv skipped: app already running");
+            wantEarlyMpv = 0;
+        } else {
+            SetLastError(0);
+            earlyLock = CreateMutexW(NULL, FALSE, L"Local\\LiveBackgroundEarlyMpv");
+            if (GetLastError() == ERROR_ALREADY_EXISTS) {
+                blog("early mpv skipped: another bootstrapper owns the handoff");
+                CloseHandle(earlyLock);
+                earlyLock = NULL;
+                wantEarlyMpv = 0;
+            } else if (mpv_already_running()) {
+                blog("early mpv skipped: mpv already running");
+                wantEarlyMpv = 0;
+            } else if (!read_video_hint(earlyMedia, MAX_PATH * 2)) {
+                blog("early mpv skipped: no video hint");
+                wantEarlyMpv = 0;
+            } else {
+                // Tell the managed app to wait for us before it starts its own.
+                write_handoff(L"pending", earlyMedia);
+            }
+        }
+    }
+
+    int mainLaunched = 0;
     if (CreateProcessW(mainExe, cmd, NULL, NULL, FALSE, 0, NULL, exePath, &si, &pi)) {
         CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
+        mainLaunched = 1;
         blog("main exe launched");
     } else {
         blog("CreateProcess for main exe failed");
     }
+
+    // If the main exe exited immediately (another instance won the mutex), do
+    // not leave an mpv behind with no owner.
+    if (mainLaunched && WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) {
+        blog("early mpv skipped: main exe exited");
+        wantEarlyMpv = 0;
+        clear_handoff();
+    }
+
+    if (wantEarlyMpv && mainLaunched) {
+        HWND progman = wait_for_progman(20000);
+        if (progman) {
+            DWORD pid = 0;
+            if (start_early_mpv(progman, earlyMedia, exePath, &pid)) {
+                char message[128];
+                _snprintf(message, sizeof(message), "early mpv started pid %lu", (unsigned long)pid);
+                message[sizeof(message) - 1] = 0;
+                blog(message);
+            } else {
+                blog("early mpv start failed");
+                clear_handoff();
+            }
+        } else {
+            blog("early mpv skipped: Progman not ready");
+            clear_handoff();
+        }
+    }
+    if (pi.hProcess) CloseHandle(pi.hProcess);
+    if (earlyLock) CloseHandle(earlyLock);
     return 0;
 }

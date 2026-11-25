@@ -393,7 +393,7 @@ namespace LiveBackground
         // desktop with no window to close. Startup calls this too, so a stale
         // player from a previous run never survives into the new one.
         // Returns the number of players stopped.
-        public static int KillOrphanMpv(Action<string> log)
+        public static int KillOrphanMpv(Action<string> log, Func<int, bool> shouldSkip = null)
         {
             int killed = 0;
             string mpv = Paths.Tool(AppConfigDefaults.DefaultMpvPath);
@@ -401,6 +401,7 @@ namespace LiveBackground
             {
                 try
                 {
+                    if (shouldSkip != null && shouldSkip(process.Id)) continue;
                     process.Kill();
                     killed++;
                     if (log != null) log("stopped orphan mpv (pid " + process.Id + ")");

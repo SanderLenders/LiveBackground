@@ -261,9 +261,23 @@ namespace LiveBackground
         public static extern ulong GetTickCount64();
 
         public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        public const uint PROCESS_TERMINATE = 0x0001;
+        public const uint PROCESS_SET_QUOTA = 0x0100;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+        // Puts a process started earlier (the native bootstrapper's mpv) into
+        // the kill-on-close job, so it is reaped with the wallpaper even though
+        // the job was created after mpv was launched.
+        public static bool AssignPidToJob(IntPtr job, int pid)
+        {
+            if (job == IntPtr.Zero || pid <= 0) return false;
+            IntPtr process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, false, (uint)pid);
+            if (process == IntPtr.Zero) return false;
+            try { return AssignProcessToJobObject(job, process); }
+            finally { CloseHandle(process); }
+        }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
