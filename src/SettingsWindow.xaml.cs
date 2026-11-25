@@ -2225,6 +2225,7 @@ namespace LiveBackground
 
                 if (_modeOverride != null)
                 {
+                    _modeOverride.Content = _globalImagesMode ? "Video mode" : "Image mode";
                     ApplyReviewChildEnabled(_modeOverride, has, has);
                 }
                 if (_contentTab != null) _contentTab.Header = images ? "Images" : "Video";
@@ -2234,8 +2235,9 @@ namespace LiveBackground
                 if (_imagePlaybackPanel != null) _imagePlaybackPanel.Visibility = images ? Visibility.Visible : Visibility.Collapsed;
 
                 // The checkbox belongs to the section that follows the main pill.
-                // When Image mode flips this screen to the other mode, that
-                // section is an explicit override and has no mirror checkbox.
+                // When the per-screen mode checkbox flips this screen to the
+                // other mode, that section is an explicit override and has no
+                // mirror checkbox.
                 if (_sameVideo != null)
                 {
                     _sameVideo.Visibility = !images && !overridden ? Visibility.Visible : Visibility.Collapsed;
