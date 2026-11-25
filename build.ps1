@@ -151,10 +151,10 @@ $icon = Join-Path $root 'assets\LiveBackground.ico'
 # installers from a previous local run cannot leak into a release package.
 $distDir = Join-Path $scriptRoot 'dist'
 $isDistBuild = [string]::Equals([IO.Path]::GetFullPath($OutDir), [IO.Path]::GetFullPath($distDir), [StringComparison]::OrdinalIgnoreCase)
-if ($isDistBuild -and -not $CompileOnly) {
-    Write-Warning 'Building into dist. The release installer must be built into %LOCALAPPDATA%\LiveBackgroundBuild and shared from its installer folder.'
+if ($isDistBuild) {
+    throw 'dist holds the frozen v1.5.1 archive. Build into %LOCALAPPDATA%\LiveBackgroundBuild instead; dist must not be overwritten.'
 }
-if (-not $isDistBuild -and -not $CompileOnly -and (Test-Path $OutDir)) {
+if (-not $CompileOnly -and (Test-Path $OutDir)) {
     Write-Step 'Cleaning the build output'
     Remove-Item -LiteralPath $OutDir -Recurse -Force
 }

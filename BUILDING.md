@@ -102,10 +102,11 @@ Warnings are errors in this build (`TreatWarningsAsErrors`), so a new issue fail
 that are genuinely deliberate carry a `SuppressMessage` attribute with a
 justification.
 
-Analysers run in the developer / CI build only: `build.ps1` compiles through
-`dotnet build`/MSBuild for packaging and does not treat analyser warnings as the
-shipping gate the same way the CI SDK build does. Suppressions use
-`[SuppressMessage]` rather than `#pragma warning` for consistency.
+Analysers run in both the developer/CI build and the packaging build:
+`build.ps1` calls `dotnet build` on the same project with the same
+`TreatWarningsAsErrors` setting, so an analyser warning fails the shipping
+build too. Suppressions use `[SuppressMessage]` rather than `#pragma warning`
+for consistency.
 
 ## Continuous integration
 

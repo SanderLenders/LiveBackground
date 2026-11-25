@@ -4,10 +4,9 @@
     Developer / CI build of the shipping application.
 
     The application that users install is produced by build.ps1, which compiles
-    src\*.cs directly with the SDK's Roslyn compiler (C# 7.3) and falls back to
-    the .NET Framework csc (C# 5) when the SDK is absent. This project exists so
-    the same sources can be built, analysed and unit-tested with the modern
-    .NET tooling (dotnet build / dotnet test). It deliberately targets the same
+    src\*.cs with the SDK's Roslyn compiler (C# 7.3). This project exists so the
+    same sources can be built, analysed and unit-tested with the same .NET
+    tooling (dotnet build / dotnet test). It deliberately targets the same
     runtime the app ships on (.NET Framework 4.8); nothing here changes the
     runtime, the installer or the shipped binaries.
   -->
@@ -38,8 +37,8 @@
     <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
 
     <!-- Roslyn analysers, reported as build errors so a new issue cannot slip
-         in. This never blocks the shipping build: build.ps1 compiles with csc
-         and does not use this project. -->
+         in. build.ps1 compiles the same project with the same settings, so an
+         analyser warning also fails the shipping build. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
     <AnalysisMode>Recommended</AnalysisMode>
@@ -49,7 +48,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The reference set matches the csc command line in build.ps1. -->
+    <!-- The reference set matches the compiler inputs used by build.ps1. -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
