@@ -167,7 +167,10 @@ begin
     Result := False;
     Exit;
   end;
-  if IsUpgradeInstall and not PreviousAutostartEnabled then
+  { In a GUI upgrade CurPageChanged has already unticked autostart when the
+    previous install had no task. Do not override a user who explicitly
+    re-ticks it; silent upgrades still need the suppression here. }
+  if WizardSilent and IsUpgradeInstall and not PreviousAutostartEnabled then
   begin
     Result := False;
     Exit;
@@ -183,7 +186,6 @@ var
 begin
   IsUpgradeInstall := False;
   PreviousAutostartEnabled := False;
-  AutostartTaskAdjusted := False;
   { The app constant is not initialized yet; the destination edit already
     holds the default/previous path, which is where an old copy would be. }
   Cli := AddBackslash(WizardForm.DirEdit.Text) + '{#MyAppCliName}';
@@ -196,15 +198,23 @@ end;
 
 procedure InitializeWizard;
 begin
+  AutostartTaskAdjusted := False;
   DetectUpgradeInstall;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if (CurPageID = wpSelectTasks) and IsUpgradeInstall and (not PreviousAutostartEnabled) and (not AutostartTaskAdjusted) then
+  if CurPageID = wpSelectTasks then
   begin
-    WizardSelectTasks('!autostart');
-    AutostartTaskAdjusted := True;
+    { The user may have changed the destination on the wizard page. Re-check
+      before deciding whether to untick autostart. Keep the adjusted flag once
+      set so a user who re-ticks the box is not overridden on a page revisit. }
+    DetectUpgradeInstall;
+    if IsUpgradeInstall and (not PreviousAutostartEnabled) and (not AutostartTaskAdjusted) then
+    begin
+      WizardSelectTasks('!autostart');
+      AutostartTaskAdjusted := True;
+    end;
   end;
 end;
 

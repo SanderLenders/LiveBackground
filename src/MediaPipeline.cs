@@ -665,6 +665,7 @@ namespace LiveBackground
             if (manifest.Fps != config.Fps) return false;
             if (manifest.Crf != config.Crf) return false;
             if (!string.Equals(manifest.Preset ?? "", config.Preset ?? "", StringComparison.OrdinalIgnoreCase)) return false;
+            if (Math.Abs(manifest.Crossfade - config.CrossfadeSeconds) > 0.001) return false;
             if (!checkSignature) return true;
             string folder = Util.ResolvePath(appRoot, config.VideoFolder);
             return manifest.Signature == Signature(folder, config);

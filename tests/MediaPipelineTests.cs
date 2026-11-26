@@ -307,6 +307,34 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void IsCacheValid_without_signature_check_rejects_a_crossfade_mismatch()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string loopName = "main-loop.mp4";
+                Directory.CreateDirectory(MediaPipeline.LoopsDir(temp.Dir));
+                temp.Write(Path.Combine("cache", "loops", loopName), "loop");
+                AppConfig config = new AppConfig();
+                MediaManifest manifest = new MediaManifest
+                {
+                    Signature = MediaPipeline.Signature(temp.Dir, config),
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds + 2.0,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
+                    LoopFile = Path.Combine("loops", loopName),
+                    FrameFile = ""
+                };
+                JsonStore.SerializeFile(MediaPipeline.ManifestPath(temp.Dir), manifest);
+
+                MediaManifest check;
+                Assert.False(MediaPipeline.IsCacheValid(temp.Dir, config, out check, false));
+            }
+        }
+
+        [Fact]
         public void HasCachedLoop_rejects_an_index_that_describes_another_render()
         {
             using (TempFolder temp = new TempFolder())
