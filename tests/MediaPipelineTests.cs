@@ -253,6 +253,12 @@ namespace LiveBackground.Tests
                 MediaManifest cached = new MediaManifest
                 {
                     Signature = signature,
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
                     LoopFile = Path.Combine("loops", loopName),
                     FrameFile = "",
                     OutputDuration = 12.5
@@ -268,6 +274,108 @@ namespace LiveBackground.Tests
                 MediaManifest adopted = JsonStore.DeserializeFile<MediaManifest>(pointer);
                 Assert.NotNull(adopted);
                 Assert.Equal(cached.LoopFile, adopted.LoopFile);
+            }
+        }
+
+        [Fact]
+        public void IsScreenCacheValid_without_signature_check_rejects_a_crossfade_mismatch()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string device = @"\\.\DISPLAY2";
+                string loopName = "screen-loop.mp4";
+                Directory.CreateDirectory(MediaPipeline.LoopsDir(temp.Dir));
+                temp.Write(Path.Combine("cache", "loops", loopName), "loop");
+                AppConfig config = new AppConfig();
+                MediaManifest manifest = new MediaManifest
+                {
+                    Signature = MediaPipeline.Signature(temp.Dir, config),
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds + 2.0,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
+                    LoopFile = Path.Combine("loops", loopName),
+                    FrameFile = ""
+                };
+                JsonStore.SerializeFile(MediaPipeline.ScreenManifestPath(temp.Dir, device), manifest);
+
+                MediaManifest check;
+                Assert.False(MediaPipeline.IsScreenCacheValid(temp.Dir, config, device, out check, false));
+            }
+        }
+
+        [Fact]
+        public void HasCachedLoop_rejects_an_index_that_describes_another_render()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string loopName = "cached.mp4";
+                string indexName = Path.Combine("cache", "loops");
+                Directory.CreateDirectory(Path.Combine(temp.Dir, indexName));
+                temp.Write(Path.Combine(indexName, loopName), "loop");
+                AppConfig config = new AppConfig();
+                string signature = MediaPipeline.Signature(temp.Dir, config);
+                MediaManifest cached = new MediaManifest
+                {
+                    Signature = "different-signature",
+                    Width = config.RenderWidth,
+                    Height = config.RenderHeight,
+                    Fps = config.Fps,
+                    Crossfade = config.CrossfadeSeconds,
+                    Crf = config.Crf,
+                    Preset = config.Preset,
+                    LoopFile = Path.Combine("loops", loopName),
+                    FrameFile = ""
+                };
+                string index = MediaPipeline.CacheIndexPath(temp.Dir, signature);
+                JsonStore.SerializeFile(index, cached);
+                Assert.False(MediaPipeline.HasCachedLoop(temp.Dir, signature, config));
+
+                // Same file name, wrong scalar: also a cache miss.
+                cached.Signature = signature;
+                cached.Fps = config.Fps + 10;
+                JsonStore.SerializeFile(index, cached);
+                Assert.False(MediaPipeline.HasCachedLoop(temp.Dir, signature, config));
+            }
+        }
+
+        [Fact]
+        public void Build_ignores_a_malformed_cached_index()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                Directory.CreateDirectory(Path.Combine(temp.Dir, "videos"));
+                temp.Write(Path.Combine("videos", "clip1.mp4"), "one");
+                AppConfig config = new AppConfig();
+                config.VideoFolder = "videos";
+                string signature = MediaPipeline.Signature(Path.Combine(temp.Dir, "videos"), config);
+                string index = MediaPipeline.CacheIndexPath(temp.Dir, signature);
+                Directory.CreateDirectory(Path.GetDirectoryName(index));
+                File.WriteAllText(index, "{not json");
+
+                Assert.False(MediaPipeline.HasCachedLoop(temp.Dir, signature, config));
+
+                BuildResult result = MediaPipeline.Build(temp.Dir, config, message => { }, progress => { });
+                Assert.DoesNotContain("cached loop ready", result.Message);
+            }
+        }
+
+        [Fact]
+        public void CleanupCache_sweeps_stale_json_temp_files()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                string cache = MediaPipeline.CacheDir(temp.Dir);
+                Directory.CreateDirectory(cache);
+                string stale = Path.Combine(cache, "manifest.json." + Guid.NewGuid().ToString("N") + ".json.tmp");
+                File.WriteAllText(stale, "partial");
+                File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddHours(-2));
+
+                MediaPipeline.CleanupCache(temp.Dir);
+
+                Assert.False(File.Exists(stale));
             }
         }
 

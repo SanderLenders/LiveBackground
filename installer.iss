@@ -1,6 +1,6 @@
 ﻿; LiveBackground installer (Inno Setup 6).
-; Build with build.ps1, or directly:
-;   ISCC.exe /DSourceDir=dist /DOutputDir=dist\installer installer.iss
+; Build via build.ps1 with -OutDir "%LOCALAPPDATA%\LiveBackgroundBuild".
+; ISCC is normally called by build.ps1; never point it at dist (frozen archive).
 
 #define MyAppName "LiveBackground"
 #define MyAppVersion "1.9.0"
@@ -10,11 +10,24 @@
 #define MyAppSettingsExeName "LiveBackgroundSettings.exe"
 #define MyAppId "{{8F4E2A1C-6D3B-4A7E-9C21-5B0F7D3E8A64}"
 
+; ISCC is normally called by build.ps1; these are compile-time fallbacks only.
 #ifndef SourceDir
-  #define SourceDir "dist"
+  #if GetEnv('LOCALAPPDATA') != ''
+    #define SourceDir GetEnv('LOCALAPPDATA') + '\LiveBackgroundBuild'
+  #elif GetEnv('USERPROFILE') != ''
+    #define SourceDir GetEnv('USERPROFILE') + '\AppData\Local\LiveBackgroundBuild'
+  #else
+    #define SourceDir 'LiveBackgroundBuild'
+  #endif
 #endif
 #ifndef OutputDir
-  #define OutputDir "dist\installer"
+  #if GetEnv('LOCALAPPDATA') != ''
+    #define OutputDir GetEnv('LOCALAPPDATA') + '\LiveBackgroundBuild\installer'
+  #elif GetEnv('USERPROFILE') != ''
+    #define OutputDir GetEnv('USERPROFILE') + '\AppData\Local\LiveBackgroundBuild\installer'
+  #else
+    #define OutputDir 'LiveBackgroundBuild\installer'
+  #endif
 #endif
 #ifndef AppIcon
   #define AppIcon "assets\LiveBackground.ico"
@@ -45,7 +58,6 @@ SolidCompression=yes
 WizardStyle=modern dynamic
 WizardSizePercent=120
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
@@ -163,6 +175,30 @@ begin
   Result := True;
 end;
 
+{ Detect the upgrade before the task page is shown so CurPageChanged can
+  untick autostart when the previous install had no startup task. }
+procedure DetectUpgradeInstall;
+var
+  Cli: String;
+begin
+  IsUpgradeInstall := False;
+  PreviousAutostartEnabled := False;
+  AutostartTaskAdjusted := False;
+  { The app constant is not initialized yet; the destination edit already
+    holds the default/previous path, which is where an old copy would be. }
+  Cli := AddBackslash(WizardForm.DirEdit.Text) + '{#MyAppCliName}';
+  if FileExists(Cli) then
+  begin
+    IsUpgradeInstall := True;
+    PreviousAutostartEnabled := TaskExists('LiveBackground (early startup)');
+  end;
+end;
+
+procedure InitializeWizard;
+begin
+  DetectUpgradeInstall;
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if (CurPageID = wpSelectTasks) and IsUpgradeInstall and (not PreviousAutostartEnabled) and (not AutostartTaskAdjusted) then
@@ -178,14 +214,17 @@ var
   ResultCode: Integer;
 begin
   Result := '';
-  IsUpgradeInstall := False;
-  PreviousAutostartEnabled := False;
-  AutostartTaskAdjusted := False;
   Cli := ExpandConstant('{app}\{#MyAppCliName}');
   if FileExists(Cli) then
   begin
-    IsUpgradeInstall := True;
-    PreviousAutostartEnabled := TaskExists('LiveBackground (early startup)');
+    { A /DIR override can point at a different folder than the wizard edit
+      used for the early check. Re-detect here if that happened; the task-page
+      decision has already been made, so do not clear it here. }
+    if not IsUpgradeInstall then
+    begin
+      IsUpgradeInstall := True;
+      PreviousAutostartEnabled := TaskExists('LiveBackground (early startup)');
+    end;
     { Stop an older copy before its files are replaced. }
     Exec(Cli, 'stop', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;

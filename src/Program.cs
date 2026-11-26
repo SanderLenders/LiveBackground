@@ -58,6 +58,11 @@ namespace LiveBackground
         private static volatile bool _prefetching;
         private static volatile bool _prefetchCancel;
         private static volatile bool _restartPlayer;
+        // A stale "video" startup hint can have queued an early mpv worker
+        // before the real config is read. When that config turns out to be
+        // Images, this flag stops the worker from adopting/starting mpv after
+        // the images path has stopped it.
+        private static volatile bool _cancelEarlyVideo;
         private static bool _prefetchDone;
         private static DateTime _prefetchAfter = DateTime.MaxValue;
         // The video folder and the image folder are each watched by a
@@ -518,7 +523,7 @@ namespace LiveBackground
             if (MediaPipeline.ResolveClips(folder, _config).Count > 0)
             {
                 string signature = MediaPipeline.Signature(folder, _config);
-                if (!MediaPipeline.HasCachedLoop(_appRoot, signature))
+                if (!MediaPipeline.HasCachedLoop(_appRoot, signature, _config))
                 {
                     MediaManifest manifest = MediaPipeline.LoadManifest(_appRoot);
                     bool valid = manifest != null && manifest.Signature == signature &&
@@ -906,11 +911,26 @@ namespace LiveBackground
                     if (TryReadEarlyMpvHandoff(out media, out pid) && pid > 0 &&
                         string.Equals(media, expectedMedia, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Exclude it from the orphan scan even if validation is
-                        // still in progress: the scan may run concurrently.
-                        _adoptedEarlyMpvPid = pid;
+                        // The images branch can set the cancel flag while this
+                        // worker is still waiting for the handoff. Check it before
+                        // handing the PID to the player; Adopt is still used to
+                        // validate that PID, then Stop kills the stale window.
+                        bool cancelled = _cancelEarlyVideo;
+                        if (!cancelled)
+                        {
+                            // Exclude it from the orphan scan even if validation is
+                            // still in progress: the scan may run concurrently.
+                            _adoptedEarlyMpvPid = pid;
+                        }
                         if (_player != null && _player.Adopt(pid, expectedMedia))
                         {
+                            if (cancelled || _cancelEarlyVideo)
+                            {
+                                _player.Stop();
+                                _adoptedEarlyMpvPid = 0;
+                                Log.Info("startup: discarded early mpv because Images mode is active");
+                                return;
+                            }
                             if (_jobHandle != IntPtr.Zero && Native.AssignPidToJob(_jobHandle, pid))
                                 Log.Info("startup: bootstrapper mpv added to child-process job");
                             else Log.Warn("startup: could not add bootstrapper mpv to child-process job");
@@ -931,7 +951,7 @@ namespace LiveBackground
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-            Justification = "earlyStartDone/orphanScanDone are disposed on normal return paths; a fatal Run exception already tears down the process.")]
+            Justification = "disposed on the video startup path; the images path leaves them open so in-flight early-start/orphan-scan workers can still signal them (the OS reclaims them at exit), and a fatal Run exception already tears down the process.")]
         private static int Run()
         {
             DesktopHost.EnablePerMonitorDpi();
@@ -1029,9 +1049,25 @@ namespace LiveBackground
                             }
                             lock (Sync) { if (_progman == IntPtr.Zero) _progman = progman; }
                             try { orphanScanDone.WaitOne(30000); } catch { /* best-effort */ }
+                            // The real config may have turned out to be Images
+                            // while we were waiting. Never start mpv after that
+                            // branch has stopped the player.
+                            if (_cancelEarlyVideo)
+                            {
+                                Log.Info("startup: early mpv start cancelled because Images mode is active");
+                                return;
+                            }
                             if (_player != null && _player.Start(progman, hintMedia))
                             {
-                                Log.Info("startup: early mpv started (" + StartupElapsedMs() + " ms after process timer start)");
+                                // The flag can be set between the check above and
+                                // Start; stop the process we just adopted then.
+                                if (_cancelEarlyVideo)
+                                {
+                                    _player.Stop();
+                                    Log.Info("startup: discarded early mpv because Images mode is active");
+                                }
+                                else Log.Info("startup: early mpv started (" + StartupElapsedMs() +
+                                    " ms after process timer start)");
                             }
                         }
                         catch (Exception ex) { Log.Warn("startup: early mpv start failed: " + ex.Message); }
@@ -1153,7 +1189,10 @@ namespace LiveBackground
                 // No mpv, no WorkerW layer and no loop work at all. The still
                 // image goes up immediately and the rotation timer takes over.
                 // A stale video hint can make the bootstrapper start mpv before
-                // the real config is read; stop it here if that happened.
+                // the real config is read. Cancel those workers before stopping
+                // the player: they may still be waiting for the desktop or the
+                // handoff, and must not adopt/start mpv after this Stop.
+                _cancelEarlyVideo = true;
                 try { _player.Stop(); } catch { /* best-effort */ }
                 DeleteEarlyMpvHandoff();
                 _adoptedEarlyMpvPid = 0;
@@ -1184,8 +1223,10 @@ namespace LiveBackground
                 SetStartupPriority(false);
                 Log.Info("startup priority restored to Normal");
                 Ui.Start(_appRoot);
-                if (earlyStartDone != null) try { earlyStartDone.Dispose(); } catch { }
-                try { orphanScanDone.Dispose(); } catch { }
+                // Do not dispose the startup events here: an early-start worker
+                // may still be in flight after the cancel flag was set, and its
+                // final Set() needs a live handle. Leaving them open costs no
+                // startup time; the OS reclaims them when the process exits.
                 return WatchLoop();
             }
 

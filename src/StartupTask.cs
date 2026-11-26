@@ -148,7 +148,7 @@ namespace LiveBackground
                 // not to whichever administrator approves the elevation
                 // prompt. Pass that account explicitly so the elevated helper
                 // registers the task for it.
-                string arguments = "install-task " + Util.Quote(Util.CurrentUser());
+                string arguments = "install-task " + Util.Quote(Util.InteractiveUser());
                 System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo(setupExe, arguments);
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";

@@ -446,6 +446,15 @@ namespace LiveBackground
             return seeded;
         }
 
+        // The UI always shows concrete fade values, while a screen stores null
+        // to mean "inherit main". Compare both before saving so a plain Apply
+        // does not turn every inherited screen into an explicit override.
+        public static bool InheritsMainFade(double seconds, bool fine, double mainSeconds, bool mainFine)
+        {
+            if (double.IsNaN(seconds) || double.IsNaN(mainSeconds)) return false;
+            return Math.Abs(seconds - mainSeconds) < 0.000001 && fine == mainFine;
+        }
+
         private bool HasScreenEntry(string device)
         {
             if (ExtraScreens == null) return false;
@@ -594,7 +603,11 @@ namespace LiveBackground
                 DesktopWallpaperMode = "custom";
             }
             if (string.IsNullOrEmpty(DesktopWallpaperImage)) DesktopWallpaperImage = "";
-            if (string.IsNullOrEmpty(TaskName)) TaskName = "LiveBackground (early startup)";
+            // The installer creates one scheduled task under a fixed name. A
+            // custom name in an older config would point the startup checkbox
+            // at a task that is never installed, so keep the field only for
+            // legacy configs and make the installer's name authoritative.
+            TaskName = "LiveBackground (early startup)";
             if (string.IsNullOrEmpty(MpvPath)) MpvPath = @"mpv\mpv.exe";
             if (string.IsNullOrEmpty(FfmpegPath)) FfmpegPath = @"tools\ffmpeg\ffmpeg.exe";
             if (string.IsNullOrEmpty(FfprobePath)) FfprobePath = @"tools\ffmpeg\ffprobe.exe";
@@ -820,7 +833,10 @@ namespace LiveBackground
             try
             {
                 AppConfig config = JsonStore.DeserializeFile<AppConfig>(path);
-                if (config == null) return new AppConfig();
+                // A literal "null" document is a fresh config, not a broken
+                // file: normalize it and fill portable defaults just like the
+                // no-file path, without warning the user.
+                if (config == null) config = new AppConfig();
                 config.Normalize();
                 Paths.ApplyDefaults(config);
                 return config;

@@ -157,6 +157,15 @@ namespace LiveBackground
         // takes as long as restarting mpv, not as long as the encode.
         public static MediaManifest LoadCachedManifest(string appRoot, string signature)
         {
+            return LoadCachedManifest(appRoot, signature, null);
+        }
+
+        // config is the loop we want right now. The index file name is only a
+        // signature, so a stale or hand-edited file can claim that name while
+        // describing a different render. Reject it instead of adopting a loop
+        // with the wrong resolution, fps, crossfade, crf or preset.
+        public static MediaManifest LoadCachedManifest(string appRoot, string signature, AppConfig config)
+        {
             if (string.IsNullOrEmpty(signature)) return null;
             string path = CacheIndexPath(appRoot, signature);
             if (!File.Exists(path)) return null;
@@ -164,6 +173,13 @@ namespace LiveBackground
             {
                 MediaManifest manifest = JsonStore.DeserializeFile<MediaManifest>(path);
                 if (manifest == null || string.IsNullOrEmpty(manifest.LoopFile)) return null;
+                int width = config != null ? config.RenderWidth : manifest.Width;
+                int height = config != null ? config.RenderHeight : manifest.Height;
+                int fps = config != null ? config.Fps : manifest.Fps;
+                double crossfade = config != null ? config.CrossfadeSeconds : manifest.Crossfade;
+                int crf = config != null ? config.Crf : manifest.Crf;
+                string preset = config != null ? config.Preset : manifest.Preset;
+                if (!CachedManifestMatches(manifest, signature, width, height, fps, crossfade, crf, preset)) return null;
                 if (!File.Exists(Path.Combine(CacheDir(appRoot), manifest.LoopFile))) return null;
                 return manifest;
             }
@@ -174,9 +190,26 @@ namespace LiveBackground
             }
         }
 
+        // The scalar fields are stored in the manifest because a signature file
+        // name alone is not proof that the index still describes this loop.
+        private static bool CachedManifestMatches(MediaManifest manifest, string signature,
+            int width, int height, int fps, double crossfade, int crf, string preset)
+        {
+            if (manifest == null) return false;
+            if (!string.Equals(manifest.Signature, signature, StringComparison.OrdinalIgnoreCase)) return false;
+            if (manifest.Width != width || manifest.Height != height || manifest.Fps != fps || manifest.Crf != crf) return false;
+            if (Math.Abs(manifest.Crossfade - crossfade) > 0.001) return false;
+            return string.Equals(manifest.Preset ?? "", preset ?? "", StringComparison.OrdinalIgnoreCase);
+        }
+
         public static bool HasCachedLoop(string appRoot, string signature)
         {
             return LoadCachedManifest(appRoot, signature) != null;
+        }
+
+        public static bool HasCachedLoop(string appRoot, string signature, AppConfig config)
+        {
+            return LoadCachedManifest(appRoot, signature, config) != null;
         }
 
         // The loop that is playing was built before the cache existed on older
@@ -187,7 +220,6 @@ namespace LiveBackground
             if (string.IsNullOrEmpty(signature)) return;
             try
             {
-                if (File.Exists(CacheIndexPath(appRoot, signature))) return;
                 MediaManifest manifest = LoadManifest(appRoot);
                 if (manifest == null ||
                     !string.Equals(manifest.Signature, signature, StringComparison.OrdinalIgnoreCase) ||
@@ -195,8 +227,21 @@ namespace LiveBackground
                 {
                     return;
                 }
+                string path = CacheIndexPath(appRoot, signature);
+                if (File.Exists(path))
+                {
+                    MediaManifest existing = LoadCachedManifest(appRoot, signature);
+                    if (existing != null &&
+                        CachedManifestMatches(existing, signature, manifest.Width, manifest.Height,
+                            manifest.Fps, manifest.Crossfade, manifest.Crf, manifest.Preset))
+                    {
+                        return;
+                    }
+                    // The file name promised this signature but its contents do
+                    // not describe this loop: overwrite it below.
+                }
                 Directory.CreateDirectory(LoopsDir(appRoot));
-                JsonStore.SerializeFile(CacheIndexPath(appRoot, signature), manifest);
+                JsonStore.SerializeFile(path, manifest);
             }
             catch (Exception ex) { Log.Warn("could not seed the loop cache: " + ex.Message); }
         }
@@ -598,6 +643,7 @@ namespace LiveBackground
             if (manifest.Fps != screenConfig.Fps) return false;
             if (manifest.Crf != screenConfig.Crf) return false;
             if (!string.Equals(manifest.Preset ?? "", screenConfig.Preset ?? "", StringComparison.OrdinalIgnoreCase)) return false;
+            if (Math.Abs(manifest.Crossfade - screenConfig.CrossfadeSeconds) > 0.001) return false;
             if (!checkSignature) return true;
             string folder = Util.ResolvePath(appRoot, screenConfig.VideoFolder);
             return manifest.Signature == Signature(folder, screenConfig);
@@ -677,7 +723,7 @@ namespace LiveBackground
             // encoding entirely. This is what makes switching back instant.
             if (!force)
             {
-                MediaManifest cachedManifest = LoadCachedManifest(appRoot, signature);
+                MediaManifest cachedManifest = LoadCachedManifest(appRoot, signature, config);
                 if (cachedManifest != null)
                 {
                     string cachedLoop = Path.Combine(cache, cachedManifest.LoopFile);

@@ -31,6 +31,28 @@ Framework, so the tests exercise the exact code `build.ps1` compiles.
 - The .NET Framework 4.8 reference assemblies are restored automatically from
   NuGet (`Microsoft.NETFramework.ReferenceAssemblies`), so the targeting pack
   does not need to be installed.
+- Inno Setup 6.4 or newer to build the installer; `installer.iss` uses
+  `WizardStyle=modern dynamic`.
+
+## Local self-signed certificate
+
+`build.ps1` signs the app, CLI, settings window, tray helper, bootstrapper and
+installer. For a local test build, create a self-signed certificate once, export
+its public CER and import it into the local root store:
+
+```powershell
+$c = New-SelfSignedCertificate -Type CodeSigningCert `
+     -Subject 'CN=LiveBackground Test' `
+     -CertStoreLocation Cert:\CurrentUser\My -HashAlgorithm SHA256 -KeyLength 2048
+Export-Certificate -Cert $c -FilePath .\LiveBackground.cer -Type CERT
+Import-Certificate -FilePath .\LiveBackground.cer -CertStoreLocation Cert:\CurrentUser\Root
+```
+
+Importing the CER into `Cert:\CurrentUser\Root` is what lets a signature check
+report the self-signed signature as valid on this PC. This is local/test trust
+only: do not distribute the CER or import it on user machines as a substitute
+for a publicly trusted OV/EV certificate. The current build has no RFC3161
+timestamp; public OV/EV signing with a timestamp remains future work.
 
 ## Build and test
 
@@ -55,8 +77,7 @@ so they run anywhere, including CI.
 powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 `
   -OutDir "$env:LOCALAPPDATA\LiveBackgroundBuild" `
   -MpvSource "C:\Program Files\LiveBackground\mpv" `
-  -FfmpegSource "C:\Program Files\LiveBackground\tools\ffmpeg" `
-  -TimestampServer "http://timestamp.digicert.com"
+  -FfmpegSource "C:\Program Files\LiveBackground\tools\ffmpeg"
 ```
 
 This is the command that produces the installer that may be shared from
@@ -69,23 +90,42 @@ the pipeline but does not create SmartScreen or SAC reputation; a public release
 needs a trusted OV/EV certificate plus an RFC3161 timestamp server. mpv and
 ffmpeg are not re-signed.
 
+That canonical command deliberately omits `-TimestampServer`, so the current
+build has no RFC3161 timestamp. Future public OV/EV release example only - add a
+timestamp server once a publicly trusted certificate is available:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 `
+  -OutDir "$env:LOCALAPPDATA\LiveBackgroundBuild" `
+  -MpvSource "C:\Program Files\LiveBackground\mpv" `
+  -FfmpegSource "C:\Program Files\LiveBackground\tools\ffmpeg" `
+  -CertSubject "CN=LiveBackground Release" `
+  -TimestampServer "http://timestamp.digicert.com"
+```
+
 The script always copies the tracked `tools\LiveBackgroundBootstrap.exe`
 because that is the executable the scheduled tasks launch; it is not recompiled
 on each build, so every package contains the same bootstrapper. Change it only
-by rebuilding it from `src\bootstrapper.c` and committing the result. For any
-output folder other than the frozen `dist` archive, the script clears the folder
-first so runtime state, old logs and an old installer cannot leak into the
-package.
+by rebuilding it from `src\bootstrapper.c` and committing the result. The
+`dist` folder holds the frozen v1.5.1 archive and must not be used as `SourceDir`
+or as an output folder; `build.ps1` refuses to write there. For any other output
+folder the script clears it first so runtime state, old logs and an old installer
+cannot leak into the package.
 
 It is not run in CI because it needs mpv, ffmpeg, a certificate and Inno Setup,
 and takes several minutes; CI instead runs `build.ps1 -CompileOnly` to compile
-the five first-party executables the same way and catch a change that would
-break the real build.
+the four first-party executables the same way and copy the fixed bootstrapper,
+catching a change that would break the real build.
 
 `build.ps1` compiles through `dotnet build` / MSBuild because the settings UI
 requires WPF XAML compilation. If the .NET SDK / MSBuild is unavailable, the
 script fails with a clear error. Pass `-CompileOnly` to compile the executables
 and stop before packaging.
+
+The build copies the tracked license texts from `assets\licenses` into the
+output package, including `ffmpeg-LICENSE.txt`, `ffmpeg-README.txt` and
+`ffmpeg-COPYING.GPLv3.txt`. Those tracked files are authoritative and are not
+overwritten from a local `-FfmpegSource` folder; see `THIRD-PARTY.txt`.
 
 ## Analysers
 

@@ -16,6 +16,15 @@ namespace LiveBackground.Tests
         }
 
         [Fact]
+        public void IsInside_rejects_a_drive_root_even_with_a_trailing_separator()
+        {
+            string root = Path.GetPathRoot(@"C:\");
+            Assert.False(InstallerPaths.IsInside(root, root));
+            Assert.False(InstallerPaths.IsInside(root, root + Path.DirectorySeparatorChar));
+            Assert.False(InstallerPaths.IsInside(root + Path.DirectorySeparatorChar, root));
+        }
+
+        [Fact]
         public void IsInside_rejects_outside_paths_even_with_a_shared_prefix()
         {
             string root = Path.Combine(Path.GetPathRoot(@"C:\"), "LiveBackground");

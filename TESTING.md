@@ -51,8 +51,8 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 - [ ] Slider interval (5..300 seconds, 5-second steps) and the half-second crossfade steps.
 - [ ] Add or remove a picture in the folder: picked up without a restart.
 - [ ] Lock screen mode: frame, custom image and image wallpaper.
-- [ ] Desktop wallpaper: frame versus custom image, on the main and extra
-      screens.
+- [ ] Desktop wallpaper: frame versus custom image on the main screen; a
+      per-screen fallback is config-only, with no tab in the settings window.
 
 ## Multi-monitor and DPI
 
@@ -68,9 +68,11 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
       that monitor's loop is rebuilt and the main loop is untouched.
 - [ ] Turn a mirror back on: the previously saved folder/list and render values
       return when it is turned off again.
-- [ ] Duplicate mode: dimmed per-screen controls remain clickable, values are
-      saved only for a connected screen that is not mirroring the main screen,
-      and Windows display placement remains fully controllable.
+- [ ] Duplicate mode: dimmed per-screen controls stay clickable by design.
+      Folder and playlist values are not saved for a mirroring or disconnected
+      screen; other fade and render values may be saved. Windows display mode
+      and placement remain fully controllable via "Open Windows display
+      settings...".
 - [ ] Unplug and replug a screen: its settings are remembered by device name.
 - [ ] Move the settings window between monitors at different DPI (100% / 125% /
       150%): it stays readable and nothing is clipped.
@@ -98,8 +100,8 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 
 - [ ] Exactly four main-row tabs; the Video/Images pill switches the first two
       and keeps unsaved edits.
-- [ ] "Save and apply": settings are written, the loop rebuilds, the progress
-      card appears bottom-right and fades away.
+- [ ] "Apply": settings are written, the loop rebuilds, the progress card
+      appears bottom-right and fades away.
 - [ ] Validation messages appear (no clips ticked; an unreadable clip).
 - [ ] `LiveBackgroundCli.exe status | rebuild | stop | start`
 - [ ] `LiveBackground.exe --settings | --pause | --resume | --stop`

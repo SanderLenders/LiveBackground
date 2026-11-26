@@ -8,6 +8,27 @@
 - Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
 - Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48). The legacy csc/Roslyn fallback is no longer supported because the WPF settings UI requires XAML compilation.
 
+### Final audit fixes
+
+- Documentation and UI labels now match the app: "Apply", "Open Windows
+  display settings...", "Shuffle pictures" and "Use an image from your image
+  folder". The README no longer claims Extended/Duplicate radio buttons or a
+  per-screen "Rebuild now" button, narrows which per-screen values are saved,
+  and notes that dimmed controls stay clickable by design.
+- The tracked FFmpeg license texts (`assets\licenses\ffmpeg-LICENSE.txt`,
+  `ffmpeg-README.txt` and `ffmpeg-COPYING.GPLv3.txt`) now ship with the package,
+  with the build no longer overwriting them from a local FFmpeg folder.
+- The crossfade sliders now use 1-second steps by default and snap to
+  0.5-second steps only when "Allow half-second steps" is ticked. Per-screen
+  fades now inherit the main values correctly.
+- Fixed an Images startup race, tightened path validation, aligned task names,
+  and made small runtime and test fixes.
+- Hardened the build and installer: the canonical build has no RFC3161
+  timestamp, local self-signed certificate setup is documented with root-store
+  trust, Inno Setup 6.4+ is required for the modern wizard, `dist` is frozen and
+  never used as `SourceDir`, and signing notes cover the generated uninstaller
+  and temporary Setup self-copies.
+
 ### Multi-monitor settings and release readiness
 
 - The Multi Monitor tab now uses nested Video/Images/Playback tabs for up to
@@ -81,10 +102,11 @@
   (`SlideshowTiming`) and the per-screen settings fingerprint
   (`ScreenConfigToken`) are now separate, window-free classes. The behaviour is
   unchanged; the moved logic is now covered by unit tests.
-- **The build is now warning-free.** Every number and date the app formats now
-  passes `CultureInfo.InvariantCulture` explicitly, so log lines, cache
-  signatures and installer messages read the same on every machine instead of
-  following the user's regional settings. The code analysis backlog is empty.
+- **The build is now warning-free.** Formatting that feeds cache signatures and
+  logs now passes `CultureInfo.InvariantCulture` explicitly, so those values
+  read the same on every machine instead of following the user's regional
+  settings. Any remaining integer labels in the UI are ASCII-safe. The code
+  analysis backlog is empty.
 - **The analyser set was tightened, and it is now enforced.** Four code-quality
   rules that had been switched off (mark members `static`, avoid zero-length
   array allocations, seal internal types, prefer the generic `Marshal.SizeOf`
@@ -228,7 +250,7 @@
 
 - **A killed app can no longer leave a video painting over the desktop.** The
   wallpaper puts its video player in a Windows job object that the system cleans
-  up when the app exits â€” even after a crash, a Task Manager kill or a power
+  up when the app exits — even after a crash, a Task Manager kill or a power
   loss. It also sweeps away any stray player left by an earlier run as it starts.
 - **Rendering no longer risks overflowing the Windows command line.** The filter
   graph for a loop is passed in a file instead of inline, so a folder with many
@@ -243,7 +265,7 @@
 ### Reliability and safety pass (stage 3)
 
 - **Saving the settings no longer freezes the window.** The work that follows a
-  save â€” scanning the video folder and bringing the image layers up â€” can take a
+  save — scanning the video folder and bringing the image layers up — can take a
   few seconds, so it now runs on its own thread and the settings window closes
   at once. If you save again while that work is still running, the newest
   settings replace the pending ones instead of queueing up.
@@ -299,10 +321,10 @@
 ### Fixes
 
 - **Switching to a different clip now really switches the main screen.**
-  "Rebuild now" and "Save and apply" woke the loop check but never told it to
-  re-evaluate the primary monitor, so only the extra screens changed and the main
-  screen kept playing the previous clip. A settings save now re-checks the main
-  loop the same way a folder change does: a clip that was rendered before swaps in
+  "Rebuild now" and "Apply" woke the loop check but never told it to re-evaluate
+  the primary monitor, so only the extra screens changed and the main screen kept
+  playing the previous clip. Applying settings now re-checks the main loop the
+  same way a folder change does: a clip that was rendered before swaps in
   instantly, and a new one is encoded in the background.
 - **"One clip" is now called "Single clip"** on every tab and per-screen pane,
   and the desktop-wallpaper choice on the per-screen panes reads "First frame of
@@ -429,7 +451,7 @@
   has 2nd Screen and 3rd Screen sub-tabs. They are greyed out while that screen
   mirrors the main loop, is disconnected, or Windows is duplicating. Existing
   screens keep inheriting the main fade until their own fade is saved.
-- **Desktop fallback images can be set per independent video screen.** Other â†’
+- **Desktop fallback images can be set per independent video screen.** Other →
   Desktop wallpaper image now has Main Screen, 2nd Screen and 3rd Screen tabs.
   A screen can use the first frame of its own loop or a custom image while its
   video is paused, stopped or still being built. Mirroring screens continue to

@@ -36,6 +36,7 @@ Project : https://ffmpeg.org/
 Source  : https://ffmpeg.org/download.html
 Build   : https://github.com/GyanD/codexffmpeg
 License text: assets\licenses\ffmpeg-LICENSE.txt
+              assets\licenses\ffmpeg-COPYING.GPLv3.txt
 Build info  : assets\licenses\ffmpeg-README.txt
 
 The complete corresponding source code for this FFmpeg build is available

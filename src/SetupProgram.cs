@@ -65,7 +65,9 @@ namespace LiveBackground
             if (result == 0)
             {
                 Console.WriteLine();
-                Console.WriteLine("Your wallpaper is running now and will start automatically at logon.");
+                Console.WriteLine("Your wallpaper is running now.");
+                if (createStartup) Console.WriteLine("It will start automatically at logon.");
+                else Console.WriteLine("No logon task was created (--no-startup); start it yourself after sign-in.");
                 Console.WriteLine("Drop more videos into:");
                 Console.WriteLine("  " + Util.ResolvePath(_appRoot, config.VideoFolder));
                 Console.WriteLine("The loop rebuilds by itself a few seconds after the folder changes.");
@@ -119,14 +121,12 @@ namespace LiveBackground
 
         private static int Start()
         {
-            AppConfig config = ConfigStore.LoadOrCreate(_appRoot);
             Installer.StartApp(_appRoot, Console.WriteLine);
             return 0;
         }
 
         private static int Stop()
         {
-            AppConfig config = ConfigStore.LoadOrCreate(_appRoot);
             Installer.StopApp(_appRoot, Console.WriteLine, true);
             Console.WriteLine("wallpaper stopped");
             return 0;
@@ -154,7 +154,7 @@ namespace LiveBackground
             {
                 Console.WriteLine("  loop duration   : " + manifest.OutputDuration.ToString("0.0", CultureInfo.InvariantCulture) + " s");
                 Console.WriteLine("  loop resolution : " + manifest.Width + "x" + manifest.Height + " @ " + manifest.Fps + " fps");
-                Console.WriteLine("  built           : " + manifest.BuiltUtc);
+                Console.WriteLine("  built           : " + FormatBuiltUtc(manifest.BuiltUtc));
             }
             Console.WriteLine("  cache current   : " + (valid ? "yes" : "no"));
             Console.WriteLine("  app running     : " + (Installer.IsAppRunning(_appRoot) ? "yes" : "no"));
@@ -166,6 +166,19 @@ namespace LiveBackground
             Console.WriteLine("  lock-screen save: " + (string.IsNullOrEmpty(state.LockScreenBackup) ? "-" : state.LockScreenBackup));
             Console.WriteLine("  previous wallp. : " + (string.IsNullOrEmpty(state.WallpaperBackup) ? "-" : state.WallpaperBackup));
             return 0;
+        }
+
+        // The manifest stores an ISO-8601 UTC stamp. Parse it once and format it
+        // with the invariant culture so "status" reads the same everywhere.
+        private static string FormatBuiltUtc(string value)
+        {
+            DateTime built;
+            if (!string.IsNullOrEmpty(value) &&
+                DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out built))
+            {
+                return built.ToString("o", CultureInfo.InvariantCulture);
+            }
+            return value ?? "";
         }
 
         private static int InstallTask(string[] args)
@@ -293,7 +306,7 @@ namespace LiveBackground
             Console.WriteLine("  set-lockscreen <image>     use a specific lock-screen image");
             Console.WriteLine("  restore-lockscreen         restore the saved lock screen");
             Console.WriteLine("  install-task               create the logon task (elevated)");
-            Console.WriteLine("  remove-task                remove the logon task (elevated)");
+            Console.WriteLine("  remove-task                remove the logon task");
             Console.WriteLine();
         }
 

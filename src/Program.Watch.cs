@@ -126,6 +126,11 @@ namespace LiveBackground
                             }
                             if (_imageProgman != IntPtr.Zero) _progman = _imageProgman;
                             SyncScreenPlayersToMode(true);
+                            // The video branch consumes this after its own layout
+                            // sync. Images never restarts the main player here, so
+                            // clear it too or a later switch to video would see a
+                            // stale "screen count changed" flag.
+                            _screenCountChanged = false;
                         }
                         else if (_screensDirty)
                         {
@@ -726,11 +731,11 @@ namespace LiveBackground
             try
             {
                 if (buildMain && (forceMain || mainSignature == null ||
-                    !MediaPipeline.HasCachedLoop(_appRoot, mainSignature))) cached = false;
+                    !MediaPipeline.HasCachedLoop(_appRoot, mainSignature, _config))) cached = false;
                 foreach (ScreenJob job in screens)
                 {
                     if (job.Force || job.Signature == null ||
-                        !MediaPipeline.HasCachedLoop(_appRoot, job.Signature)) cached = false;
+                        !MediaPipeline.HasCachedLoop(_appRoot, job.Signature, job.Config)) cached = false;
                 }
             }
             catch { cached = false; }
@@ -851,7 +856,7 @@ namespace LiveBackground
                         // nothing to prepare for it.
                         if (live != null && string.Equals(live.Signature, signature,
                             StringComparison.OrdinalIgnoreCase)) continue;
-                        if (MediaPipeline.HasCachedLoop(_appRoot, signature)) continue;
+                        if (MediaPipeline.HasCachedLoop(_appRoot, signature, single)) continue;
 
                         Log.Info("prefetch: " + name);
                         BuildResult result = MediaPipeline.Build(_appRoot, single,

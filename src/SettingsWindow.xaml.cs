@@ -39,6 +39,10 @@ namespace LiveBackground
         private Slider _videoFadeSlider;
         private TextBlock _videoFadeValue;
         private CheckBox _videoFineSteps;
+        // Last main fade shown to the user; screens that still inherit use it
+        // to tell an untouched display from an edited one.
+        private double _lastMainFadeSeconds = 3.0;
+        private bool _lastMainFadeFine;
         private ComboBox _resolutionCombo;
         private ComboBox _fpsCombo;
         private ComboBox _qualityCombo;
@@ -235,13 +239,13 @@ namespace LiveBackground
             var fadeRow = new DockPanel { Margin = new Thickness(0, 6, 0, 4) };
             _videoFadeValue = new TextBlock { MinWidth = 60, TextAlignment = TextAlignment.Right, Foreground = Brushes.White };
             DockPanel.SetDock(_videoFadeValue, Dock.Right);
-            _videoFadeSlider = new Slider { Minimum = 0.5, Maximum = 10.0, TickFrequency = 0.5, IsSnapToTickEnabled = true, SmallChange = 0.5, LargeChange = 1.0 };
-            _videoFadeSlider.ValueChanged += delegate { UpdateFadeLabel(); };
+            _videoFadeSlider = new Slider { Minimum = FadeSteps.VideoCoarseMinimum, Maximum = 10.0, TickFrequency = FadeSteps.CoarseStep, IsSnapToTickEnabled = true, SmallChange = FadeSteps.CoarseStep, LargeChange = 1.0 };
+            _videoFadeSlider.ValueChanged += delegate { UpdateFadeLabel(); SyncInheritedFade(); };
             fadeRow.Children.Add(_videoFadeValue); fadeRow.Children.Add(_videoFadeSlider);
             panel.Children.Add(fadeRow);
             _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
-            _videoFineSteps.Checked += delegate { ApplyFadeSteps(_videoFadeSlider, true); };
-            _videoFineSteps.Unchecked += delegate { ApplyFadeSteps(_videoFadeSlider, false); };
+            _videoFineSteps.Checked += delegate { ApplyVideoFadeSteps(_videoFadeSlider, true); SyncInheritedFade(); };
+            _videoFineSteps.Unchecked += delegate { ApplyVideoFadeSteps(_videoFadeSlider, false); SyncInheritedFade(); };
             panel.Children.Add(_videoFineSteps);
 
             panel.Children.Add(Header("Quality"));
@@ -623,6 +627,20 @@ namespace LiveBackground
 
         private string Resolve(string path) { try { return Util.ResolvePath(_appRoot, path ?? ""); } catch { return path ?? ""; } }
 
+        // CollectConfig runs before SaveButton_Click's try/catch. A malformed
+        // path makes Path.GetFullPath throw, so validation resolves through
+        // this helper: the user gets the same friendly warning and the save
+        // is cancelled. Resolve above stays display-only and silent.
+        private string ResolveForValidation(string path, string warning)
+        {
+            try { return Util.ResolvePath(_appRoot, path ?? ""); }
+            catch
+            {
+                MessageBox.Show(this, warning, "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+        }
+
         private void BrowseInto(TextBox box)
         {
             try
@@ -756,9 +774,13 @@ namespace LiveBackground
             _imageModeSingle.IsChecked = string.Equals(_config.ImageMode, "single", StringComparison.OrdinalIgnoreCase);
             _imageModeSlideshow.IsChecked = !_imageModeSingle.IsChecked;
 
-            _videoFadeSlider.Value = Clamp(_config.CrossfadeSeconds, _videoFadeSlider.Minimum, _videoFadeSlider.Maximum);
+            // Set the fine state first: it decides the slider minimum, so a
+            // saved half-second value is not clamped away before it is shown.
             _videoFineSteps.IsChecked = _config.FineCrossfadeSteps;
-            ApplyFadeSteps(_videoFadeSlider, _config.FineCrossfadeSteps);
+            ApplyVideoFadeSteps(_videoFadeSlider, _config.FineCrossfadeSteps);
+            _videoFadeSlider.Value = Clamp(_config.CrossfadeSeconds, _videoFadeSlider.Minimum, _videoFadeSlider.Maximum);
+            _lastMainFadeSeconds = _videoFadeSlider.Value;
+            _lastMainFadeFine = _videoFineSteps.IsChecked == true;
             UpdateFadeLabel();
 
             SetComboByContains(_resolutionCombo, _config.RenderWidth + " x " + _config.RenderHeight, 0);
@@ -999,6 +1021,21 @@ namespace LiveBackground
             UpdateMonitorTabEnabled();
         }
 
+        // Screens without a saved fade follow the main crossfade. Keep their
+        // displayed values in step with the main controls so the per-screen
+        // tab already shows what Apply will save.
+        private void SyncInheritedFade()
+        {
+            if (_videoFadeSlider == null || _videoFineSteps == null) return;
+            double seconds = _videoFadeSlider.Value;
+            bool fine = _videoFineSteps.IsChecked == true;
+            if (_slot2 != null) _slot2.RefreshInheritedFade(_lastMainFadeSeconds, _lastMainFadeFine, seconds, fine);
+            if (_slot3 != null) _slot3.RefreshInheritedFade(_lastMainFadeSeconds, _lastMainFadeFine, seconds, fine);
+            if (_slot4 != null) _slot4.RefreshInheritedFade(_lastMainFadeSeconds, _lastMainFadeFine, seconds, fine);
+            _lastMainFadeSeconds = seconds;
+            _lastMainFadeFine = fine;
+        }
+
         private void UpdateMonitorTabEnabled()
         {
             bool available = _hasSecondScreen || _duplicateLayout;
@@ -1072,7 +1109,8 @@ namespace LiveBackground
 
             if (imagesMode)
             {
-                string resolvedImages = Util.ResolvePath(_appRoot, imageFolder);
+                string resolvedImages = ResolveForValidation(imageFolder, "Choose an existing image folder first.");
+                if (resolvedImages == null) return null;
                 if (string.IsNullOrWhiteSpace(imageFolder) || !Directory.Exists(resolvedImages))
                 {
                     MessageBox.Show(this, "Choose an existing image folder first.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1086,7 +1124,8 @@ namespace LiveBackground
             }
             else
             {
-                string resolvedVideos = Util.ResolvePath(_appRoot, folder);
+                string resolvedVideos = ResolveForValidation(folder, "Choose an existing video folder first.");
+                if (resolvedVideos == null) return null;
                 if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(resolvedVideos))
                 {
                     MessageBox.Show(this, "Choose an existing video folder first.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1111,7 +1150,8 @@ namespace LiveBackground
             if (_lockCustom.IsChecked == true)
             {
                 string path = (_lockCustomPath.Text ?? "").Trim();
-                string full = Util.ResolvePath(_appRoot, path);
+                string full = ResolveForValidation(path, "Choose an existing image for the lock screen.");
+                if (full == null) return null;
                 if (path.Length == 0 || !File.Exists(full))
                 {
                     MessageBox.Show(this, "Choose an existing image for the lock screen.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1124,8 +1164,15 @@ namespace LiveBackground
             {
                 string selected = _lockImageCombo.SelectedItem as string;
                 string imgFolder = string.IsNullOrWhiteSpace((_imageFolderBox.Text ?? "").Trim()) ? _config.ImageFolder : (_imageFolderBox.Text ?? "").Trim();
-                string full = Path.Combine(Util.ResolvePath(_appRoot, imgFolder ?? ""), selected ?? "");
-                if (string.IsNullOrEmpty(selected) || !File.Exists(full))
+                if (string.IsNullOrEmpty(selected))
+                {
+                    MessageBox.Show(this, "Pick an existing image from your image folder for the lock screen.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return null;
+                }
+                string resolvedFolder = ResolveForValidation(imgFolder ?? "", "Pick an existing image from your image folder for the lock screen.");
+                if (resolvedFolder == null) return null;
+                string full = Path.Combine(resolvedFolder, selected);
+                if (!File.Exists(full))
                 {
                     MessageBox.Show(this, "Pick an existing image from your image folder for the lock screen.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return null;
@@ -1140,7 +1187,8 @@ namespace LiveBackground
             if (useCustomDesktop)
             {
                 string path = (_desktopCustomPath.Text ?? "").Trim();
-                string full = Util.ResolvePath(_appRoot, path);
+                string full = ResolveForValidation(path, "Choose an existing image for the desktop wallpaper.");
+                if (full == null) return null;
                 if (path.Length == 0 || !File.Exists(full))
                 {
                     MessageBox.Show(this, "Choose an existing image for the desktop wallpaper.", "LiveBackground", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1722,16 +1770,30 @@ namespace LiveBackground
             if (_imageHint != null) _imageHint.Text = message;
         }
 
-        // The checkbox changes granularity only. Snapping here keeps the value
-        // on a valid tick after the user turns fine steps off.
-        private static void ApplyFadeSteps(Slider slider, bool fine)
+        // The checkbox changes granularity and, for video, the slider minimum
+        // together. WPF snaps ticks relative to Minimum, so a coarse 1 s grid
+        // has to start at a whole second or the default 3 s drifts to 3.5 s.
+        private static void ApplyFadeSteps(Slider slider, bool fine, double fineMinimum, double coarseMinimum)
         {
             if (slider == null) return;
             double step = FadeSteps.Step(fine);
+            double minimum = fine ? fineMinimum : coarseMinimum;
+            if (!slider.Minimum.Equals(minimum)) slider.Minimum = minimum;
             slider.TickFrequency = step;
             slider.SmallChange = step;
-            double snapped = FadeSteps.Snap(slider.Value, slider.Minimum, slider.Maximum, fine);
+            double snapped = FadeSteps.Snap(slider.Value, minimum, slider.Maximum, fine);
             if (!snapped.Equals(slider.Value)) slider.Value = snapped;
+        }
+
+        // Image slideshows keep a zero minimum in both modes.
+        private static void ApplyFadeSteps(Slider slider, bool fine)
+        {
+            ApplyFadeSteps(slider, fine, FadeSteps.ImageMinimum, FadeSteps.ImageMinimum);
+        }
+
+        private static void ApplyVideoFadeSteps(Slider slider, bool fine)
+        {
+            ApplyFadeSteps(slider, fine, FadeSteps.VideoFineMinimum, FadeSteps.VideoCoarseMinimum);
         }
 
         private sealed class MonitorSlotUi
@@ -1943,13 +2005,13 @@ namespace LiveBackground
                 var vfadeRow = new DockPanel { Margin = new Thickness(0, 6, 0, 4) };
                 _videoFadeValue = new TextBlock { MinWidth = 60, TextAlignment = TextAlignment.Right, Foreground = Brushes.White };
                 DockPanel.SetDock(_videoFadeValue, Dock.Right);
-                _videoFadeSlider = new Slider { Minimum = 0.5, Maximum = 10.0, TickFrequency = 0.5, IsSnapToTickEnabled = true, SmallChange = 0.5, LargeChange = 1.0 };
+                _videoFadeSlider = new Slider { Minimum = FadeSteps.VideoCoarseMinimum, Maximum = 10.0, TickFrequency = FadeSteps.CoarseStep, IsSnapToTickEnabled = true, SmallChange = FadeSteps.CoarseStep, LargeChange = 1.0 };
                 _videoFadeSlider.ValueChanged += delegate { UpdateVideoFadeLabel(); };
                 vfadeRow.Children.Add(_videoFadeValue); vfadeRow.Children.Add(_videoFadeSlider);
                 _videoPlaybackPanel.Children.Add(vfadeRow);
                 _videoFineSteps = new CheckBox { Content = "Allow half-second steps (finer control)", Margin = new Thickness(0, 0, 0, 16) };
-                _videoFineSteps.Checked += delegate { ApplyFadeSteps(_videoFadeSlider, true); };
-                _videoFineSteps.Unchecked += delegate { ApplyFadeSteps(_videoFadeSlider, false); };
+                _videoFineSteps.Checked += delegate { ApplyVideoFadeSteps(_videoFadeSlider, true); };
+                _videoFineSteps.Unchecked += delegate { ApplyVideoFadeSteps(_videoFadeSlider, false); };
                 _videoPlaybackPanel.Children.Add(_videoFineSteps);
 
                 _videoRenderSame = new CheckBox { Content = "Use main Playback settings", Margin = new Thickness(0, 0, 0, 6), IsChecked = true };
@@ -2473,9 +2535,9 @@ namespace LiveBackground
                     if (_imageModeSlideshow != null) _imageModeSlideshow.IsChecked = !singleImage;
                     double vfade = s.CrossfadeSeconds.HasValue ? s.CrossfadeSeconds.Value : (config != null ? config.CrossfadeSeconds : 3.0);
                     bool vfine = s.FineCrossfadeSteps.HasValue ? s.FineCrossfadeSteps.Value : (config != null && config.FineCrossfadeSteps);
-                    if (_videoFadeSlider != null) _videoFadeSlider.Value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, vfade));
                     if (_videoFineSteps != null) _videoFineSteps.IsChecked = vfine;
-                    ApplyFadeSteps(_videoFadeSlider, vfine);
+                    ApplyVideoFadeSteps(_videoFadeSlider, vfine);
+                    if (_videoFadeSlider != null) _videoFadeSlider.Value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, vfade));
                     UpdateNativeResolutionItem(screens);
                     if (_videoRenderSame != null) _videoRenderSame.IsChecked = !s.RenderWidth.HasValue || !s.RenderHeight.HasValue;
                     int renderWidth = s.RenderWidth.HasValue ? s.RenderWidth.Value : (config != null ? config.RenderWidth : 1920);
@@ -2499,6 +2561,25 @@ namespace LiveBackground
                     ApplySingleSelection(_imageList, s.ImageSingle, singleImage);
                 }
                 UpdateEnabled();
+            }
+
+            // Called when the main crossfade changes. A screen whose saved fade
+            // is null, and whose displayed fade still matches the previous main
+            // value, is still inheriting and follows the new value.
+            public void RefreshInheritedFade(double previousMainSeconds, bool previousMainFine, double mainSeconds, bool mainFine)
+            {
+                if (string.IsNullOrEmpty(_device) || _videoFadeSlider == null || _videoFineSteps == null) return;
+                ScreenSettings saved = GetSavedScreenSettings();
+                if (saved == null || saved.CrossfadeSeconds.HasValue || saved.FineCrossfadeSteps.HasValue) return;
+                if (!AppConfig.InheritsMainFade(_videoFadeSlider.Value, _videoFineSteps.IsChecked == true,
+                    previousMainSeconds, previousMainFine)) return;
+                // Set the checkbox first: it adjusts the slider minimum, so a
+                // half-second value is not clamped away before it is shown.
+                _videoFineSteps.IsChecked = mainFine;
+                ApplyVideoFadeSteps(_videoFadeSlider, mainFine);
+                double value = Math.Max(_videoFadeSlider.Minimum, Math.Min(_videoFadeSlider.Maximum, mainSeconds));
+                if (!value.Equals(_videoFadeSlider.Value)) _videoFadeSlider.Value = value;
+                UpdateVideoFadeLabel();
             }
 
             private static void ApplySingleSelection(ListView list, string preferredName, bool singleMode)
@@ -2580,8 +2661,22 @@ namespace LiveBackground
                         s.ImagePlaylist = MergeMissingSavedEntries(imageItems.Select(i => new PlaylistEntry(i.Name, i.Enabled)).ToList(), s.ImagePlaylist);
                     }
                 }
-                if (_videoFadeSlider != null) s.CrossfadeSeconds = _videoFadeSlider.Value;
-                if (_videoFineSteps != null) s.FineCrossfadeSteps = _videoFineSteps.IsChecked == true;
+                // Keep inheritance when the screen still shows the main fade.
+                // Writing concrete values here would end inheritance on the
+                // first Apply even though the user never customized it.
+                bool inheritFade = _videoFadeSlider != null && _videoFineSteps != null &&
+                    AppConfig.InheritsMainFade(_videoFadeSlider.Value, _videoFineSteps.IsChecked == true,
+                        updated.CrossfadeSeconds, updated.FineCrossfadeSteps);
+                if (inheritFade)
+                {
+                    s.CrossfadeSeconds = null;
+                    s.FineCrossfadeSteps = null;
+                }
+                else
+                {
+                    if (_videoFadeSlider != null) s.CrossfadeSeconds = _videoFadeSlider.Value;
+                    if (_videoFineSteps != null) s.FineCrossfadeSteps = _videoFineSteps.IsChecked == true;
+                }
                 if (_videoRenderSame != null)
                 {
                     if (_videoRenderSame.IsChecked == true)

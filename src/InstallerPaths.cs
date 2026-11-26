@@ -16,6 +16,10 @@ namespace LiveBackground
             try { r = Path.GetFullPath(root); p = Path.GetFullPath(path); }
             catch { return false; }
             if (r.Length == 0) return false;
+            // A drive root is its own prefix once a separator is appended, so
+            // reject equality first: only descendants of root count as inside.
+            if (string.Equals(r.TrimEnd(Path.DirectorySeparatorChar),
+                p.TrimEnd(Path.DirectorySeparatorChar), System.StringComparison.OrdinalIgnoreCase)) return false;
             if (r[r.Length - 1] != Path.DirectorySeparatorChar) r += Path.DirectorySeparatorChar;
             return p.StartsWith(r, System.StringComparison.OrdinalIgnoreCase);
         }

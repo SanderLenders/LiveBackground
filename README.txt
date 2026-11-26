@@ -28,8 +28,9 @@ Install
    Program Files; choose Yes.
 3. Leave "Start LiveBackground when I sign in" ticked if you want the video at
    logon.
-4. When the installer finishes, LiveBackground starts and builds its first loop
-   in the background. It starts on the bundled "Galaxy HD Clip.mp4"; the bundled
+4. If you left "Start LiveBackground when I sign in" ticked, LiveBackground
+   starts when the installer finishes and builds its first loop in the
+   background. It starts on the bundled "Galaxy HD Clip.mp4"; the bundled
    "Galaxy Image.jpg" and "Universe Clouds.jpg" are waiting in your image
    folder.
 
@@ -76,15 +77,17 @@ Other stay in place:
   Playback/Slideshow  main/per-screen video crossfades, resolution, frame rate,
                       quality and screensaver; or picture interval, crossfade
                       and Shuffle
-  Multi Monitor       extra screens: Extended/Duplicate mode and per-screen
-                      video or image settings, with 2nd/3rd/4th Screen sub-tabs
+  Multi Monitor       extra screens: per-screen video or image settings, with
+                      2nd/3rd/4th Screen sub-tabs; Windows display settings
+                      control display mode and placement
   Other               start at sign-in, lock-screen and desktop wallpaper image
 
 Every editor stays alive while the pill switches, so unsaved edits are kept.
 When you open the settings window it starts on the first tab of the active
-mode: Videos or Images.
+mode: Videos or Images. Controls that do not apply to the current mode are
+dimmed but stay clickable by design, so edits made ahead of time are kept.
 
-Click "Save and apply". The settings are written, the loop rebuilds in the
+Click "Apply". The settings are written, the loop rebuilds in the
 background, and the current video keeps playing until the new loop is ready.
 
 While the loop is being prepared, a small dark card fades in at the bottom-right
@@ -117,10 +120,10 @@ Right-click the tray icon for:
   Open logs folder                     show the log files
   Exit                                 stop the wallpaper completely
 
-The cross-fade slider runs from 0.5 to 10 seconds in 0.5-second steps. Tick
-"Allow half-second steps" only changes the step granularity; the range is the
-same. The window shows the fade that will actually be applied and the resulting
-loop length.
+The cross-fade slider runs from 0.5 to 10 seconds in 1-second steps. Tick
+"Allow half-second steps" to switch to 0.5-second steps; the range is the same.
+The window shows the fade that will actually be applied and the resulting loop
+length.
 
 Fades are capped at one third of the shorter neighbouring clip, so a 10 s
 setting becomes 3.3 s on a 10 s clip. Fades longer than 5 seconds look more
@@ -198,15 +201,13 @@ monitor mirrors the main screen. Settings are remembered by monitor device
 name, so unplugging, replugging and reordering screens does not mix them up. A
 disconnected screen keeps its saved settings.
 
-The top of the tab shows the Windows display mode: Extended (separate screens)
-or Duplicate (every screen shows the same). The radio buttons show what Windows
-is doing right now; click one to change it. The app never changes the display
-mode on its own and never spoofs or blocks it. "Display settings" opens the
-Windows arrangement page, where display placement stays fully controllable.
-Controls that are not currently usable are dimmed but remain clickable by
-design. Values are saved only for a connected screen that is not mirroring the
-main screen; a disconnected slot or a section still set to "Same as main
-screen" has nowhere to store those edits and reloads the saved values later.
+Display mode and placement stay under Windows control. Use the "Open Windows
+display settings..." button on the Multi Monitor tab to change them; the app
+never changes, spoofs or blocks them. Folder and playlist values are not saved
+for a screen that is mirroring the main screen or is disconnected; other fade
+and render values may still be saved. Values saved earlier are reloaded when
+the screen is connected and independent again. The dimmed controls stay
+clickable, as described above.
 
 The tab follows the Video/Images pill, but each screen can override it. Under
 global Video, the checkbox reads "Image mode" and flips only that screen to
@@ -220,8 +221,8 @@ a mirror back on restores the values saved for that section.
 In Video mode, each extra screen mirrors the main clip by default. Turn off
 "Same as main screen" in the Video section to choose its own folder, playlist
 or single clip and pick which clip plays in Single clip mode; its loop is
-rendered once and cached. Rebuild now is available whenever that screen is
-attached.
+rendered once and cached. To force a rebuild, use "Rebuild now" in the tray
+menu; it is not a button in the Multi Monitor tab.
 
 In Images mode, each extra screen likewise mirrors the main picture or
 slideshow by default. Turn off "Same as main screen" in the Images section to
@@ -270,7 +271,7 @@ The Images tab has two modes:
   Slideshow  Only the pictures with a tick are shown, in the order of the
              list. Use Move up and Move down to set the order. Sort A-Z only
              re-sorts the list and does not change which pictures are ticked.
-             Tick "Shuffle the order" on the Slideshow tab to pick a random
+             Tick "Shuffle pictures" on the Slideshow tab to pick a random
              picture each time.
   One image  One chosen picture stays on the desktop. Click the checkbox of
              the picture you want; ticking another picture switches to it.
@@ -332,9 +333,9 @@ into %USERPROFILE%\LiveBackground\images, so moving the original file later
 does not break the setting.
 
 To use one of your image wallpapers on the lock screen, choose "Use an image
-from my image wallpapers" on the Other tab and pick a picture from the list.
-That picture is read from the image folder, so it changes if you replace or
-rename the file.
+from your image folder" on the Other tab and pick a picture from the list. That
+picture is read from the image folder: replacing the file at the same path
+works, but renaming it breaks the setting until you pick the picture again.
 
 If a custom image is deleted from the library, the app falls back to the first
 frame of the loop for the desktop, and leaves the lock screen unchanged.
@@ -470,16 +471,19 @@ A rebuild says "ffmpeg failed":
 
 Code signing and Smart App Control
 ----------------------------------
-The current build signs all first-party executables (the app, CLI, settings
-window, tray helper, bootstrapper and installer) with a local self-signed test
-certificate, SHA-256 and no RFC3161 timestamp. mpv and ffmpeg stay exactly as
-published by their projects and are deliberately not re-signed. A self-signed
-certificate does not create a trusted publisher or SmartScreen reputation, so
-Windows may still show "unknown publisher".
+Only the six first-party EXEs are signed: the app, CLI, settings window, tray
+helper, bootstrapper and installer. They are signed with a local self-signed
+test certificate and SHA-256, with no RFC3161 timestamp. The uninstaller that
+Inno Setup generates at install time and the temporary Setup self-copies
+Windows makes are unsigned. mpv and ffmpeg stay exactly as published by their
+projects and are deliberately not re-signed. A self-signed certificate does
+not create a trusted publisher or SmartScreen reputation, so Windows may still
+show "unknown publisher"; it must be trusted locally for a signature check to
+report it valid.
 
 A public release needs a publicly trusted OV/EV code-signing certificate and a
-timestamp server. That is the remaining reputation step; it does not change how
-the app behaves or how quickly it starts.
+timestamp server. That remains future work; it does not change how the app
+behaves or how quickly it starts.
 
 On a normal PC, SmartScreen may show "Windows protected your PC" the first
 time you run the installer:
@@ -533,10 +537,10 @@ Portable mode
 -------------
 A folder containing portable.txt next to LiveBackground.exe is a portable copy.
 In portable mode all data stays inside that folder instead of the user profile.
-The installer does not create portable.txt, so an installed copy always uses
-%USERPROFILE%\LiveBackground. install.cmd copies a portable folder there;
-uninstall.cmd removes that installed copy and falls back to the folder it is
-run from when no installed copy is found.
+The installer does not create portable.txt, so a Program Files install keeps
+its data in %USERPROFILE%\LiveBackground. install.cmd copies a portable folder
+to %LOCALAPPDATA%\LiveBackground instead; uninstall.cmd removes that copy and
+falls back to the folder it is run from when no installed copy is found.
 
 The portable package still includes install.cmd and uninstall.cmd. install.cmd
 copies the folder to %LOCALAPPDATA%\LiveBackground and creates the logon task

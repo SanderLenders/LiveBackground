@@ -2,7 +2,7 @@
 <#
     Builds LiveBackground.
 
-    Output (default: .\dist):
+    Output (default: %LOCALAPPDATA%\LiveBackgroundBuild):
         LiveBackground.exe        video-wallpaper host (no console window)
         LiveBackgroundCli.exe     command-line helper (install / rebuild / task)
         LiveBackground.cer        public self-signed code-signing certificate
@@ -23,13 +23,25 @@
         XAML and is no longer supported. Install the .NET SDK (or Visual Studio
         Build Tools with .NET desktop build tools) to build from source.
 
-    Run from a normal PowerShell window:
-        .\build.ps1
+    Run from a normal PowerShell window. dist is the frozen v1.5.1 archive and
+    is blocked as an output folder; always build into the local build folder:
+        .\build.ps1 -OutDir "$env:LOCALAPPDATA\LiveBackgroundBuild" `
+                    -MpvSource "C:\Path\To\mpv" `
+                    -FfmpegSource "C:\Path\To\tools\ffmpeg"
 
     If the self-signed certificate does not exist yet, create it once with:
         $c = New-SelfSignedCertificate -Type CodeSigningCert `
              -Subject 'CN=LiveBackground Test' `
              -CertStoreLocation Cert:\CurrentUser\My -HashAlgorithm SHA256 -KeyLength 2048
+
+    Export the public certificate and trust it locally to validate test builds:
+        Export-Certificate -Cert $c -FilePath "$env:TEMP\LiveBackgroundTest.cer" -Type CERT
+        Import-Certificate -FilePath "$env:TEMP\LiveBackgroundTest.cer" `
+                           -CertStoreLocation Cert:\CurrentUser\Root
+    This is local test trust only; it does not give the signature any public
+    reputation. Signatures are not timestamped by default (test certificate).
+    Use -TimestampServer <RFC3161 URL> only with a future publicly trusted
+    certificate, so its signatures survive certificate expiry.
 #>
 [CmdletBinding()]
 param(
@@ -52,7 +64,14 @@ $scriptRoot = $PSScriptRoot
 if (-not $scriptRoot) {
     $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
-if (-not $OutDir) { $OutDir = Join-Path $scriptRoot 'dist' }
+if (-not $OutDir) {
+    $localAppData = $env:LOCALAPPDATA
+    if (-not $localAppData -and $env:USERPROFILE) {
+        $localAppData = Join-Path $env:USERPROFILE 'AppData\Local'
+    }
+    if (-not $localAppData) { $localAppData = [IO.Path]::GetTempPath() }
+    $OutDir = Join-Path $localAppData 'LiveBackgroundBuild'
+}
 
 function Write-Step($text) {
     Write-Host ''
@@ -343,8 +362,7 @@ if (Test-Path $imageSourceDir) {
     if ($bundledImages.Count -gt 0) {
         foreach ($image in $bundledImages) {
             $target = Join-Path $imageTargetDir $image.Name
-            # When OutDir is dist itself the source and target are the same
-            # file, so there is nothing to copy.
+            # If the source and target are already the same file, skip it.
             if (-not [string]::Equals($target, $image.FullName, [StringComparison]::OrdinalIgnoreCase)) {
                 Copy-Item $image.FullName $target -Force
             }
@@ -378,15 +396,8 @@ if (Test-Path $projectLicenses) {
         Write-Host ("  " + $_.Name)
     }
 }
-if ($FfmpegSource) {
-    $ffmpegRoot = Split-Path $FfmpegSource -Parent
-    if (Test-Path (Join-Path $ffmpegRoot 'LICENSE')) {
-        Copy-Item (Join-Path $ffmpegRoot 'LICENSE') (Join-Path $licenseDir 'ffmpeg-LICENSE.txt') -Force
-    }
-    if (Test-Path (Join-Path $ffmpegRoot 'README.txt')) {
-        Copy-Item (Join-Path $ffmpegRoot 'README.txt') (Join-Path $licenseDir 'ffmpeg-README.txt') -Force
-    }
-}
+# The tracked assets\licenses\ffmpeg-* texts are authoritative; never overwrite
+# them from the ffmpeg source folder.
 
 Write-Step 'Marking the portable package'
 $portableMarker = Join-Path $OutDir 'portable.txt'
@@ -402,7 +413,7 @@ if (-not $SkipSign) {
     }
     Write-Host ("  certificate: " + $cert.Subject + " (" + $cert.Thumbprint + ")")
     if (-not $TimestampServer) {
-        Write-Warning 'No RFC3161 timestamp server was supplied. A public release needs -TimestampServer so signatures survive certificate expiry.'
+        Write-Warning 'Signing without an RFC3161 timestamp (test certificate only). With a publicly trusted certificate, pass -TimestampServer so signatures survive expiry.'
     }
 
     # mpv and ffmpeg stay as published by their projects; only the binaries
@@ -425,27 +436,27 @@ if (-not $SkipInstaller) {
     Write-Step 'Building the Windows installer'
     $iscc = Find-Inno
     if (-not $iscc) {
-        Write-Warning 'Inno Setup 6 was not found. Install it or pass -InnoCompiler <path to ISCC.exe>.'
-        Write-Warning 'The portable package is still complete; only installer\LiveBackgroundSetup.exe is missing.'
+        throw 'Inno Setup 6 was not found. Install it or pass -InnoCompiler <path to ISCC.exe>.'
     }
-    else {
-        $iss = Join-Path $root 'installer.iss'
-        if (-not (Test-Path $iss)) { throw "installer.iss not found at $iss" }
-        $installerDir = Join-Path $OutDir 'installer'
-        New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
-        & $iscc "/DSourceDir=$OutDir" "/DOutputDir=$installerDir" "/DAppIcon=$icon" $iss
-        if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)." }
-        $installerExe = Join-Path $installerDir 'LiveBackgroundSetup.exe'
-        if (-not $SkipSign -and $cert) { Sign-File $installerExe $cert }
-        Write-Host ("  " + $installerExe)
-    }
+    $iss = Join-Path $root 'installer.iss'
+    if (-not (Test-Path $iss)) { throw "installer.iss not found at $iss" }
+    $installerDir = Join-Path $OutDir 'installer'
+    New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+    # Keep the quotes around each /D value as literal characters so a path with
+    # spaces is passed to ISCC as one define.
+    & $iscc "/D\`"SourceDir=$OutDir\`"" "/D\`"OutputDir=$installerDir\`"" "/D\`"AppIcon=$icon\`"" $iss
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)." }
+    $installerExe = Join-Path $installerDir 'LiveBackgroundSetup.exe'
+    if (-not $SkipSign -and $cert) { Sign-File $installerExe $cert }
+    Write-Host ("  " + $installerExe)
 }
 
 Write-Step 'Done'
 Get-ChildItem $OutDir -Force | Select-Object Mode, Name, Length | Format-Table -AutoSize | Out-String | Write-Host
-$installer = Join-Path $OutDir 'installer\LiveBackgroundSetup.exe'
-if (Test-Path $installer) {
-    Write-Host ("Share this file: " + $installer)
+if ($SkipInstaller) {
+    Write-Host 'Installer was skipped (-SkipInstaller).'
 } else {
-    Write-Host 'The portable folder is ready to share. Run install.cmd on the target PC.'
+    $installer = Join-Path $OutDir 'installer\LiveBackgroundSetup.exe'
+    if (-not (Test-Path $installer)) { throw "Installer not found after its build: $installer" }
+    Write-Host ("Share this file: " + $installer)
 }

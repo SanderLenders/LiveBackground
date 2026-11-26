@@ -27,8 +27,10 @@ namespace LiveBackground
             // name is unique per call: two writers of the same file (a settings
             // save and a startup save, or a build thread and a manifest write)
             // must never share one temp file, or one would truncate the other's
-            // and the "atomic" swap could publish the wrong bytes.
-            string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            // and the "atomic" swap could publish the wrong bytes. The suffix
+            // ends in .json.tmp so MediaPipeline's cache sweep can reclaim one
+            // left behind by a hard kill.
+            string temp = path + "." + Guid.NewGuid().ToString("N") + ".json.tmp";
             lock (WriteSync)
             {
                 try

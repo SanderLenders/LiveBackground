@@ -101,6 +101,10 @@ namespace LiveBackground
                     result.TimedOut = true;
                     try { process.Kill(); } catch { /* best-effort: the process may have already exited */ }
                     try { process.WaitForExit(3000); } catch { /* best-effort: give it a moment to die */ }
+                    // The async readers can still be appending after the kill
+                    // grace period. The parameterless wait drains them so the
+                    // captured text is not truncated on the timeout path.
+                    try { process.WaitForExit(); } catch { /* best-effort: drain the output readers */ }
                 }
                 else
                 {
@@ -212,6 +216,9 @@ namespace LiveBackground
                 if (result.Cancelled || result.TimedOut)
                 {
                     try { process.WaitForExit(3000); } catch { /* best-effort: give it a moment to die */ }
+                    // Same drain as the success path: without this, a cancelled
+                    // or timed-out ffmpeg can lose its last stderr lines.
+                    try { process.WaitForExit(); } catch { /* best-effort: drain the output readers */ }
                 }
                 else
                 {

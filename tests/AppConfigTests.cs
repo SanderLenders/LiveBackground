@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using LiveBackground;
 using Xunit;
 
@@ -117,6 +118,25 @@ namespace LiveBackground.Tests
             Assert.Equal(@"mpv\mpv.exe", c.MpvPath);
             Assert.Equal(@"tools\ffmpeg\ffmpeg.exe", c.FfmpegPath);
             Assert.Equal(@"tools\ffmpeg\ffprobe.exe", c.FfprobePath);
+        }
+
+        [Fact]
+        public void Normalize_forces_the_installer_task_name()
+        {
+            AppConfig c = new AppConfig();
+            c.TaskName = "My custom task";
+            c.Normalize();
+            Assert.Equal("LiveBackground (early startup)", c.TaskName);
+        }
+
+        [Fact]
+        public void InheritsMainFade_compares_value_and_fine_steps()
+        {
+            Assert.True(AppConfig.InheritsMainFade(3.0, false, 3.0, false));
+            Assert.True(AppConfig.InheritsMainFade(2.5, true, 2.5, true));
+            Assert.False(AppConfig.InheritsMainFade(3.5, false, 3.0, false));
+            Assert.False(AppConfig.InheritsMainFade(3.0, true, 3.0, false));
+            Assert.False(AppConfig.InheritsMainFade(double.NaN, false, 3.0, false));
         }
 
         [Fact]
@@ -505,6 +525,25 @@ namespace LiveBackground.Tests
                 Assert.NotNull(loaded);
                 Assert.Equal("video", loaded.WallpaperMode);
                 Assert.Equal("single", loaded.PlaybackMode);
+            }
+        }
+
+        [Fact]
+        public void Load_treats_a_literal_null_config_as_fresh_defaults()
+        {
+            using (TempFolder temp = new TempFolder())
+            {
+                temp.Write("config.json", "null");
+
+                AppConfig loaded = ConfigStore.Load(temp.Dir);
+
+                Assert.NotNull(loaded);
+                Assert.Equal("video", loaded.WallpaperMode);
+                Assert.Equal(3.0, loaded.CrossfadeSeconds);
+                // Normalize() builds the migrated screen slot for a fresh config.
+                Assert.Single(loaded.ExtraScreens);
+                Assert.Null(ConfigStore.LoadWarning);
+                Assert.False(File.Exists(Path.Combine(temp.Dir, "config.json.bad")));
             }
         }
 

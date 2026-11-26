@@ -352,7 +352,8 @@ namespace LiveBackground
             }
 
             log("ERROR: could not start the wallpaper.");
-            log("If Windows Smart App Control blocked it, choose Allow when prompted, then run install.cmd again.");
+            log("Windows Smart App Control blocks apps silently; there is no Allow prompt to click.");
+            log("Rebuild and sign the app with a publicly trusted certificate, then run install.cmd again.");
         }
 
         public static void StopApp(string appRoot, Action<string> log, bool wait)
