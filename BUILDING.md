@@ -107,10 +107,10 @@ The script always copies the tracked `tools\LiveBackgroundBootstrap.exe`
 because that is the executable the scheduled tasks launch; it is not recompiled
 on each build, so every package contains the same bootstrapper. Change it only
 by rebuilding it from `src\bootstrapper.c` and committing the result. The
-`dist` folder holds the frozen v1.5.1 archive and must not be used as `SourceDir`
-or as an output folder; `build.ps1` refuses to write there. For any other output
-folder the script clears it first so runtime state, old logs and an old installer
-cannot leak into the package.
+bundled demo clips and pictures come only from the tracked `assets\media` folder;
+no older release folder is used as a source or an output. The script clears the
+output folder first so runtime state, old logs and an old installer cannot leak
+into the package.
 
 It is not run in CI because it needs mpv, ffmpeg, a certificate and Inno Setup,
 and takes several minutes; CI instead runs `build.ps1 -CompileOnly` to compile

@@ -20,7 +20,7 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
       shortcut is created and the desktop shortcut is not.
 - [ ] The file being tested is
       `%LOCALAPPDATA%\LiveBackgroundBuild\installer\LiveBackgroundSetup.exe`,
-      never a copy from `dist`.
+      built from the current tracked sources, not a copy from an older package.
 - [ ] First run seeds "Galaxy HD Clip.mp4" and starts in Single clip mode.
 - [ ] Upgrade over an existing install: videos, pictures and settings are kept,
       and the autostart box is still ticked.

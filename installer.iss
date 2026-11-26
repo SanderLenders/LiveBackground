@@ -1,6 +1,6 @@
 ﻿; LiveBackground installer (Inno Setup 6).
 ; Build via build.ps1 with -OutDir "%LOCALAPPDATA%\LiveBackgroundBuild".
-; ISCC is normally called by build.ps1; never point it at dist (frozen archive).
+; ISCC is normally called by build.ps1; SourceDir defaults to the local build folder.
 
 #define MyAppName "LiveBackground"
 #define MyAppVersion "1.9.0"

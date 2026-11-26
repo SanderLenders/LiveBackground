@@ -25,9 +25,12 @@
   and made small runtime and test fixes.
 - Hardened the build and installer: the canonical build has no RFC3161
   timestamp, local self-signed certificate setup is documented with root-store
-  trust, Inno Setup 6.4+ is required for the modern wizard, `dist` is frozen and
-  never used as `SourceDir`, and signing notes cover the generated uninstaller
-  and temporary Setup self-copies.
+  trust, Inno Setup 6.4+ is required for the modern wizard, no older release
+  folder is used as a build source, and signing notes cover the generated
+  uninstaller and temporary Setup self-copies.
+- Bundled demo videos and pictures now live in tracked `assets\media` and are the
+  only media source for a build, so the installer can be reproduced without an
+  old release archive.
 
 ### Multi-monitor settings and release readiness
 
@@ -48,10 +51,10 @@
 - The startup cache decision, per-screen settings fingerprint and cache
   validity checks now cover every field that affects a screen's loop, pictures
   or desktop fallback. A stale startup hint is discarded when no loop exists.
-- The shipping build now cleans its output folder outside the frozen `dist`
-  archive, always copies one tracked bootstrapper binary, signs every
-  first-party executable, and supports an optional RFC3161 timestamp server.
-  mpv and ffmpeg remain unsigned third-party binaries.
+- The shipping build now cleans its output folder before packaging, always
+  copies one tracked bootstrapper binary, signs every first-party executable,
+  and supports an optional RFC3161 timestamp server. mpv and ffmpeg remain
+  unsigned third-party binaries.
 - The portable `uninstall.cmd` now looks in `%LOCALAPPDATA%\LiveBackground`
   first, matching `install.cmd`, and falls back to the folder it is run from.
 - README, change list and manual-test notes were brought in line with four
@@ -354,9 +357,9 @@
   saved edits from disconnected slots, or deletion of user data by
   `uninstall --remove`. The smoke test checks for the UAC prompt instead of a
   shield on the setup icon.
-- **`build.ps1` refuses to write into `dist`.** The frozen v1.5.1 archive can no
-  longer be overwritten by a forgotten default `-CompileOnly`; stale comments
-  about the removed `csc` fallback and the analyser gate were corrected too.
+- **`build.ps1` stopped defaulting to `dist`.** The old archive was no longer
+  used as a build output or source; stale comments about the removed `csc`
+  fallback and the analyser gate were corrected too.
 
 ## 1.8.5
 

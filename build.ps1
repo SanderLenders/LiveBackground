@@ -23,8 +23,7 @@
         XAML and is no longer supported. Install the .NET SDK (or Visual Studio
         Build Tools with .NET desktop build tools) to build from source.
 
-    Run from a normal PowerShell window. dist is the frozen v1.5.1 archive and
-    is blocked as an output folder; always build into the local build folder:
+    Run from a normal PowerShell window; build into the local build folder:
         .\build.ps1 -OutDir "$env:LOCALAPPDATA\LiveBackgroundBuild" `
                     -MpvSource "C:\Path\To\mpv" `
                     -FfmpegSource "C:\Path\To\tools\ffmpeg"
@@ -165,14 +164,9 @@ $projectPath = Join-Path $root 'src\LiveBackground.csproj'
 if (-not (Test-Path $projectPath)) { throw "Project not found: $projectPath" }
 $icon = Join-Path $root 'assets\LiveBackground.ico'
 
-# The frozen v1.5.1 archive under dist is never cleaned. Every other output
-# folder is rebuilt from scratch so config.json, caches, logs, backups and old
-# installers from a previous local run cannot leak into a release package.
-$distDir = Join-Path $scriptRoot 'dist'
-$isDistBuild = [string]::Equals([IO.Path]::GetFullPath($OutDir), [IO.Path]::GetFullPath($distDir), [StringComparison]::OrdinalIgnoreCase)
-if ($isDistBuild) {
-    throw 'dist holds the frozen v1.5.1 archive. Build into %LOCALAPPDATA%\LiveBackgroundBuild instead; dist must not be overwritten.'
-}
+# Every output folder is rebuilt from scratch so config.json, caches, logs,
+# backups and old installers from a previous local run cannot leak into a
+# release package.
 if (-not $CompileOnly -and (Test-Path $OutDir)) {
     Write-Step 'Cleaning the build output'
     Remove-Item -LiteralPath $OutDir -Recurse -Force
@@ -297,82 +291,39 @@ foreach ($sourceFile in @($ffmpegFile, $ffprobeFile)) {
 Write-Step 'Copying the bundled videos'
 # The installer ships these two clips; a fresh install seeds them into the
 # user's video folder and starts on "Galaxy HD Clip.mp4" in Single clip mode.
+# Both files are tracked under assets\media; no legacy archive is consulted.
+$videoSourceDir = Join-Path $root 'assets\media\videos'
+$galaxySource = if ($SampleVideo) { $SampleVideo } else { Join-Path $videoSourceDir 'Galaxy HD Clip.mp4' }
 New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'videos') | Out-Null
 $bundledVideos = @(
-    @{ Target = 'Galaxy HD Clip.mp4'; Sources = @(
-        $SampleVideo,
-        (Join-Path ${env:ProgramFiles} 'LiveBackground\videos\Galaxy HD Clip.mp4'),
-        (Join-Path $root 'dist\videos\Galaxy HD Clip.mp4'),
-        (Join-Path $OutDir 'videos\Galaxy HD Clip.mp4')
-    ) },
-    @{ Target = 'Fokuz Recordings Clip.mp4'; Sources = @(
-        (Join-Path ${env:ProgramFiles} 'LiveBackground\videos\Fokuz Recordings Clip.mp4'),
-        # The smaller re-encode ships now. The older, longer template is kept
-        # only as a fallback for builds made from an older working copy.
-        (Join-Path $root 'dist\videos\Fokuz Recordings Clip.mp4'),
-        (Join-Path $root 'dist\videos\Fokuz Recordings Youtube Template 60fps.mp4'),
-        (Join-Path $OutDir 'videos\Fokuz Recordings Clip.mp4')
-    ) }
+    @{ Target = 'Galaxy HD Clip.mp4'; Source = $galaxySource },
+    @{ Target = 'Fokuz Recordings Clip.mp4'; Source = Join-Path $videoSourceDir 'Fokuz Recordings Clip.mp4' }
 )
 foreach ($video in $bundledVideos) {
-    $source = $null
-    foreach ($candidate in $video.Sources) {
-        if ($candidate -and (Test-Path $candidate)) { $source = $candidate; break }
+    if (-not (Test-Path $video.Source)) { throw "Bundled video not found: $($video.Source)" }
+    $target = Join-Path (Join-Path $OutDir 'videos') $video.Target
+    if (-not [string]::Equals([IO.Path]::GetFullPath($target), (Resolve-Path -LiteralPath $video.Source).Path, [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $video.Source -Destination $target -Force
     }
-    if ($source) {
-        $target = Join-Path (Join-Path $OutDir 'videos') $video.Target
-        # When OutDir already holds the clip (the source is the target) there
-        # is nothing to copy.
-        if (-not [string]::Equals([IO.Path]::GetFullPath($target), (Resolve-Path -LiteralPath $source).Path, [StringComparison]::OrdinalIgnoreCase)) {
-            Copy-Item -LiteralPath $source -Destination $target -Force
-        }
-        Write-Host ("  " + $video.Target)
-    } else {
-        Write-Warning ("  missing bundled video: " + $video.Target)
-    }
-}
-# The Galaxy clip used to ship under its stock name; drop that older copy so
-# the same video does not ship and seed twice.
-$superseded = Join-Path $OutDir 'videos\Galaxy-hd_1920_1080_30fps.mp4'
-if (Test-Path $superseded) {
-    Remove-Item $superseded -Force
-    Write-Host '  removed superseded Galaxy-hd_1920_1080_30fps.mp4'
+    Write-Host ("  " + $video.Target)
 }
 
 Write-Step 'Copying the bundled images'
 # A fresh install seeds these pictures into the user's image folder and starts
-# on the first one in One-image mode. The current installed package is preferred
-# over the frozen dist archive as the source for bundled pictures.
-$imageSourceDir = ''
-foreach ($candidate in @(
-    (Join-Path ${env:ProgramFiles} 'LiveBackground\images\wallpapers'),
-    (Join-Path $root 'dist\images\wallpapers')
-)) {
-    if (Test-Path $candidate) {
-        $pictures = Get-ChildItem -Path $candidate -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|bmp|gif|webp)$' }
-        if ($pictures -and $pictures.Count -gt 0) { $imageSourceDir = $candidate; break }
-    }
-}
+# on the first one in One-image mode. They are tracked under assets\media.
+$imageSourceDir = Join-Path $root 'assets\media\images\wallpapers'
+if (-not (Test-Path $imageSourceDir)) { throw "Bundled image folder not found: $imageSourceDir" }
+$bundledImages = @(Get-ChildItem -Path $imageSourceDir -File |
+    Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|bmp|gif|webp)$' })
+if ($bundledImages.Count -eq 0) { throw "No bundled images found in $imageSourceDir" }
 $imageTargetDir = Join-Path $OutDir 'images\wallpapers'
 New-Item -ItemType Directory -Force -Path $imageTargetDir | Out-Null
-if (Test-Path $imageSourceDir) {
-    $bundledImages = @(Get-ChildItem -Path $imageSourceDir -File |
-        Where-Object { $_.Extension -match '^\.(jpg|jpeg|png|bmp|gif|webp)$' })
-    if ($bundledImages.Count -gt 0) {
-        foreach ($image in $bundledImages) {
-            $target = Join-Path $imageTargetDir $image.Name
-            # If the source and target are already the same file, skip it.
-            if (-not [string]::Equals($target, $image.FullName, [StringComparison]::OrdinalIgnoreCase)) {
-                Copy-Item $image.FullName $target -Force
-            }
-            Write-Host ("  " + $image.Name)
-        }
-    } else {
-        Write-Warning ("  no bundled images found in " + $imageSourceDir)
+foreach ($image in $bundledImages) {
+    $target = Join-Path $imageTargetDir $image.Name
+    if (-not [string]::Equals($target, $image.FullName, [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item $image.FullName $target -Force
     }
-} else {
-    Write-Warning ("  missing bundled image folder: " + $imageSourceDir)
+    Write-Host ("  " + $image.Name)
 }
 
 Write-Step 'Copying documentation and scripts'
