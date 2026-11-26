@@ -3,7 +3,7 @@
 ;   ISCC.exe /DSourceDir=dist /DOutputDir=dist\installer installer.iss
 
 #define MyAppName "LiveBackground"
-#define MyAppVersion "1.8.6"
+#define MyAppVersion "1.9.0"
 #define MyAppPublisher "LiveBackground"
 #define MyAppExeName "LiveBackground.exe"
 #define MyAppCliName "LiveBackgroundCli.exe"
@@ -27,7 +27,7 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 UninstallDisplayName={#MyAppName}
-VersionInfoVersion=1.8.6.0
+VersionInfoVersion=1.9.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCompany={#MyAppPublisher}

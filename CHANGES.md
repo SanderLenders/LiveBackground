@@ -1,6 +1,9 @@
 ﻿# LiveBackground change list
 
-## 1.8.6
+## 1.9.0
+- This release is numbered 1.9.0 because the WPF settings rewrite, four-monitor
+  support, startup changes and build/signing work go well beyond a patch release
+  on the earlier 1.8.6 line.
 - Modernized the settings window with a Windows 11-style WPF interface (grey/black theme, top-tab layout) on .NET Framework 4.8 while keeping existing settings behavior and instant-startup philosophy intact.
 - Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
 - Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48). The legacy csc/Roslyn fallback is no longer supported because the WPF settings UI requires XAML compilation.
@@ -87,14 +90,15 @@
   array allocations, seal internal types, prefer the generic `Marshal.SizeOf`
   overload) are back on, and the handful of sites they flagged were cleaned up.
   The analyser build now treats warnings as errors, so a new issue fails the
-  build instead of being printed and forgotten. This affects the developer / CI
-  build only; the shipping `build.ps1` does not run the analysers.
+  build instead of being printed and forgotten. This applies to both the
+  developer / CI analyser build and the shipping `build.ps1`, which now compiles
+  WPF/net48 through `dotnet build` and enforces the same rules.
 - **Two more code-quality rules are on.** The analyser now also reports dead
   conditions (`CA1508`) and objects that are not disposed before they go out of
   scope (`CA2000`). It found two genuinely dead conditions, which were removed;
   the two false positives it raises carry a documented suppression with a
-  reason. As with the rest of the analyser set, this affects the developer / CI
-  build only.
+  reason. As with the rest of the analyser set, these rules are enforced by both
+  developer / CI builds and the shipping `build.ps1`.
 - **The two folder watchers now share one small, tested class.** The video
   folder and the image folder used to carry almost identical hand-written
   `FileSystemWatcher` blocks; a `FolderWatcher` now owns the watcher and reports
