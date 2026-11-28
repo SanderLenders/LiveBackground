@@ -7,6 +7,7 @@
 - Modernized the settings window with a Windows 11-style WPF interface (grey/black theme, top-tab layout) on .NET Framework 4.8 while keeping existing settings behavior and instant-startup philosophy intact.
 - Refined the Inno Setup installer presentation/metadata for a more modern Windows 11 feel without changing install, startup-task, or uninstall behavior.
 - Updated the shipping build pipeline to support WPF compilation via MSBuild (dotnet build, net48). The legacy csc/Roslyn fallback is no longer supported because the WPF settings UI requires XAML compilation.
+- Fixed a screensaver flash: the periodic watchdog now restores the taskbar only when it is actually restarting a missing wallpaper process. A healthy app no longer has the shell shown behind its back on every watchdog tick.
 
 ### Final audit fixes
 

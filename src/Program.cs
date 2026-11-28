@@ -771,28 +771,36 @@ namespace LiveBackground
         {
             try
             {
-                // Belt and braces: if a hard kill happened while the video
-                // screensaver had the shell hidden, restore it before doing
-                // anything else. Show() is a no-op when it is already visible.
-                ShellChrome.Show();
-                if (File.Exists(Installer.QuitFlag(_appRoot)))
+                bool quitFlag = File.Exists(Installer.QuitFlag(_appRoot));
+                bool appRunning = false;
+                if (!quitFlag)
                 {
-                    Log.Info("watchdog: wallpaper was stopped by the user, not restarting");
+                    try
+                    {
+                        using (Mutex.OpenExisting(MutexName))
+                        {
+                            appRunning = true;
+                        }
+                    }
+                    catch (WaitHandleCannotBeOpenedException)
+                    {
+                        // Not running: start it below.
+                    }
+                }
+
+                if (!WatchdogShell.ShouldRestoreShell(quitFlag, appRunning))
+                {
+                    if (quitFlag) Log.Info("watchdog: wallpaper was stopped by the user, not restarting");
                     return 0;
                 }
 
-                try
-                {
-                    using (Mutex existing = Mutex.OpenExisting(MutexName))
-                    {
-                        // The wallpaper is already running.
-                        return 0;
-                    }
-                }
-                catch (WaitHandleCannotBeOpenedException)
-                {
-                    // Not running: start it below.
-                }
+                // Belt and braces: a hard kill can leave the shell hidden while
+                // the video screensaver was active. Restore it only here, just
+                // before restarting the app. Show() is a no-op when it is
+                // already visible, and a healthy app must never have the shell
+                // shown behind its back: its screensaver re-hides the taskbar
+                // every second, which would otherwise flash it briefly.
+                ShellChrome.Show();
 
                 string exe = Installer.AppExe(_appRoot);
                 if (!File.Exists(exe))

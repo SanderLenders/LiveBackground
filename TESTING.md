@@ -87,6 +87,9 @@ It is deliberately short: the highest-value manual pass, not a full QA suite.
 - [ ] Kill `LiveBackground.exe`: the watchdog restarts it (when the scheduled
       task is installed).
 - [ ] Exit from the tray: the watchdog does NOT restart it.
+- [ ] With the video screensaver hiding the shell, wait through a watchdog tick:
+      the taskbar stays hidden until real input, while killing the app still
+      restores it.
 - [ ] On battery: the background loop preparation is skipped.
 - [ ] Sign out and back in: the wallpaper starts and the still frame shows first.
 - [ ] Signature check on all first-party EXEs in the build folder: app, CLI,
